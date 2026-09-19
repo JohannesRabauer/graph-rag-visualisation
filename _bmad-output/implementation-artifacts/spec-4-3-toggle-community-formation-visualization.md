@@ -2,7 +2,7 @@
 title: 'Toggle Community Formation Visualization'
 type: 'feature'
 created: '2026-09-19'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
