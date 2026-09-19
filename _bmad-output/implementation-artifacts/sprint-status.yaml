@@ -61,7 +61,7 @@ development_status:
   4-1-detect-communities-in-the-knowledge-graph: done
   4-2-generate-and-persist-community-summaries: done
   4-3-toggle-community-formation-visualization: review
-  4-4-answer-via-global-search: backlog
+  4-4-answer-via-global-search: in-progress
   epic-4-retrospective: optional
 
   epic-5: backlog
