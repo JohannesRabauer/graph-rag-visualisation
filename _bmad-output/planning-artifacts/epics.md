@@ -186,3 +186,78 @@ So that opening the app for the first time already shows the right entry point, 
 **And** the canvas shows the idle-state copy pattern ("Knowledge Graph — Resting") with its eyebrow label
 **And** the idle-state subtitle carries the differentiation line from EXPERIENCE.md's Voice and Tone section (UX-DR18)
 **And** the page renders correctly with no upload or ingestion logic wired yet (that begins in Epic 2)
+
+## Epic 2: Corpus Ingestion & Knowledge Graph Construction
+
+Users can bring their own documents (plain text or PDF) or pick the built-in Sherlock Holmes Demo Dataset, and watch a real Knowledge Graph get built in Neo4j via live LLM extraction — with visible, honest errors if a file is rejected or an LLM call fails, never a silent hang. This is the first epic where a user has genuine graph data to show for their input.
+
+### Story 2.1: Upload a Plain Text Corpus
+
+As the creator,
+I want to upload one or more plain text files as my Corpus,
+So that I can bring my own material into GraphRAG Lens (FR1).
+
+**Acceptance Criteria:**
+
+**Given** the app's empty state
+**When** I upload one or more `.txt` files
+**Then** the files are queued for Knowledge Graph construction (FR4)
+**And** the Corpus chip in the app bar appears, naming the uploaded file(s) (UX-DR10)
+**And** if I instead upload a file with an unsupported extension, a clear, visible message is shown (via the Error banner pattern, UX-DR12) rather than the file being silently ignored
+
+### Story 2.2: Upload a PDF Corpus
+
+As the creator,
+I want to upload one or more PDF files as my Corpus,
+So that I'm not limited to plain text source material (FR2).
+
+**Acceptance Criteria:**
+
+**Given** the app's empty state
+**When** I upload one or more PDF files
+**Then** the system extracts their text content via Apache PDFBox (`graphrag-adapter-parsing`, AD-9) and feeds it into the same construction pipeline as plain text (FR4)
+**And** the Corpus chip appears, naming the uploaded PDF(s) (UX-DR10)
+**And** if a PDF yields no extractable text (e.g. scanned/image-only), a clear, visible error is shown rather than a silent no-op — OCR is explicitly out of scope
+
+### Story 2.3: Use the Built-in Demo Dataset
+
+As the creator,
+I want to select the built-in Sherlock Holmes Demo Dataset with one click,
+So that I have a "no-brainer" way to try the app without preparing my own files (FR3).
+
+**Acceptance Criteria:**
+
+**Given** the app's empty state
+**When** I click the Demo Dataset option
+**Then** the bundled Sherlock Holmes corpus is queued for Knowledge Graph construction (FR4), identically to an uploaded Corpus
+**And** the Corpus chip appears, naming it "Sherlock Holmes — Demo Dataset" (UX-DR10)
+**And** this option is presented with equal visual weight to the upload option, not as a secondary/fallback choice (UX-DR19)
+
+### Story 2.4: Build the Knowledge Graph from a Corpus
+
+As the creator,
+I want the system to extract Entities and Relationships from my Corpus via live LLM calls and build them into Neo4j, with the graph visibly growing as it happens,
+So that I have a real, non-scripted Knowledge Graph to demonstrate and query (FR4).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus has been queued (from Story 2.1, 2.2, or 2.3)
+**When** construction runs
+**Then** the system calls `LlmPort` (implemented by the LangChain4j/OpenAI adapter, AD-3) to extract Entities and Relationships, never referencing LangChain4j or OpenAI types outside that one adapter
+**And** each Entity is written via Cypher `MERGE` keyed on a normalized identity (lowercased name + type), never a blind `CREATE`, so the same entity mentioned twice resolves to one node (AD-10)
+**And** progress is pushed to the browser as named Server-Sent Events on `GET /api/corpora/{corpusId}/progress` (AD-7, AD-12), and the graph canvas shows nodes and edges appearing as they're extracted (UX-DR5)
+**And** the LLM call is genuinely live for this run — no cached or pre-computed extraction is substituted
+
+### Story 2.5: Surface Extraction Failures Visibly
+
+As the creator,
+I want a clear, visible error if an LLM call fails during Knowledge Graph construction,
+So that a failure is honest and obvious rather than a silent hang or crash (FR5).
+
+**Acceptance Criteria:**
+
+**Given** Knowledge Graph construction is in progress
+**When** an LLM call fails (e.g. rate limit, API error)
+**Then** an `error` Server-Sent Event is emitted on the Corpus's progress stream (AD-12)
+**And** the frontend displays the Error banner component (UX-DR12) naming what failed, in plain language
+**And** the system does not automatically retry or substitute cached/canned output (NFR2) — this is a deliberate, accepted risk, not an oversight
