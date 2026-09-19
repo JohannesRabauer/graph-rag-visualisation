@@ -2,7 +2,7 @@
 title: 'One-Command Local Environment'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -34,9 +34,9 @@ baseline_commit: 'a95a8e7cb88e97740d91120f852fcfa9102ef5f5'
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `Dockerfile` (root) -- multi-stage build: `maven:3.9.16-eclipse-temurin-25-noble` stage copies all module `pom.xml`s + `graphrag-core/src` + `graphrag-web/src`, runs `mvn -q -B package -DskipTests`; runtime stage `eclipse-temurin:25.0.4_7-jre-noble` copies the built jar as `app.jar`, `EXPOSE 8080`, `ENTRYPOINT ["java","-jar","app.jar"]` -- packages `graphrag-web` into a runnable image
-- [ ] `.dockerignore` (root) -- exclude `**/target/`, `.git`, `_bmad/`, `_bmad-output/`, `.claude/`, `*.md` -- keeps the build context small and reproducible
-- [ ] `docker-compose.yml` (root) -- two services only: `neo4j` (image `neo4j:2026.08.1-community`, `NEO4J_AUTH=neo4j/graphraglens`, `NEO4J_PLUGINS='["graph-data-science"]'`, a healthcheck, a named volume for `/data`) and `app` (`build: .`, `OPENAI_API_KEY` passed through from the host environment, `depends_on: neo4j` with `condition: service_healthy`, port `8080:8080`) -- the one-command environment (AD-8, FR14, FR15)
+- [x] `Dockerfile` (root) -- multi-stage build: `maven:3.9.16-eclipse-temurin-25-noble` stage copies all module `pom.xml`s + `graphrag-core/src` + `graphrag-web/src`, runs `mvn -q -B package -DskipTests`; runtime stage `eclipse-temurin:25.0.4_7-jre-noble` copies the built jar as `app.jar`, `EXPOSE 8080`, `ENTRYPOINT ["java","-jar","app.jar"]` -- packages `graphrag-web` into a runnable image
+- [x] `.dockerignore` (root) -- exclude `**/target/`, `.git`, `_bmad/`, `_bmad-output/`, `.claude/`, `*.md` -- keeps the build context small and reproducible
+- [x] `docker-compose.yml` (root) -- two services only: `neo4j` (image `neo4j:2026.08.1-community`, `NEO4J_AUTH=neo4j/graphraglens`, `NEO4J_PLUGINS='["graph-data-science"]'`, a healthcheck, a named volume for `/data`) and `app` (`build: .`, `OPENAI_API_KEY` passed through from the host environment, `depends_on: neo4j` with `condition: service_healthy`, port `8080:8080`) -- the one-command environment (AD-8, FR14, FR15)
 
 **Acceptance Criteria:**
 - Given the repository root, when `docker compose config` runs, then it resolves cleanly to exactly two services, `app` and `neo4j`
@@ -45,6 +45,14 @@ baseline_commit: 'a95a8e7cb88e97740d91120f852fcfa9102ef5f5'
 - Given a machine with normal internet access, when `OPENAI_API_KEY` is set and `docker compose up` runs, then both `app` and `neo4j` start and `app` serves on port 8080 (this exact check cannot run inside this sandbox — see Code Map environment constraint; to be confirmed manually)
 
 ## Implementation Notes
+
+- Added root `Dockerfile` (multi-stage: `maven:3.9.16-eclipse-temurin-25-noble` build stage, `eclipse-temurin:25.0.4_7-jre-noble` runtime stage), root `.dockerignore`, and root `docker-compose.yml` with exactly the two services (`app`, `neo4j`) required.
+- Build stage copies the root `pom.xml` plus each of the five child `pom.xml`s individually (`graphrag-core`, `graphrag-adapter-neo4j`, `graphrag-adapter-langchain4j`, `graphrag-adapter-parsing`, `graphrag-web`) before copying `graphrag-core/src` and `graphrag-web/src`, then runs `mvn -q -B package -DskipTests` as a full reactor build. The three adapter modules have pom.xml only (no `src/` yet, confirmed by directory listing), so they compile to empty jars without their source needing to be copied — the reactor build still succeeds because all module poms are present.
+- Runtime stage `COPY`s the exact known jar path `graphrag-web/target/graphrag-web-0.1.0-SNAPSHOT.jar` (per Code Map) rather than a glob — `spring-boot-maven-plugin`'s `repackage` goal leaves both the repackaged fat jar and a `*.jar.original` sidecar in `target/`, and a wildcard `COPY ... app.jar` would have matched both files, which Docker rejects unless the destination is a directory. Confirmed by inspecting `graphrag-web/target/` after a real `mvn package` run: only the exact filename is unambiguous.
+- `docker-compose.yml`: `neo4j`'s healthcheck runs `cypher-shell -u neo4j -p graphraglens "RETURN 1"` inside the container (proves the DB is actually accepting authenticated queries, not just that the process is up), with a 30s `start_period` to allow for the plugin-download-and-first-boot time GDS installation needs. Also exposed `7474`/`7687` on the host (Neo4j Browser / Bolt) for local debugging convenience — this does not add a third service and does not violate the "exactly two services" constraint. `app`'s `OPENAI_API_KEY` is wired as `${OPENAI_API_KEY}` (host-environment interpolation only, no default, no file) into `app`'s `environment:` block — nothing is baked into the image or the compose file itself.
+- `app` depends on `neo4j` via `condition: service_healthy`, and `app`'s own container has no defined healthcheck (not required by the spec — this story doesn't need the app to reach Neo4j yet, Epic 2+).
+- Verification performed: `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn -q package` at repo root → `BUILD SUCCESS`, produced `graphrag-web/target/graphrag-web-0.1.0-SNAPSHOT.jar` (confirming the Dockerfile's hardcoded jar path is correct and the source it builds still compiles unchanged from Story 1.1). `docker compose config` → resolves cleanly, service list is exactly `app` and `neo4j` (verified via `docker compose config --services`). Confirmed all three pinned image tags exist on Docker Hub via the tag-listing API (`maven:3.9.16-eclipse-temurin-25-noble`, `eclipse-temurin:25.0.4_7-jre-noble`, `neo4j:2026.08.1-community` all return HTTP 200).
+- Reproduced this sandbox's documented egress constraint directly: `docker pull hello-world` fails with `403 Forbidden` from `production.cloudfront.docker.com`, confirming (again, independently) that a full `docker build`/`docker compose up` cannot complete here. This matches the Code Map's pre-existing note and is not a defect in the Dockerfile/compose file — both are otherwise config/schema-valid. A real `docker compose up` with internet access is still required to confirm both containers start and `app` serves on port 8080 (last Acceptance Criterion, explicitly flagged in the spec as unverifiable in-sandbox).
 
 ## Spec Change Log
 
