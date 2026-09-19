@@ -90,14 +90,14 @@ UX-DR21: Implement the three Key Flows end-to-end as testable journeys: UJ-1 (Ex
 FR1: Epic 2 - Upload plain text files as a Corpus
 FR2: Epic 2 - Upload PDF files as a Corpus
 FR3: Epic 2 - Select the built-in Sherlock Holmes Demo Dataset
-FR4: Epic 2 - Extract Entities/Relationships into Neo4j via live LLM calls
+FR4: Epic 2 - Extract Entities/Relationships into Neo4j via live LLM calls, with live progress
 FR5: Epic 2 - Surface extraction failures visibly
-FR6: Epic 3 - Detect Communities (Leiden clustering)
-FR7: Epic 3 - Toggle community-formation visualization (defaults ON first run)
-FR8: Epic 4 - Submit a query via chat interface
-FR9: Epic 4 - Answer via Local Search
+FR6: Epic 4 - Detect Communities and generate their summaries
+FR7: Epic 4 - Toggle community-formation visualization (defaults ON first run)
+FR8: Epic 3 - Submit a query via chat interface
+FR9: Epic 3 - Answer via Local Search
 FR10: Epic 4 - Answer via Global Search
-FR11: Epic 4 - Render the final answer in chat
+FR11: Epic 3 - Render the final answer in chat
 FR12: Epic 5 - Capture the Retrieval Trace
 FR13: Epic 5 - Replay the Retrieval Trace
 FR14: Epic 1 - One-command infrastructure setup
@@ -106,9 +106,11 @@ FR16: Epic 6 - Explore the full Knowledge Graph
 FR17: Epic 6 - Inspect an Entity's details
 
 NFR1 (UI tone): Established in Epic 1 (design tokens/shell), enforced across all epics.
-NFR2 (Reliability, bounded): Enforced in Epic 2 (extraction failures) and Epic 4 (generation failures).
+NFR2 (Reliability, bounded): Enforced in Epic 2 (extraction failures) and Epic 3 (generation failures).
 NFR3 (Single-user, local-only): Enforced in Epic 1 (deployment topology, no auth).
 NFR4 (Provider flexibility): Established in Epic 2 (first epic to introduce the LlmPort/LangChain4j adapter boundary).
+
+> **Revised after party-mode review** (Winston, John, Sally, Amelia): Query Interface (Local Search) moved ahead of Community Detection so a working chat loop is demoable one epic sooner — Global Search stays with Community Detection since it structurally depends on Community summaries. Stories 2.4 and 3.1 (old numbering) were each doing too much for one dev session and are split. See `.memlog.md`-equivalent reasoning inline per story.
 
 ## Epic List
 
@@ -120,13 +122,13 @@ Establishes the project skeleton (Hexagonal module layout, Spring Boot + Thymele
 Users can bring their own documents (plain text or PDF) or pick the built-in Sherlock Holmes Demo Dataset, and watch a real Knowledge Graph get built in Neo4j via live LLM extraction — with visible, honest errors if a file is rejected or an LLM call fails, never a silent hang. This is the first epic where a user has genuine graph data to show for their input.
 **FRs covered:** FR1, FR2, FR3, FR4, FR5
 
-### Epic 3: Community Detection & Visualization
-Building on an ingested Corpus, the Knowledge Graph is automatically clustered into Communities, and users can watch that clustering happen (on by default for a first run) or toggle it off to compare with/without — the signature "watchable step" the whole project is built to teach.
-**FRs covered:** FR6, FR7
+### Epic 3: Query Interface — Ask & Get Answers
+Users can ask a natural-language question through a chat interface and get a real, generated Local Search answer — the fastest path from "I have a graph" to "I can talk to it," reachable without waiting on Community detection.
+**FRs covered:** FR8, FR9, FR11
 
-### Epic 4: Query Interface
-Users can ask a natural-language question through a chat interface, explicitly choosing Local Search or Global Search, and see a real, generated answer — including an honest "no answer found" result when retrieval comes up empty, distinct from an actual failure.
-**FRs covered:** FR8, FR9, FR10, FR11
+### Epic 4: Community Detection, Visualization & Global Search
+Building on an ingested Corpus, the Knowledge Graph is automatically clustered into Communities — watchable by default on a first run, toggleable to compare with/without — and once Community summaries exist, users can also ask corpus-wide thematic questions via Global Search.
+**FRs covered:** FR6, FR7, FR10
 
 ### Epic 5: Retrieval Trace Replay
 After an answer arrives, users can scrub back and forth through exactly how it was produced — which Entities, Relationships, and Communities were touched, in order — turning "GraphRAG found an answer" into "here's precisely how."
@@ -234,10 +236,10 @@ So that I have a "no-brainer" way to try the app without preparing my own files 
 **And** the Corpus chip appears, naming it "Sherlock Holmes — Demo Dataset" (UX-DR10)
 **And** this option is presented with equal visual weight to the upload option, not as a secondary/fallback choice (UX-DR19)
 
-### Story 2.4: Build the Knowledge Graph from a Corpus
+### Story 2.4: Extract Entities and Relationships into the Knowledge Graph
 
 As the creator,
-I want the system to extract Entities and Relationships from my Corpus via live LLM calls and build them into Neo4j, with the graph visibly growing as it happens,
+I want the system to extract Entities and Relationships from my Corpus via live LLM calls and write them into Neo4j,
 So that I have a real, non-scripted Knowledge Graph to demonstrate and query (FR4).
 
 **Acceptance Criteria:**
@@ -246,10 +248,23 @@ So that I have a real, non-scripted Knowledge Graph to demonstrate and query (FR
 **When** construction runs
 **Then** the system calls `LlmPort` (implemented by the LangChain4j/OpenAI adapter, AD-3) to extract Entities and Relationships, never referencing LangChain4j or OpenAI types outside that one adapter
 **And** each Entity is written via Cypher `MERGE` keyed on a normalized identity (lowercased name + type), never a blind `CREATE`, so the same entity mentioned twice resolves to one node (AD-10)
-**And** progress is pushed to the browser as named Server-Sent Events on `GET /api/corpora/{corpusId}/progress` (AD-7, AD-12), and the graph canvas shows nodes and edges appearing as they're extracted (UX-DR5)
 **And** the LLM call is genuinely live for this run — no cached or pre-computed extraction is substituted
 
-### Story 2.5: Surface Extraction Failures Visibly
+### Story 2.5: Show Live Ingestion Progress
+
+As the creator,
+I want to watch the graph canvas grow with nodes and edges as extraction happens,
+So that ingestion feels real and observable rather than a black-box wait (FR4).
+
+**Acceptance Criteria:**
+
+**Given** Knowledge Graph construction (Story 2.4) is running
+**When** an Entity or Relationship is written to Neo4j
+**Then** a named Server-Sent Event is pushed on `GET /api/corpora/{corpusId}/progress` (AD-7, AD-12)
+**And** the graph canvas renders the corresponding node/edge appearing live (UX-DR5)
+**And** this progress-plumbing story is independently demoable (e.g. via a heartbeat event) without depending on every extraction edge case in Story 2.4 being finished first
+
+### Story 2.6: Surface Extraction Failures Visibly
 
 As the creator,
 I want a clear, visible error if an LLM call fails during Knowledge Graph construction,
@@ -263,45 +278,11 @@ So that a failure is honest and obvious rather than a silent hang or crash (FR5)
 **And** the frontend displays the Error banner component (UX-DR12) naming what failed, in plain language
 **And** the system does not automatically retry or substitute cached/canned output (NFR2) — this is a deliberate, accepted risk, not an oversight
 
-## Epic 3: Community Detection & Visualization
+## Epic 3: Query Interface — Ask & Get Answers
 
-Building on an ingested Corpus, the Knowledge Graph is automatically clustered into Communities, and users can watch that clustering happen (on by default for a first run) or toggle it off to compare with/without — the signature "watchable step" the whole project is built to teach.
+Users can ask a natural-language question through a chat interface and get a real, generated Local Search answer — the fastest path from "I have a graph" to "I can talk to it," reachable without waiting on Community detection (Epic 4).
 
-### Story 3.1: Detect Communities in the Knowledge Graph
-
-As the creator,
-I want the system to automatically cluster the Knowledge Graph into Communities and generate a summary for each,
-So that Community structure and summaries are always ready, whether I'm about to watch them form, query with Global Search, or explore the graph later (FR6).
-
-**Acceptance Criteria:**
-
-**Given** Knowledge Graph construction (Story 2.4) has completed for a Corpus
-**When** community detection runs
-**Then** it starts automatically and asynchronously, unconditionally — never gated by any UI toggle state (AD-6)
-**And** relationships fed into the GDS Leiden call are projected as `UNDIRECTED` (AD-4)
-**And** each detected Community is written as a first-class `(:Community {id, summary})` node related to its member Entities via `[:BELONGS_TO]` — never a scalar property on Entity (AD-11)
-**And** as part of this same run, each Community's summary is generated via `LlmPort` and persisted onto its node — `AnswerGlobalSearch` (Epic 4) will only ever read this summary, never generate one on demand (AD-6)
-
-### Story 3.2: Toggle Community Formation Visualization
-
-As the creator,
-I want a toggle on the main screen controlling whether I see the community-formation animation, defaulting on for a Corpus's first run,
-So that the signature "communities folding into clusters" moment plays automatically for a first-time viewer, while I can still turn it off afterward to demonstrate "with vs. without" (FR7).
-
-**Acceptance Criteria:**
-
-**Given** a fresh Corpus is being ingested for the first time
-**When** community detection (Story 3.1) begins
-**Then** the community-visualization toggle defaults to ON, and the frontend animates Communities visibly folding into hulls as the detection progress events arrive (UX-DR7, UX-DR11)
-**And** when I switch the toggle OFF, the animation and hull overlay stop being shown, but detection continues unaffected underneath
-**And** toggling the switch never re-runs detection, and the backend has no knowledge of the toggle's state at all — the same progress events are emitted regardless (AD-6)
-**And** the toggle is reachable and operable via keyboard alone (accessibility floor, UX-DR20)
-
-## Epic 4: Query Interface
-
-Users can ask a natural-language question through a chat interface, explicitly choosing Local Search or Global Search, and see a real, generated answer — including an honest "no answer found" result when retrieval comes up empty, distinct from an actual failure.
-
-### Story 4.1: Submit a Question via Chat
+### Story 3.1: Submit a Question via Chat
 
 As the creator,
 I want a chat-style interface where I can type a question,
@@ -311,11 +292,11 @@ So that I can ask GraphRAG Lens about my ingested Corpus (FR8).
 
 **Given** a Corpus has been ingested (Epic 2)
 **When** I type a question into the Composer and submit it
-**Then** the question appears in the Chat panel's message thread (UX-DR2, UX-DR4)
-**And** the request is sent as `POST /api/corpora/{corpusId}/query` with body `{"question": "...", "mode": "LOCAL" | "GLOBAL"}` (AD-13)
+**Then** the question appears in the Chat panel's message thread, alongside the Local/Global Search mode toggle with its inline, plain-language hint (UX-DR2, UX-DR3, UX-DR4)
+**And** the request is sent as `POST /api/corpora/{corpusId}/query` with body `{"question": "...", "mode": "LOCAL" | "GLOBAL"}` (AD-13) — the Global option is wired up but not answerable until Epic 4
 **And** submitting the question is reachable via keyboard alone, without requiring precise mouse interaction (accessibility floor, UX-DR20)
 
-### Story 4.2: Answer via Local Search
+### Story 3.2: Answer via Local Search
 
 As the creator,
 I want to explicitly select Local Search and get an answer via entity-neighborhood traversal,
@@ -329,21 +310,7 @@ So that I can demonstrate targeted, entity-specific retrieval (FR9).
 **And** on success, the response is `{"answerId", "traceId", "answer"}` (AD-13)
 **And** if neighborhood traversal from the matched Entities yields nothing relevant, the response is instead the distinct `{"answerId", "traceId", "noAnswer": true, "reason"}` shape — never the generic error shape (AD-13, FR9 consequence)
 
-### Story 4.3: Answer via Global Search
-
-As the creator,
-I want to explicitly select Global Search and get an answer aggregated from Community summaries,
-So that I can demonstrate corpus-wide, thematic retrieval as distinct from Local Search (FR10).
-
-**Acceptance Criteria:**
-
-**Given** I have the Local/Global Search toggle set to Global (UX-DR3) and I submit a question
-**When** `AnswerGlobalSearch` runs
-**Then** it reads the Community summaries already generated and persisted in Story 3.1 — it never generates a summary on demand (AD-6)
-**And** on success, the response is `{"answerId", "traceId", "answer"}` (AD-13)
-**And** if no Communities exist yet (detection hasn't completed), the response is the distinct `{"answerId", "traceId", "noAnswer": true, "reason"}` shape — never the generic error shape (AD-13, FR10 consequence)
-
-### Story 4.4: Render the Final Answer in Chat
+### Story 3.3: Render the Final Answer in Chat
 
 As the creator,
 I want the generated answer displayed in the chat once it's ready, tagged with which search mode produced it,
@@ -351,11 +318,72 @@ So that I immediately see the result alongside my question, and know how it was 
 
 **Acceptance Criteria:**
 
-**Given** a query (Story 4.2 or 4.3) has completed successfully
+**Given** a query (Story 3.2) has completed successfully
 **When** the answer is returned
 **Then** it renders in the Chat panel's message thread, tagged with its search mode (`{components.message-answer}`, UX-DR2)
 **And** a Replay CTA appears, offering the step-by-step Retrieval Trace (leads into Epic 5)
-**And** if the LLM call fails during answer generation itself, the same `{"error": "..."}` shape and Error banner used for extraction failures (Story 2.5) apply here too, with no automatic retry (NFR2, extending FR5's principle to generation failures)
+**And** if the LLM call fails during answer generation itself, the same `{"error": "..."}` shape and Error banner used for extraction failures (Story 2.6) apply here too, with no automatic retry (NFR2, extending FR5's principle to generation failures)
+**And** this rendering is mode-agnostic, so Epic 4's Global Search (Story 4.4) reuses it without changes
+
+## Epic 4: Community Detection, Visualization & Global Search
+
+Building on an ingested Corpus, the Knowledge Graph is automatically clustered into Communities — watchable by default on a first run, toggleable to compare with/without — and once Community summaries exist, users can also ask corpus-wide thematic questions via Global Search.
+
+### Story 4.1: Detect Communities in the Knowledge Graph
+
+As the creator,
+I want the system to automatically cluster the Knowledge Graph into Communities,
+So that Community structure exists for visualization, Global Search, and exploration (FR6).
+
+**Acceptance Criteria:**
+
+**Given** Knowledge Graph construction (Story 2.4) has completed for a Corpus
+**When** community detection runs
+**Then** it starts automatically and asynchronously, unconditionally — never gated by any UI toggle state (AD-6)
+**And** relationships fed into the GDS Leiden call are projected as `UNDIRECTED` (AD-4)
+**And** each detected Community is written as a first-class `(:Community {id})` node related to its member Entities via `[:BELONGS_TO]` — never a scalar property on Entity (AD-11)
+
+### Story 4.2: Generate and Persist Community Summaries
+
+As the creator,
+I want each Community to have a generated summary immediately after detection,
+So that Global Search (Story 4.4) can answer from precomputed summaries rather than generating one per query (FR6).
+
+**Acceptance Criteria:**
+
+**Given** Communities have been detected (Story 4.1)
+**When** summary generation runs, as part of the same unconditional pipeline
+**Then** each Community's summary is generated via `LlmPort` and persisted onto its `(:Community)` node
+**And** `AnswerGlobalSearch` (Story 4.4) only ever reads this summary — it never generates one on demand (AD-6)
+
+### Story 4.3: Toggle Community Formation Visualization
+
+As the creator,
+I want a toggle on the main screen controlling whether I see the community-formation animation, defaulting on for a Corpus's first run,
+So that the signature "communities folding into clusters" moment plays automatically for a first-time viewer, while I can still turn it off afterward to demonstrate "with vs. without" (FR7).
+
+**Acceptance Criteria:**
+
+**Given** a fresh Corpus is being ingested for the first time
+**When** community detection (Story 4.1) begins
+**Then** the community-visualization toggle defaults to ON, and the frontend animates Communities visibly folding into hulls as the detection progress events arrive (UX-DR7, UX-DR11)
+**And** when I switch the toggle OFF, the animation and hull overlay stop being shown, but detection continues unaffected underneath
+**And** toggling the switch never re-runs detection, and the backend has no knowledge of the toggle's state at all — the same progress events are emitted regardless (AD-6)
+**And** the toggle is reachable and operable via keyboard alone (accessibility floor, UX-DR20)
+
+### Story 4.4: Answer via Global Search
+
+As the creator,
+I want to explicitly select Global Search and get an answer aggregated from Community summaries,
+So that I can demonstrate corpus-wide, thematic retrieval as distinct from Local Search (FR10).
+
+**Acceptance Criteria:**
+
+**Given** I have the Local/Global Search toggle (Story 3.1, UX-DR3) set to Global and I submit a question
+**When** `AnswerGlobalSearch` runs
+**Then** it reads the Community summaries generated and persisted in Story 4.2 — it never generates a summary on demand (AD-6)
+**And** on success, the response uses the same `{"answerId", "traceId", "answer"}` shape as Local Search (AD-13), rendered by the existing chat UI from Story 3.3 with no changes needed there
+**And** if no Communities exist yet (detection or summary generation hasn't completed), the response is the distinct `{"answerId", "traceId", "noAnswer": true, "reason"}` shape — never the generic error shape (AD-13, FR10 consequence)
 
 ## Epic 5: Retrieval Trace Replay
 
@@ -369,7 +397,7 @@ So that I can later show exactly how that answer was produced, not just that it 
 
 **Acceptance Criteria:**
 
-**Given** a query (Story 4.2 or 4.3) is executing
+**Given** a query (Story 3.2 or 4.4) is executing
 **When** Local Search or Global Search touches an Entity, Relationship, or Community
 **Then** that touch is appended as one step to an ordered, in-memory Retrieval Trace — never an unordered set (AD-5)
 **And** the trace is addressed by a UUID `traceId`, generated when the answer is produced and returned alongside it
@@ -383,7 +411,7 @@ So that I can show, live, exactly how GraphRAG arrived at an answer (FR13).
 
 **Acceptance Criteria:**
 
-**Given** an answer with a Replay CTA (Story 4.4) is showing in chat
+**Given** an answer with a Replay CTA (Story 3.3) is showing in chat
 **When** I click the Replay CTA
 **Then** the Retrieval Trace scrubber appears below the graph canvas, fetched via `GET /api/traces/{traceId}` (UX-DR9)
 **And** play/pause autoplays through the steps, step-forward/step-back move exactly one step per press, and dragging the scrubber head jumps to the nearest discrete step
@@ -403,7 +431,7 @@ So that I can browse the graph's actual structure, independent of any specific q
 
 **Acceptance Criteria:**
 
-**Given** a Corpus has been ingested (Epic 2) and Communities detected (Epic 3)
+**Given** a Corpus has been ingested (Epic 2) and Communities detected (Epic 4)
 **When** I click the persistent Explore link/tab in the main screen's app bar (UX-DR16)
 **Then** the Explore page loads the full Knowledge Graph, queried via `graphrag-adapter-neo4j` (AD-2), rendered pannable and zoomable
 **And** Community hulls are always visible on this page — no toggle, unlike the main screen (UX-DR7, using the same colorblind-best-effort palette, UX-DR14)
