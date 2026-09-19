@@ -165,31 +165,31 @@ class CorpusControllerTest {
         public byte[] getBytes() throws IOException {
             throw new IOException("Simulated read failure");
         }
+    }
 
-        private static byte[] createPdfWithText(String text) throws IOException {
-            try (PDDocument document = new PDDocument();
-                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                PDPage page = new PDPage();
-                document.addPage(page);
-                try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
-                    stream.beginText();
-                    stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
-                    stream.newLineAtOffset(100, 700);
-                    stream.showText(text);
-                    stream.endText();
-                }
-                document.save(out);
-                return out.toByteArray();
+    private static byte[] createPdfWithText(String text) throws IOException {
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
+                stream.beginText();
+                stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                stream.newLineAtOffset(100, 700);
+                stream.showText(text);
+                stream.endText();
             }
+            document.save(out);
+            return out.toByteArray();
         }
+    }
 
-        private static byte[] createPdfWithoutText() throws IOException {
-            try (PDDocument document = new PDDocument();
-                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                document.addPage(new PDPage());
-                document.save(out);
-                return out.toByteArray();
-            }
+    private static byte[] createPdfWithoutText() throws IOException {
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            document.addPage(new PDPage());
+            document.save(out);
+            return out.toByteArray();
         }
     }
 }
