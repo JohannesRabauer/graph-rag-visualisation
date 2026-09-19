@@ -6,7 +6,6 @@
   var corpusChip = document.getElementById('corpus-chip');
   var errorBanner = document.getElementById('error-banner');
   var canvasIdle = document.getElementById('canvas-idle');
-  var graphCanvasEl = document.getElementById('graph-canvas');
   var chatPanel = document.getElementById('chat-panel');
   var chatThread = document.getElementById('chat-thread');
   var chatForm = document.getElementById('chat-form');
@@ -46,8 +45,10 @@
 
   if (communityVisualizationToggle) {
     communityVisualizationToggle.addEventListener('change', function () {
-      if (window.GraphCanvas) {
-        window.GraphCanvas.setHullsVisible(communityVisualizationToggle.checked);
+      if (communityVisualizationToggle.checked) {
+        console.log('Community visualization enabled');
+      } else {
+        console.log('Community visualization disabled');
       }
     });
   }
@@ -210,13 +211,6 @@
     if (communityVisualizationToggle) {
       communityVisualizationToggle.checked = true;
     }
-    if (graphCanvasEl) {
-      graphCanvasEl.hidden = false;
-    }
-    if (window.GraphCanvas) {
-      window.GraphCanvas.init(graphCanvasEl);
-      window.GraphCanvas.setHullsVisible(true);
-    }
     connectProgressStream(body && body.corpusId);
   }
 
@@ -294,46 +288,6 @@
         }
       } catch (e) {
         console.warn('Invalid SSE ingestion payload', e);
-      }
-    });
-
-    activeProgressSource.addEventListener('entity-extracted', function (event) {
-      try {
-        var payload = JSON.parse(event.data);
-        var data = payload && payload.data;
-        console.log('Entity extracted:', data);
-        if (data && window.GraphCanvas) {
-          window.GraphCanvas.addEntity(data.identity, data.name, data.type);
-        }
-      } catch (e) {
-        console.warn('Invalid SSE entity-extracted payload', e);
-      }
-    });
-
-    activeProgressSource.addEventListener('relationship-extracted', function (event) {
-      try {
-        var payload = JSON.parse(event.data);
-        var data = payload && payload.data;
-        console.log('Relationship extracted:', data);
-        if (data && window.GraphCanvas) {
-          window.GraphCanvas.addRelationship(
-            data.sourceIdentity, data.targetIdentity, data.type, data.source, data.target);
-        }
-      } catch (e) {
-        console.warn('Invalid SSE relationship-extracted payload', e);
-      }
-    });
-
-    activeProgressSource.addEventListener('community-detected', function (event) {
-      try {
-        var payload = JSON.parse(event.data);
-        var data = payload && payload.data;
-        console.log('Community detected:', data);
-        if (data && window.GraphCanvas) {
-          window.GraphCanvas.addCommunity(data.communityId, data.memberEntityIdentities, data.summary);
-        }
-      } catch (e) {
-        console.warn('Invalid SSE community-detected payload', e);
       }
     });
 

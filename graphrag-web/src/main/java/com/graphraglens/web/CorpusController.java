@@ -1,7 +1,6 @@
 package com.graphraglens.web;
 
 import com.graphraglens.core.domain.Corpus;
-import com.graphraglens.core.domain.Entity;
 import com.graphraglens.core.domain.UnreadableDocumentException;
 import com.graphraglens.core.domain.UnsupportedFileTypeException;
 import com.graphraglens.core.domain.UploadedDocument;
@@ -150,25 +149,8 @@ public class CorpusController {
     private void startKnowledgeGraphConstruction(Corpus corpus) {
         CompletableFuture.runAsync(() -> {
             try {
-                new BuildKnowledgeGraph(llmPort, graphStorePort).run(corpus,
-                        entity -> corpusProgressService.emit(corpus.id(), "entity-extracted",
-                                Map.of(
-                                        "identity", entity.normalizedIdentity(),
-                                        "name", entity.name(),
-                                        "type", entity.type())),
-                        relationship -> corpusProgressService.emit(corpus.id(), "relationship-extracted",
-                                Map.of(
-                                        "sourceIdentity", identityOf(relationship.source(), relationship.sourceType()),
-                                        "source", relationship.source(),
-                                        "targetIdentity", identityOf(relationship.target(), relationship.targetType()),
-                                        "target", relationship.target(),
-                                        "type", relationship.type())));
-                new DetectCommunities(graphStorePort, llmPort).run(corpus,
-                        (community, memberEntityIdentities) -> corpusProgressService.emit(corpus.id(), "community-detected",
-                                Map.of(
-                                        "communityId", community.id(),
-                                        "summary", community.summary(),
-                                        "memberEntityIdentities", memberEntityIdentities)));
+                new BuildKnowledgeGraph(llmPort, graphStorePort).run(corpus);
+                new DetectCommunities(graphStorePort, llmPort).run(corpus);
                 corpusProgressService.emit(corpus.id(), "ingestion-complete",
                         Map.of("message", "Knowledge graph construction and community detection completed for " + corpus.name()));
             } catch (Exception ex) {
@@ -176,10 +158,6 @@ public class CorpusController {
                         Map.of("error", EXTRACTION_FAILURE_MESSAGE));
             }
         });
-    }
-
-    private String identityOf(String name, String type) {
-        return new Entity(name, type).normalizedIdentity();
     }
 
     private String buildAnswer(Corpus corpus, String question, String mode) {

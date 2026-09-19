@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -42,37 +41,6 @@ class DetectCommunitiesTest {
         assertFalse(graphStore.persistedMemberships.isEmpty());
         assertFalse(graphStore.persistedMemberships.stream()
                 .allMatch(member -> member.communityId() == null || member.communityId().isBlank()));
-    }
-
-    @Test
-    void detectWithCallbackInvokesItOncePerCommunityWithMemberIdentities() {
-        RecordingGraphStore graphStore = new RecordingGraphStore(
-                List.of(
-                        new Entity("Sherlock Holmes", "Person"),
-                        new Entity("Dr. Watson", "Person"),
-                        new Entity("Baker Street", "Location"),
-                        new Entity("Irene Adler", "Person")),
-                List.of(
-                        new Relationship("Sherlock Holmes", "Person", "knows", "Dr. Watson", "Person"),
-                        new Relationship("Sherlock Holmes", "Person", "lives_at", "Baker Street", "Location"),
-                        new Relationship("Irene Adler", "Person", "rivals", "Sherlock Holmes", "Person")));
-
-        List<Community> notifiedCommunities = new ArrayList<>();
-        List<List<String>> notifiedMemberIdentities = new ArrayList<>();
-        List<Community> communities = new DetectCommunities(graphStore).detect(
-                new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content"))),
-                (community, memberIdentities) -> {
-                    notifiedCommunities.add(community);
-                    notifiedMemberIdentities.add(memberIdentities);
-                });
-
-        assertFalse(communities.isEmpty());
-        assertEquals(communities.size(), notifiedCommunities.size());
-        assertEquals(communities.stream().map(Community::id).toList(),
-                notifiedCommunities.stream().map(Community::id).toList());
-        assertFalse(notifiedMemberIdentities.stream().anyMatch(List::isEmpty));
-        assertEquals(graphStore.persistedMemberships.stream().map(CommunityMembership::entityIdentity).sorted().toList(),
-                notifiedMemberIdentities.stream().flatMap(List::stream).sorted().toList());
     }
 
     private static final class RecordingGraphStore implements GraphStorePort {

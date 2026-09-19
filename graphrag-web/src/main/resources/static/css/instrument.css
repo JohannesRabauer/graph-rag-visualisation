@@ -168,10 +168,9 @@ body {
 
 /* ---- graph canvas (resting / idle state) ----
    DESIGN.md `components.graph-canvas`: faint 24px grid on {colors.paper},
-   uppercase eyebrow title — the canvas fills the full frame width. The
-   idle state carries the upload control (Story 2.1) that gets a Corpus
-   into the app; once a Corpus loads, the Cytoscape.js mount point
-   (#graph-canvas, Story 4.3) fills the same frame behind the idle copy. */
+   uppercase eyebrow title. No chat panel, composer, or Cytoscape.js in
+   this story — the canvas fills the full frame width. The idle state now
+   carries the upload control (Story 2.1) that gets a Corpus into the app. */
 .canvas {
   position: relative;
   flex: 1;
@@ -189,20 +188,6 @@ body {
 .canvas-idle {
   max-width: 420px;
   text-align: center;
-}
-
-/* ---- graph canvas mount point ----
-   Cytoscape.js (Story 4.3) renders into this element, absolutely
-   positioned to fill the .canvas frame behind the toggle/idle chrome. */
-.graph-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.graph-canvas[hidden] {
-  display: none;
 }
 
 .community-toggle-wrap {

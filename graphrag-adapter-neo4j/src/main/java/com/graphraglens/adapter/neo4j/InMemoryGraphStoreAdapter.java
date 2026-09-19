@@ -76,22 +76,18 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
         }
     }
 
-    @Override
     public List<Entity> entities() {
         return new ArrayList<>(entities.values());
     }
 
-    @Override
     public List<Relationship> relationships() {
         return new ArrayList<>(relationships.values());
     }
 
-    @Override
     public List<Community> communities() {
         return new ArrayList<>(communities.values());
     }
 
-    @Override
     public List<CommunityMembership> communityMemberships() {
         return new ArrayList<>(communityMemberships.values());
     }
