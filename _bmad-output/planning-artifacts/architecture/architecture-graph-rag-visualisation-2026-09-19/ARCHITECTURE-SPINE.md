@@ -80,7 +80,7 @@ graph TD
 
 - **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch` use cases; `graphrag-web`.
 - **Prevents:** Ephemeral UI-replay data being written into Neo4j as graph nodes; a "single current trace" design that clobbers concurrent or sequential queries.
-- **Rule:** A Retrieval Trace is held in memory, keyed by a UUID `traceId` generated when the answer is produced and returned alongside it. Replay is fetched by that id (`GET /api/traces/{traceId}`), never a single ambient "current trace" slot. Traces are never persisted to Neo4j; restarting the app loses in-flight traces (PRD: no fallback/safety-net ethos).
+- **Rule:** A Retrieval Trace is held in memory, keyed by a UUID `traceId` generated when the answer is produced and returned alongside it. It is an ordered sequence of steps — each step naming the Entity, Relationship, or Community touched at that point — never an unordered set or a single aggregate result, since Replay's scrub/step controls (PRD FR-13) are meaningless without a fixed step order. Replay is fetched by that id (`GET /api/traces/{traceId}`), never a single ambient "current trace" slot. Traces are never persisted to Neo4j; restarting the app loses in-flight traces (PRD: no fallback/safety-net ethos).
 
 ### AD-6 — Detection and summary generation always run; the toggle only gates animation
 
@@ -124,6 +124,17 @@ graph TD
 - **Prevents:** Two independently-built halves (backend emitter, frontend consumer) agreeing on "SSE, not WebSocket" (AD-7) while using mutually unconsumable event shapes — e.g. one bare endpoint per progress type vs. a single multiplexed stream.
 - **Rule:** All ingestion/construction/detection progress for one Corpus is pushed over a single stream, `GET /api/corpora/{corpusId}/progress`, as named SSE events (e.g. `entity-extracted`, `community-detected`, `ingestion-complete`, `error`), each with a `{"type": "<event-name>", "data": {...}}` JSON payload. No second progress endpoint is introduced.
 
+### AD-13 — Query has one request/response contract, covering answer, no-answer, and failure
+
+- **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch` use cases; `graphrag-web`; FR-8–FR-11.
+- **Prevents:** An independently-built frontend and backend agreeing on *which* use case runs (Local vs. Global, AD from FR-9/FR-10) but not on the wire shape of the result — in particular, "no answer found" (a normal, expected outcome per FR-9/FR-10) being conflated with an actual LLM failure (FR-5's error state), since both would otherwise land on the same generic `{"error": ...}` shape.
+- **Rule:** A query is `POST /api/corpora/{corpusId}/query` with body `{"question": "...", "mode": "LOCAL" | "GLOBAL"}`. A successful answer responds `{"answerId": "...", "traceId": "...", "answer": "..."}`. A "no answer found" result (FR-9/FR-10 consequence) is a distinct, successful response shape — `{"answerId": "...", "traceId": "...", "noAnswer": true, "reason": "..."}` — never the generic error shape. An actual LLM-call failure during generation (FR-5's principle, extended per AD-6's Component Patterns note) uses the same `{"error": "<plain-language message>"}` shape as extraction failures, and is also emitted as an `error` event on that Corpus's AD-12 SSE stream so a still-open connection sees it without polling.
+
+### AD-14 — Query reads run against whatever is currently committed; no locking against in-flight ingestion
+
+- **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch`, `ExploreGraph` use cases; `graphrag-adapter-neo4j`; FR-8–FR-11, FR-16–FR-17.
+- **Prevents:** An implementer introducing a lock, queue, or "wait for ingestion to finish" gate on queries — which would silently contradict EXPERIENCE.md's explicit allowance for querying mid-ingestion (a deliberate "real, non-scripted" choice, not an oversight to guard against).
+- **Rule:** Every Entity/Relationship/Community write (AD-10, AD-11) commits in its own Neo4j transaction as soon as extracted/detected — never batched into one Corpus-wide transaction. A query never waits for or blocks on in-flight ingestion; it simply reads whatever is currently committed, which may be a partial graph. No additional locking or coordination is introduced between the write path and the read path.
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -197,14 +208,15 @@ Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of
 | Document Ingestion (FR-1–FR-3) | `graphrag-adapter-parsing`, `IngestCorpus` use case | AD-9 |
 | Knowledge Graph Construction (FR-4–FR-5) | `IngestCorpus` use case, `LlmPort`, `graphrag-adapter-langchain4j` | AD-1, AD-3, AD-10 |
 | Community Detection & Visualization (FR-6–FR-7) | `DetectCommunities` use case, `graphrag-adapter-neo4j` (GDS Leiden) | AD-4, AD-6, AD-11 |
-| Query Interface (FR-8–FR-11) | `AnswerLocalSearch`, `AnswerGlobalSearch` use cases | AD-1, AD-3, AD-6, AD-11 |
-| Retrieval Trace & Playback (FR-12–FR-13) | Use cases (trace capture) + `graphrag-web` (in-memory store, replay API) | AD-5 |
+| Query Interface (FR-8–FR-11) | `AnswerLocalSearch`, `AnswerGlobalSearch` use cases | AD-1, AD-3, AD-6, AD-11, AD-13, AD-14 |
+| Retrieval Trace & Playback (FR-12–FR-13) | Use cases (trace capture) + `graphrag-web` (in-memory store, replay API) | AD-5, AD-13 |
 | Setup & Deployment (FR-14–FR-15) | `docker-compose.yml`, `graphrag-web` config | AD-8, Consistency Conventions (config) |
-| Graph Exploration (FR-16–FR-17) | `ExploreGraph` use case, `graphrag-adapter-neo4j` | AD-1, AD-2, AD-11 |
+| Graph Exploration (FR-16–FR-17) | `ExploreGraph` use case, `graphrag-adapter-neo4j` | AD-1, AD-2, AD-11, AD-14 |
 | Live ingestion progress (EXPERIENCE.md State Patterns) | `graphrag-web` SSE endpoints | AD-7, AD-12 |
 
 ## Deferred
 
+- **UI tone/visual identity** (PRD Cross-Cutting NFR) — intentionally not this spine's concern; it's fully owned by `DESIGN.md`/`EXPERIENCE.md`, which this spine treats as sources but doesn't duplicate. Not a silent omission.
 - **Authentication/authorization** — explicit Non-Goal (PRD: single-user, local-only). Needs its own architecture pass if the project ever grows beyond one user.
 - **Multi-tenancy / hosted deployment** — same reason; deferred alongside auth.
 - **Graph databases other than Neo4j** — explicit PRD Non-Goal; `GraphStorePort` makes this theoretically swappable later, but no second adapter is planned or designed against now.
