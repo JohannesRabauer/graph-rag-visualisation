@@ -5,7 +5,7 @@ purpose: build-substrate
 altitude: initiative
 paradigm: 'Hexagonal Architecture (Ports & Adapters)'
 scope: 'Whole system'
-status: draft
+status: final
 created: 2026-09-19
 updated: 2026-09-19
 binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17]
@@ -29,7 +29,7 @@ This paradigm is chosen directly for the brief's "library-in-mind" goal: `graphr
 ```mermaid
 graph TD
     subgraph Adapters [Adapters — depend inward only]
-        Web[graphrag-web<br/>Spring Boot: REST + SSE + static SPA]
+        Web[graphrag-web<br/>Spring Boot + Thymeleaf, REST + SSE]
         Neo4jAdapter[graphrag-adapter-neo4j<br/>Neo4j Java Driver + Cypher]
         LlmAdapter[graphrag-adapter-langchain4j<br/>LangChain4j + OpenAI]
         ParseAdapter[graphrag-adapter-parsing<br/>Plain text + Apache PDFBox]
@@ -98,7 +98,7 @@ graph TD
 
 - **Binds:** Docker Compose topology (PRD FR-14).
 - **Prevents:** A third frontend-dev-server container creeping in and breaking the one-command-setup requirement.
-- **Rule:** `docker-compose.yml` defines exactly two services: `app` (the Spring Boot jar, serving REST + SSE + the pre-built static SPA from its own classpath) and `neo4j` (Community Edition, GDS plugin enabled). The frontend is never its own service/container.
+- **Rule:** `docker-compose.yml` defines exactly two services: `app` (the Spring Boot jar, serving REST + SSE + the Thymeleaf-rendered pages and static JS from its own classpath) and `neo4j` (Community Edition, GDS plugin enabled). The frontend is never its own service/container.
 
 ### AD-9 — File-type support is adapter-scoped, dispatched by the adapter itself
 
@@ -135,6 +135,13 @@ graph TD
 - **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch`, `ExploreGraph` use cases; `graphrag-adapter-neo4j`; FR-8–FR-11, FR-16–FR-17.
 - **Prevents:** An implementer introducing a lock, queue, or "wait for ingestion to finish" gate on queries — which would silently contradict EXPERIENCE.md's explicit allowance for querying mid-ingestion (a deliberate "real, non-scripted" choice, not an oversight to guard against).
 - **Rule:** Every Entity/Relationship/Community write (AD-10, AD-11) commits in its own Neo4j transaction as soon as extracted/detected — never batched into one Corpus-wide transaction. A query never waits for or blocks on in-flight ingestion; it simply reads whatever is currently committed, which may be a partial graph. No additional locking or coordination is introduced between the write path and the read path.
+
+### AD-15 — Frontend is Java-native: Thymeleaf shell, unbundled JS for the canvas
+
+- **Binds:** `graphrag-web`; the whole frontend delivery approach; overrides the earlier TypeScript+Vite assumption.
+- **Prevents:** A second build toolchain (Node/npm/a bundler) creeping into a project explicitly meant to stay Java-native; a contributor assuming a compile step exists for client JS when none does.
+- **Rule:** The page shell (layout, chat panel scaffolding, toggles, initial state) is server-rendered via Thymeleaf templates in `graphrag-web/src/main/resources/templates/`. Cytoscape.js and any other client-side JavaScript (the graph canvas, replay scrubber, SSE consumption) are plain, unbundled `.js` files under `graphrag-web/src/main/resources/static/js/` — vendored or CDN-loaded, never TypeScript, never passed through a bundler. There is no `frontend/` module, no `package.json`-driven build step anywhere in the project.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -149,6 +156,7 @@ graph TD
 | --- | --- |
 | Java | 25 (LTS) |
 | Spring Boot | 4.1.x (Spring Framework 7) |
+| Thymeleaf | current (bundled with Spring Boot's `spring-boot-starter-thymeleaf`) |
 | LangChain4j | latest at implementation start (≥1.20.x — biweekly release cadence, don't hard-pin from this document) |
 | Neo4j | 2026.x, Community Edition, with Graph Data Science (GDS) plugin |
 | Neo4j Java Driver | latest at implementation start (≥6.2.x — ships frequently, don't hard-pin from this document) |
@@ -167,9 +175,9 @@ graphrag-lens/
   graphrag-adapter-neo4j/         # implements GraphStorePort (driver + Cypher + GDS calls)
   graphrag-adapter-langchain4j/   # implements LlmPort (LangChain4j + OpenAI)
   graphrag-adapter-parsing/       # implements DocumentParserPort (plain text, PDFBox)
-  graphrag-web/                   # Spring Boot: REST + SSE controllers, wires adapters into core, serves built SPA
-    src/main/resources/static/    # built frontend output lands here
-  frontend/                       # TypeScript + Cytoscape.js SPA (built separately, copied into graphrag-web)
+  graphrag-web/                   # Spring Boot: REST + SSE controllers, wires adapters into core
+    src/main/resources/templates/ # Thymeleaf page shell (server-rendered)
+    src/main/resources/static/js/ # plain, unbundled JS: Cytoscape.js canvas, scrubber, SSE consumption
   docker-compose.yml              # exactly two services: app, neo4j
 ```
 
@@ -223,6 +231,6 @@ Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of
 - **Formal retrieval-quality benchmarking/evaluation infrastructure** — explicit PRD Non-Goal.
 - **Observability/monitoring beyond console logs** — deliberately out of scope; revisit only if the library-extraction goal (brief Vision) gains other users.
 - **Exact in-memory Retrieval Trace store implementation** (a `ConcurrentHashMap`-backed bean vs. a small cache library like Caffeine) — either is compatible with AD-5; low-stakes enough to leave to implementation.
-- **Build tool** `[ASSUMPTION]` — Maven multi-module assumed as a conventional default for this module layout; Gradle would work equally well. Low-stakes, correct in review if you have a preference.
-- **Frontend build wiring** `[ASSUMPTION]` — a TypeScript + Vite SPA built to static assets and copied into `graphrag-web`'s classpath (e.g. via `frontend-maven-plugin` or a manual build step) assumed to satisfy AD-8's two-container constraint without hand-authoring vanilla JS. Exact tooling is implementation detail.
+- **Build tool** — Maven multi-module, confirmed.
+- **Exact Cytoscape.js loading mechanism** (vendored file checked into `static/js/` vs. CDN `<script>` tag in the Thymeleaf template) — either satisfies AD-15; low-stakes implementation detail.
 - **Packaging/publishing `graphrag-core` as a standalone library** — explicit brief/PRD future goal, not a v1 deliverable; this spine's module boundary (AD-1) is what makes it possible later, but the actual extraction (versioning, publishing, public API stability) is out of scope now.
