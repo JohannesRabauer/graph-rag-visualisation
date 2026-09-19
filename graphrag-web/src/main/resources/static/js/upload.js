@@ -4,8 +4,10 @@
   var fileInput = document.getElementById('corpus-file-input');
   var corpusChip = document.getElementById('corpus-chip');
   var errorBanner = document.getElementById('error-banner');
+  var demoButton = document.getElementById('demo-dataset-button');
+  var eventSource = null;
 
-  if (!fileInput || !corpusChip || !errorBanner) {
+  if (!fileInput || !corpusChip || !errorBanner || !demoButton) {
     return;
   }
 
@@ -21,7 +23,7 @@
     }
 
     hideErrorBanner();
-    fileInput.disabled = true;
+    setControlsDisabled(true);
 
     fetch('/api/corpora', {
       method: 'POST',
@@ -34,7 +36,7 @@
       })
       .then(function (result) {
         if (result.ok) {
-          showCorpusChip(result.body);
+          handleSuccess(result.body);
         } else {
           showErrorBanner(errorMessage(result.body));
         }
@@ -44,7 +46,32 @@
       })
       .finally(function () {
         fileInput.value = '';
-        fileInput.disabled = false;
+        setControlsDisabled(false);
+      });
+  });
+
+  demoButton.addEventListener('click', function () {
+    hideErrorBanner();
+    setControlsDisabled(true);
+
+    fetch('/api/corpora/demo', { method: 'POST' })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { ok: response.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          handleSuccess(result.body);
+        } else {
+          showErrorBanner(errorMessage(result.body));
+        }
+      })
+      .catch(function () {
+        showErrorBanner('Demo dataset load failed. Please try again.');
+      })
+      .finally(function () {
+        setControlsDisabled(false);
       });
   });
 
@@ -52,8 +79,13 @@
     return body && body.error ? body.error : 'Upload failed.';
   }
 
+  function handleSuccess(body) {
+    showCorpusChip(body);
+    startProgressStream(body.corpusId);
+  }
+
   function showCorpusChip(body) {
-    var names = (body.documentNames || []).join(', ');
+    var names = body.displayName || (body.documentNames || []).join(', ');
     var count = body.documentCount || 0;
     var unit = count === 1 ? 'document' : 'documents';
 
@@ -79,5 +111,45 @@
   function hideErrorBanner() {
     errorBanner.hidden = true;
     errorBanner.textContent = '';
+  }
+
+  function setControlsDisabled(disabled) {
+    fileInput.disabled = disabled;
+    demoButton.disabled = disabled;
+  }
+
+  function startProgressStream(corpusId) {
+    if (!corpusId) {
+      return;
+    }
+    if (eventSource) {
+      eventSource.close();
+    }
+    eventSource = new EventSource('/api/corpora/' + encodeURIComponent(corpusId) + '/progress');
+
+    eventSource.addEventListener('error', function () {
+      showErrorBanner('Progress stream disconnected.');
+      eventSource.close();
+    });
+
+    eventSource.addEventListener('entity-extracted', function () {
+      hideErrorBanner();
+    });
+
+    eventSource.addEventListener('ingestion-complete', function () {
+      hideErrorBanner();
+      eventSource.close();
+    });
+
+    eventSource.addEventListener('ingestion-error', function (event) {
+      try {
+        var payload = JSON.parse(event.data);
+        if (payload && payload.data && payload.data.message) {
+          showErrorBanner(payload.data.message);
+        }
+      } catch (e) {
+        showErrorBanner('Ingestion failed.');
+      }
+    });
   }
 })();

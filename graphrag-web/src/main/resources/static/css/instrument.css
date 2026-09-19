@@ -215,12 +215,48 @@ body {
   margin-top: var(--space-6);
 }
 
-.upload-label {
-  display: block;
-  margin-bottom: var(--space-2);
+.corpus-source-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.action-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink-900);
+  cursor: pointer;
   font-family: var(--font-body);
   font-size: var(--font-body-size);
+}
+
+.action-card:hover {
+  border-color: var(--line-strong);
+}
+
+.action-title {
+  font-weight: 600;
+}
+
+.action-copy {
   color: var(--ink-600);
+}
+
+.demo-button {
+  appearance: none;
+}
+
+@media (max-width: 680px) {
+  .corpus-source-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---- corpus chip ----

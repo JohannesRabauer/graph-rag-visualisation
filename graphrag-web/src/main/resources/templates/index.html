@@ -22,8 +22,17 @@
         <p class="eyebrow">Knowledge Graph — Resting</p>
         <p class="subtitle">Watch a Knowledge Graph get built, clustered, and searched — the mechanics most GraphRAG tools keep hidden.</p>
         <div class="upload-control">
-          <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) or PDF (.pdf) Corpus to get started</label>
-          <input type="file" id="corpus-file-input" multiple accept=".txt,.pdf">
+          <div class="corpus-source-actions">
+            <label class="upload-label action-card" for="corpus-file-input">
+              <span class="action-title">Upload documents</span>
+              <span class="action-copy">Plain text (.txt) or PDF (.pdf)</span>
+            </label>
+            <button type="button" class="demo-button action-card" id="demo-dataset-button">
+              <span class="action-title">Use Demo Dataset</span>
+              <span class="action-copy">Sherlock Holmes — bundled corpus</span>
+            </button>
+          </div>
+          <input type="file" id="corpus-file-input" multiple accept=".txt,.pdf" hidden>
         </div>
       </div>
     </main>

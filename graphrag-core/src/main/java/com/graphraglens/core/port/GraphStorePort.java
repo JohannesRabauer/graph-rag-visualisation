@@ -1,11 +1,24 @@
 package com.graphraglens.core.port;
 
+import com.graphraglens.core.domain.ExtractedEntity;
+import com.graphraglens.core.domain.ExtractedRelationship;
+
 /**
  * Port for persisting and querying the knowledge graph.
- *
- * <p>Empty marker interface for now — implemented by {@code
- * graphrag-adapter-neo4j} in a later epic. No methods yet; there is nothing
- * to implement yet.
  */
 public interface GraphStorePort {
+
+    /**
+     * Merge one entity node.
+     *
+     * @param entity extracted entity
+     */
+    void mergeEntity(ExtractedEntity entity);
+
+    /**
+     * Merge one relationship edge.
+     *
+     * @param relationship extracted relationship
+     */
+    void mergeRelationship(ExtractedRelationship relationship);
 }

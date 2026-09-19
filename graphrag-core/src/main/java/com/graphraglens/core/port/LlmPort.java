@@ -1,11 +1,17 @@
 package com.graphraglens.core.port;
 
+import com.graphraglens.core.domain.ExtractionResult;
+
 /**
  * Port for large-language-model calls (extraction, summarization, querying).
- *
- * <p>Empty marker interface for now — implemented by {@code
- * graphrag-adapter-langchain4j} in a later epic. No methods yet; there is
- * nothing to implement yet.
  */
 public interface LlmPort {
+
+    /**
+     * Extract entities and relationships from one source document text.
+     *
+     * @param text source text
+     * @return extracted graph candidates
+     */
+    ExtractionResult extractEntitiesAndRelationships(String text);
 }

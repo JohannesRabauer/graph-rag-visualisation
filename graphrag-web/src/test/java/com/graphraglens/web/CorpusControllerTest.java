@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -20,7 +21,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -37,6 +42,9 @@ class CorpusControllerTest {
 
     @Autowired
     private CorpusStore corpusStore;
+
+    @MockBean
+    private CorpusIngestionOrchestrator ingestionOrchestrator;
 
     @Test
     void uploadingATxtFileReturns201WithCorpusIdAndDocumentNamesAndRegistersTheCorpus() throws Exception {
@@ -58,6 +66,7 @@ class CorpusControllerTest {
         assertThat(stored).isPresent();
         assertThat(stored.get().documentNames()).containsExactly("test.txt");
         assertThat(stored.get().documents().get(0).content()).isEqualTo("hello world");
+        verify(ingestionOrchestrator).start(any(Corpus.class));
     }
 
     @Test
@@ -146,6 +155,28 @@ class CorpusControllerTest {
         mockMvc.perform(multipart("/api/corpora").file(file))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.error").value("Failed to read an uploaded file. Please try again."));
+    }
+
+    @Test
+    void demoDatasetEndpointReturnsCreatedCorpusWithDisplayName() throws Exception {
+        String responseBody = mockMvc.perform(post("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.displayName").value("Sherlock Holmes — Demo Dataset"))
+                .andExpect(jsonPath("$.corpusId").exists())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+        assertThat(corpusStore.get(corpusId)).isPresent();
+        verify(ingestionOrchestrator).start(any(Corpus.class));
+    }
+
+    @Test
+    void progressEndpointExposesSseStream() throws Exception {
+        mockMvc.perform(get("/api/corpora/test-corpus/progress"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/event-stream"));
     }
 
     /**

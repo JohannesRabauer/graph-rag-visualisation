@@ -27,5 +27,10 @@
       <artifactId>graphrag-core</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.neo4j.driver</groupId>
+      <artifactId>neo4j-java-driver</artifactId>
+      <version>6.2.1</version>
+    </dependency>
   </dependencies>
 </project>
