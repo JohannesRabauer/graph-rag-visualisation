@@ -35,10 +35,10 @@ project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
-  1-1-project-skeleton-module-boundaries: review
-  1-2-one-command-local-environment: review
-  1-3-empty-state-main-screen: review
+  epic-1: done
+  1-1-project-skeleton-module-boundaries: done
+  1-2-one-command-local-environment: done
+  1-3-empty-state-main-screen: done
 
   epic-1-retrospective: optional
 
