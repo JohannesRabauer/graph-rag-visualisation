@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.graphraglens</groupId>
+    <artifactId>graphraglens-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>graphrag-adapter-langchain4j</artifactId>
+  <packaging>jar</packaging>
+
+  <name>GraphRAG Lens :: Adapter :: LangChain4j</name>
+  <description>
+    Stub module for the future LLM adapter. Dependency-only for now;
+    LangChain4j and the LlmPort implementation arrive with the story that
+    implements this adapter.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.graphraglens</groupId>
+      <artifactId>graphrag-core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+</project>
