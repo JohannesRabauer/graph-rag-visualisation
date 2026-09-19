@@ -18,6 +18,7 @@
     </header>
     <main class="canvas" aria-label="Knowledge Graph canvas">
       <div class="error-banner" id="error-banner" role="alert" hidden></div>
+      <div class="graph-canvas" id="graph-canvas" aria-hidden="true" hidden></div>
       <div class="canvas-idle" id="canvas-idle">
         <p class="eyebrow">Knowledge Graph — Resting</p>
         <p class="subtitle">Watch a Knowledge Graph get built, clustered, and searched — the mechanics most GraphRAG tools keep hidden.</p>
@@ -53,6 +54,8 @@
       </aside>
     </main>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script th:src="@{/js/graph-canvas.js}" src="/js/graph-canvas.js"></script>
   <script th:src="@{/js/upload.js}" src="/js/upload.js"></script>
 </body>
 </html>

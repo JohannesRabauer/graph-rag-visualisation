@@ -1,6 +1,9 @@
 package com.graphraglens.web;
 
+import com.graphraglens.core.domain.Community;
+import com.graphraglens.core.domain.CommunityMembership;
 import com.graphraglens.core.domain.Corpus;
+import com.graphraglens.core.port.GraphStorePort;
 import com.jayway.jsonpath.JsonPath;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -17,6 +20,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +44,9 @@ class CorpusControllerTest {
 
     @Autowired
     private CorpusStore corpusStore;
+
+    @Autowired
+    private GraphStorePort graphStorePort;
 
     @Test
     void progressEndpointStreamsHeartbeatEventsWithNamedEventEnvelope() throws Exception {
@@ -125,6 +133,40 @@ class CorpusControllerTest {
         assertThat(stored.get().documents()).allSatisfy(document ->
                 assertThat(document.content()).isNotBlank());
         assertThat(stored.get().documents().get(0).content()).contains("Irene Adler");
+    }
+
+    @Test
+    void usingTheBuiltInDemoDatasetPopulatesCommunitiesAndMembershipsOnceThePipelineSettles() throws Exception {
+        mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated());
+
+        List<Community> communities = awaitNonEmpty(graphStorePort::communities);
+        List<CommunityMembership> memberships = awaitNonEmpty(graphStorePort::communityMemberships);
+
+        assertThat(communities).isNotEmpty();
+        assertThat(memberships).isNotEmpty();
+        assertThat(communities).allSatisfy(community ->
+                assertThat(community.id()).isNotBlank());
+        assertThat(memberships).allSatisfy(membership ->
+                assertThat(membership.communityId()).isNotBlank());
+    }
+
+    /**
+     * Community detection runs asynchronously after upload ({@code CorpusController}'s
+     * {@code CompletableFuture.runAsync}), so this polls {@code GraphStorePort} with a short
+     * bounded retry loop until the given collection is populated (no async-wait pattern already
+     * exists elsewhere in this class to reuse).
+     */
+    private <T> List<T> awaitNonEmpty(java.util.function.Supplier<java.util.Collection<T>> supplier) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000L;
+        while (System.currentTimeMillis() < deadline) {
+            java.util.Collection<T> current = supplier.get();
+            if (current != null && !current.isEmpty()) {
+                return new ArrayList<>(current);
+            }
+            Thread.sleep(25L);
+        }
+        return new ArrayList<>();
     }
 
     @Test

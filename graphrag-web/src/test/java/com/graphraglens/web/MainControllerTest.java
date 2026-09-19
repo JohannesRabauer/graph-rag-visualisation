@@ -33,7 +33,7 @@ class MainControllerTest {
         assertThat(body).contains("id=\"chat-panel\"");
         assertThat(body).contains("Local Search");
         assertThat(body).contains("Global Search");
-        assertThat(body).doesNotContain("cytoscape");
+        assertThat(body).contains("cytoscape.min.js");
     }
 
     @Test

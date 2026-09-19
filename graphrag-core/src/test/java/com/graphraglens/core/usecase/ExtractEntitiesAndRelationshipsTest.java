@@ -33,6 +33,42 @@ class ExtractEntitiesAndRelationshipsTest {
         assertEquals(1, graphStorePort.persistedExtraction.relationships().size());
     }
 
+    @org.junit.jupiter.api.Test
+    void runWithCallbacksInvokesEachOncePerPersistedEntityAndRelationship() {
+        LlmPort llmPort = corpus -> new GraphExtraction(
+                List.of(new Entity("Sherlock Holmes", "Person"), new Entity("Dr. Watson", "Person")),
+                List.of(new Relationship("Sherlock Holmes", "Person", "met", "Dr. Watson", "Person"))
+        );
+
+        RecordingGraphStorePort graphStorePort = new RecordingGraphStorePort();
+        ExtractEntitiesAndRelationships useCase = new ExtractEntitiesAndRelationships(llmPort, graphStorePort);
+        Corpus corpus = new Corpus("c1", List.of(new com.graphraglens.core.domain.UploadedDocument("case.txt", "Sherlock Holmes met Dr. Watson.")));
+
+        List<Entity> notifiedEntities = new ArrayList<>();
+        List<Relationship> notifiedRelationships = new ArrayList<>();
+        useCase.run(corpus, notifiedEntities::add, notifiedRelationships::add);
+
+        assertEquals(2, notifiedEntities.size());
+        assertEquals(List.of("Sherlock Holmes", "Dr. Watson"),
+                notifiedEntities.stream().map(Entity::name).toList());
+        assertEquals(1, notifiedRelationships.size());
+        assertEquals("met", notifiedRelationships.get(0).type());
+    }
+
+    @org.junit.jupiter.api.Test
+    void runWithNullCallbacksBehavesLikeRunWithoutCallbacks() {
+        LlmPort llmPort = corpus -> new GraphExtraction(
+                List.of(new Entity("Sherlock Holmes", "Person")), List.of());
+        RecordingGraphStorePort graphStorePort = new RecordingGraphStorePort();
+        ExtractEntitiesAndRelationships useCase = new ExtractEntitiesAndRelationships(llmPort, graphStorePort);
+        Corpus corpus = new Corpus("c1", List.of(new com.graphraglens.core.domain.UploadedDocument("case.txt", "Sherlock Holmes.")));
+
+        useCase.run(corpus, null, null);
+
+        assertNotNull(graphStorePort.persistedExtraction);
+        assertEquals(1, graphStorePort.persistedExtraction.entities().size());
+    }
+
     private static final class RecordingGraphStorePort implements GraphStorePort {
         private GraphExtraction persistedExtraction;
 

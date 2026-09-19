@@ -34,6 +34,14 @@ public interface GraphStorePort {
         return List.of();
     }
 
+    default Collection<Community> communities() {
+        return List.of();
+    }
+
+    default Collection<CommunityMembership> communityMemberships() {
+        return List.of();
+    }
+
     default void persist(GraphExtraction extraction) {
         if (extraction == null) {
             return;

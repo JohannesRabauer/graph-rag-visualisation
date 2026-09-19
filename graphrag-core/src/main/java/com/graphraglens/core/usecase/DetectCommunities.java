@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 /**
  * Creates simple connected-component communities from the persisted knowledge graph.
@@ -39,6 +40,18 @@ public class DetectCommunities {
     }
 
     public List<Community> detect(Corpus corpus) {
+        return detect(corpus, null);
+    }
+
+    /**
+     * Runs detection exactly as {@link #detect(Corpus)} does, additionally invoking the given
+     * optional callback once per detected Community, alongside the normalized identities of its
+     * member entities (matching {@link CommunityMembership#entityIdentity()}). The callback is
+     * invoked as each Community is discovered, before the batch is persisted. May be {@code null},
+     * in which case it is simply skipped — this keeps the web layer free to observe progress
+     * without core coupling to any transport.
+     */
+    public List<Community> detect(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
         Collection<Entity> entities = graphStorePort.entities();
         if (entities == null || entities.isEmpty()) {
             return List.of();
@@ -94,9 +107,18 @@ public class DetectCommunities {
 
             String communityId = "community-" + index++;
             String summary = summarizeCommunity(members);
-            communities.add(new Community(communityId, summary));
+            Community community = new Community(communityId, summary);
+            communities.add(community);
+
+            List<String> memberIdentities = new ArrayList<>();
             for (Entity member : members) {
-                memberships.add(new CommunityMembership(communityId, normalizedIdentity(member)));
+                String memberIdentity = normalizedIdentity(member);
+                memberships.add(new CommunityMembership(communityId, memberIdentity));
+                memberIdentities.add(memberIdentity);
+            }
+
+            if (onCommunityDetected != null) {
+                onCommunityDetected.accept(community, memberIdentities);
             }
         }
 
@@ -107,6 +129,10 @@ public class DetectCommunities {
 
     public void run(Corpus corpus) {
         detect(corpus);
+    }
+
+    public void run(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
+        detect(corpus, onCommunityDetected);
     }
 
     private String summarizeCommunity(List<Entity> members) {
