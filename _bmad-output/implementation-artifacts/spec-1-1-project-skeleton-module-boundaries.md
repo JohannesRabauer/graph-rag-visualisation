@@ -2,7 +2,7 @@
 title: 'Project Skeleton & Module Boundaries'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -59,6 +59,21 @@ baseline_commit: '2058e412a5df7e00b8751325c84b1433b20a62f2'
 - Root parent POM artifactId is `graphraglens-parent` (not `graphrag-lens`) — a naming choice within the spec's discretion, does not affect any acceptance criterion.
 - The subagent reworded `graphrag-core/pom.xml`'s `<description>` to avoid literally containing the substrings "Spring"/"Neo4j"/"LangChain4j" in prose, since the spec's own verification grep checks that file for those tokens. No functional impact.
 - No I/O & Edge-Case Matrix in this spec (deleted at planning time as not applicable to a scaffolding story) — Matrix Test Audit step skipped.
+
+## Spec Change Log
+
+## Review Triage Log
+
+Review pass 1 — 3 layers (blind-hunter, edge-case-hunter, verification-gap), diff at commit 0aea775 vs baseline 2058e41.
+
+- **false** — blind-hunter: claimed rewording `graphrag-core/pom.xml`'s `<description>` to avoid the substrings "Spring"/"Neo4j"/"LangChain4j" defeats the verification grep. Refuted: the grep is case-insensitive substring matching, and real Maven coordinates for these libraries (`org.springframework.boot`, `org.neo4j.driver`, `dev.langchain4j`) contain those substrings in the groupId itself — a real dependency addition is still caught regardless of prose wording. Independently confirmed by edge-case-hunter and verification-gap, both of which found the grep still functions correctly.
+- **medium** — blind-hunter: JDK 25 is required (`release=25`) but nothing in the repo enforces or documents it; this very sandbox defaulted to JDK 21 and `mvn package` would fail with a confusing javac release error without manual JDK 25 install. Verified directly — reproduced the default-JDK-21 state in this environment. → patch.
+- **low** — blind-hunter: no root `README.md` for a first commit into a previously-empty repo; no onboarding pointer to module layout, JDK 25 requirement, or build command. Verified — confirmed no README exists anywhere in the repo. → patch.
+- **low** — blind-hunter: root POM `artifactId` is `graphraglens-parent`, inconsistent with the `graphrag-*` naming convention used by every module. Verified — confirmed via the pom files; cosmetic, trivial rename fix. → patch.
+- **low** — blind-hunter: `graphrag-web/pom.xml`'s `spring-boot-maven-plugin` version (`4.1.1`) is hardcoded separately from the `spring-boot-dependencies` BOM import version, instead of sharing one property; a future Spring Boot bump could update one and miss the other. Verified — confirmed both are separate literals with no shared property. → patch.
+- **low** — blind-hunter: `.gitignore` omits common Java/Maven build noise (`*.log`, `hs_err_pid*.log`). Verified — confirmed absent (the finding's `dependency-reduced-pom.xml` claim doesn't apply here since no shade plugin is used; dropped that part, kept the rest). → patch.
+- **defer** — blind-hunter: no CI workflow re-runs the acceptance criteria automatically. Real gap, but CI/CD is not mentioned anywhere in the Epic 1 context, PRD, or architecture spine for this story, and standing one up (provider config, JDK 25 matrix setup) is not a trivial fix — it's new, unscoped infrastructure. Deferred rather than added unscoped.
+- **medium** — verification-gap (pre-verified, filed disposition weighed): AD-1's "framework-free core" boundary has no automated enforcement — the only check is a manual grep run once by the implementing subagent, not bound to any Maven phase or CI. A regression (e.g. adding `spring-boot-starter` to `graphrag-core`) would pass `mvn validate`/`mvn package` undetected. → patch: add a `maven-enforcer-plugin` `bannedDependencies` rule.
 
 ## Verification
 
