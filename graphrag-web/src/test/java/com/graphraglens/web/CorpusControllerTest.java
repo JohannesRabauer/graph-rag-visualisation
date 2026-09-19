@@ -122,6 +122,9 @@ class CorpusControllerTest {
                 "A Scandal in Bohemia.txt",
                 "The Adventure of the Speckled Band.txt",
                 "The Final Problem.txt");
+        assertThat(stored.get().documents()).allSatisfy(document ->
+                assertThat(document.content()).isNotBlank());
+        assertThat(stored.get().documents().get(0).content()).contains("Irene Adler");
     }
 
     @Test

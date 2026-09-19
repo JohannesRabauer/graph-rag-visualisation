@@ -13,3 +13,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-1-upload-a-plain-text-corpus.md`
   summary: Define Corpus lifecycle/eviction semantics — `CorpusStore` currently only grows (no `remove`, no "replace the active corpus" concept), and it's undecided whether a session can have more than one active Corpus at a time.
   evidence: Low urgency for a single-user local dev tool restarted frequently, and no current AC or architecture doc settles the multi-corpus question. Best decided alongside Story 2.3 (Demo Dataset) or 2.4 (extraction), once there's an actual second code path that needs to know "the current Corpus."
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-use-the-built-in-demo-dataset.md`
+  summary: Add a retry/reset affordance in the empty-state shell — `showCorpusChip()` (upload.js) hides `#canvas-idle` (which holds both the upload input and the demo button) as soon as the `201` response returns, before the background `BuildKnowledgeGraph`/`DetectCommunities` work even starts. If that background work later fails, the SSE `error` listener only writes to `#error-banner`; there is no button anywhere to retry or to pick a different corpus, so a failed or unwanted run requires a full page reload.
+  evidence: real (verified by reading `upload.js` lines 179-210 and 289-298, and `CorpusController.startKnowledgeGraphConstruction`), medium severity — this is shared shell behavior used by both the upload and demo paths from earlier stories (2-1/2-4/2-5/2-6), not something this resume session introduced, and the right fix (what a "reset" state should look like, whether it cancels an in-flight build) is a UX decision, not a one-line patch.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-use-the-built-in-demo-dataset.md`
+  summary: Front end never reacts to the `ingestion-complete` SSE event — `CorpusProgressService`/`CorpusController` emit `heartbeat`, `ingestion-started`, `ingestion-complete`, and `error`, but `connectProgressStream` in `upload.js` only registers listeners for `heartbeat`, `ingestion-started`, and `error`. After a successful build (demo or uploaded corpus), nothing in the UI tells the user the knowledge graph is actually ready to query.
+  evidence: real (verified: `upload.js` lines 257-304 have no `ingestion-complete` listener), medium severity — pre-existing gap from Story 2.5's SSE work, not caused by this resume session; the fix needs a decision on how "ready" should be surfaced (banner text, chip state), not just an event listener.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-use-the-built-in-demo-dataset.md`
+  summary: `Corpus.defaultName()` joins every filename with `", "` for a multi-file upload with no truncation or "+N more" cutoff, so uploading several files produces an arbitrarily long, unreadable corpus-chip label.
+  evidence: real (verified `Corpus.java` line 37), low/cosmetic severity, pre-existing from Story 2.1's upload path rather than introduced here — best fixed alongside any future work that revisits the corpus-chip UI.

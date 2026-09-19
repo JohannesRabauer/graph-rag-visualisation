@@ -97,10 +97,13 @@
   }
 
   if (demoButton) {
+    var demoButtonDefaultLabel = demoButton.textContent;
     demoButton.addEventListener('click', function () {
       hideErrorBanner();
       fileInput.disabled = true;
       demoButton.disabled = true;
+      demoButton.setAttribute('aria-busy', 'true');
+      demoButton.textContent = 'Loading demo dataset…';
 
       fetch('/api/corpora/demo', {
         method: 'POST'
@@ -123,6 +126,8 @@
         .finally(function () {
           fileInput.disabled = false;
           demoButton.disabled = false;
+          demoButton.removeAttribute('aria-busy');
+          demoButton.textContent = demoButtonDefaultLabel;
         });
     });
   }

@@ -50,6 +50,7 @@ class MainControllerTest {
         assertThat(body).contains("id=\"corpus-chip\"");
         assertThat(body).contains("id=\"error-banner\"");
         assertThat(body).contains("Use the built-in Sherlock Holmes Demo Dataset");
+        assertThat(body).contains("id=\"demo-dataset-button\"");
         assertThat(body).contains("upload.js");
     }
 }
