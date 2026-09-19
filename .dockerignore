@@ -1,0 +1,6 @@
+**/target/
+.git
+_bmad/
+_bmad-output/
+.claude/
+*.md

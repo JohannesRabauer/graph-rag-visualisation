@@ -1,0 +1,18 @@
+# Maven
+target/
+*.class
+*.log
+hs_err_pid*.log
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store

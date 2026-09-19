@@ -1,0 +1,274 @@
+/* ============================================================
+   GraphRAG Lens — "Instrument" design tokens
+   Source of truth: _bmad-output/planning-artifacts/ux-designs/
+   ux-graph-rag-visualisation-2026-09-19/DESIGN.md (frontmatter)
+
+   Light mode only — no dark mode for v1 (DESIGN.md, Brand & Style).
+   Every custom property below is copied verbatim from that
+   frontmatter's colors / typography / spacing / rounded tables,
+   not re-derived. Component-specific tokens (mode-toggle,
+   scrubber, node styles, etc.) are intentionally NOT styled here —
+   those components don't exist until later epics (epic-1-context.md).
+   This file defines only the tokens plus the app-frame, app-bar,
+   and canvas (idle/resting state) that Story 1.3 needs.
+   ============================================================ */
+
+:root {
+  /* --- colors --- */
+  --paper: #FAFAF9;
+  --panel: #FFFFFF;
+  --chrome: #F1F2F4;
+  --page-surround: #DCE0E5;
+  --ink-900: #14181C;
+  --ink-600: #4B5563;
+  --ink-400: #8B94A0;
+  --line: #E4E7EB;
+  --line-strong: #CBD1D8;
+  --accent: #2563EB;
+  --accent-soft: #DCE7FD;
+  --global: #0E7C86;
+  --global-soft: #DCF2F1;
+  --active: #E85D2B;
+  --active-soft: #FFE9DE;
+  --node-fill: #FFFFFF;
+  --node-line: #4B5563;
+  --community-1: #FDE7D8;
+  --community-1-label: #C77F4F;
+  --community-2: #DCE9FD;
+  --community-2-label: #5C82C4;
+  --community-3: #E4F5DE;
+  --community-3-label: #6FA363;
+  --community-4: #F4E3F7;
+  --community-4-label: #9B6BA8;
+  --community-5: #FBF3D0;
+  --community-5-label: #B99A2E;
+
+  /* --- typography --- */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-body: var(--font-ui);
+  --font-body-size: 13.5px;
+  --font-body-line-height: 1.65;
+  --font-question: var(--font-ui);
+  --font-question-size: 13px;
+  --font-question-line-height: 1.5;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono-size: 11px;
+  --font-eyebrow: var(--font-ui);
+  --font-eyebrow-size: 10.5px;
+  --font-eyebrow-weight: 700;
+  --font-eyebrow-tracking: 0.08em;
+  --font-tag: var(--font-ui);
+  --font-tag-size: 10px;
+  --font-tag-weight: 700;
+  --font-tag-tracking: 0.06em;
+
+  /* --- rounded --- */
+  --radius-sm: 6px;
+  --radius: 7px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  /* --- spacing --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-grid-unit: 24px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page-surround);
+  color: var(--ink-900);
+  font-family: var(--font-ui);
+  padding: var(--space-8) var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+
+/* ---- app frame ----
+   The single "floating" surface in the system (DESIGN.md, Elevation & Depth):
+   a soft shadow lifts it off the page surround. */
+.app-frame {
+  width: 100%;
+  max-width: 1180px;
+  height: calc(100vh - var(--space-8) * 2);
+  min-height: 560px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(20, 24, 28, 0.06), 0 12px 32px rgba(20, 24, 28, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- app bar ----
+   Brand mark + wordmark, plus a Corpus chip slot (DESIGN.md
+   `components.corpus-chip`) that stays hidden until a Corpus is
+   uploaded (Story 2.1). */
+.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-900);
+}
+
+.brand-title {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.brand-mark {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--ink-900);
+  border-radius: 3px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.brand-mark::before {
+  content: "";
+  position: absolute;
+  width: 1.5px;
+  height: 8px;
+  top: 4px;
+  left: 7px;
+  background: var(--ink-900);
+  transform: rotate(35deg);
+}
+
+/* ---- graph canvas (resting / idle state) ----
+   DESIGN.md `components.graph-canvas`: faint 24px grid on {colors.paper},
+   uppercase eyebrow title. No chat panel, composer, or Cytoscape.js in
+   this story — the canvas fills the full frame width. The idle state now
+   carries the upload control (Story 2.1) that gets a Corpus into the app. */
+.canvas {
+  position: relative;
+  flex: 1;
+  background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / var(--space-grid-unit) var(--space-grid-unit),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / var(--space-grid-unit) var(--space-grid-unit),
+    var(--paper);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.canvas-idle {
+  max-width: 420px;
+  text-align: center;
+}
+
+.canvas-idle .eyebrow {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+
+.canvas-idle .subtitle {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-600);
+}
+
+/* ---- upload control ----
+   Plain-language prompt plus the native file input; no chat/composer
+   styling reused, since this is not that component. */
+.upload-control {
+  margin-top: var(--space-6);
+}
+
+.upload-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  color: var(--ink-600);
+}
+
+/* ---- corpus chip ----
+   DESIGN.md `components.corpus-chip`: pill in the app bar naming the
+   active Corpus and document count, monospace, with a small neutral
+   status dot. Hidden until a Corpus is uploaded. */
+.corpus-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-900);
+}
+
+.corpus-chip[hidden] {
+  display: none;
+}
+
+.corpus-chip .status-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--ink-400);
+}
+
+/* ---- error banner ----
+   DESIGN.md `components.error-banner`: Active-soft fill, Active border,
+   plain-language message, no icon glyphs beyond the warm-color cue. */
+.error-banner {
+  width: 100%;
+  max-width: 420px;
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--active-soft);
+  border: 1px solid var(--active);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+}
+
+.error-banner[hidden] {
+  display: none;
+}
