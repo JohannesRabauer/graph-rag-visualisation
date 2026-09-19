@@ -186,6 +186,7 @@ So that opening the app for the first time already shows the right entry point, 
 **And** the canvas shows the idle-state copy pattern ("Knowledge Graph — Resting") with its eyebrow label
 **And** the idle-state subtitle carries the differentiation line from EXPERIENCE.md's Voice and Tone section (UX-DR18)
 **And** the page renders correctly with no upload or ingestion logic wired yet (that begins in Epic 2)
+**And** body text and control labels read clearly against their surfaces at normal viewing/streaming distance — the basic contrast floor (UX-DR20)
 
 ## Epic 2: Corpus Ingestion & Knowledge Graph Construction
 
@@ -294,6 +295,7 @@ So that the signature "communities folding into clusters" moment plays automatic
 **Then** the community-visualization toggle defaults to ON, and the frontend animates Communities visibly folding into hulls as the detection progress events arrive (UX-DR7, UX-DR11)
 **And** when I switch the toggle OFF, the animation and hull overlay stop being shown, but detection continues unaffected underneath
 **And** toggling the switch never re-runs detection, and the backend has no knowledge of the toggle's state at all — the same progress events are emitted regardless (AD-6)
+**And** the toggle is reachable and operable via keyboard alone (accessibility floor, UX-DR20)
 
 ## Epic 4: Query Interface
 
@@ -311,6 +313,7 @@ So that I can ask GraphRAG Lens about my ingested Corpus (FR8).
 **When** I type a question into the Composer and submit it
 **Then** the question appears in the Chat panel's message thread (UX-DR2, UX-DR4)
 **And** the request is sent as `POST /api/corpora/{corpusId}/query` with body `{"question": "...", "mode": "LOCAL" | "GLOBAL"}` (AD-13)
+**And** submitting the question is reachable via keyboard alone, without requiring precise mouse interaction (accessibility floor, UX-DR20)
 
 ### Story 4.2: Answer via Local Search
 
@@ -386,3 +389,36 @@ So that I can show, live, exactly how GraphRAG arrived at an answer (FR13).
 **And** play/pause autoplays through the steps, step-forward/step-back move exactly one step per press, and dragging the scrubber head jumps to the nearest discrete step
 **And** each step highlights the relevant node/edge on the canvas (active, previous-step, and traversed/upcoming edge states, UX-DR6) alongside a plain-language step-badge caption (UX-DR8)
 **And** Replay is available only after generation completes — there is no live/streaming visualization of retrieval as it happens (explicitly out of scope for v1)
+**And** the play/pause and step-forward/step-back transport controls are reachable and operable via keyboard alone (accessibility floor, UX-DR20)
+
+## Epic 6: Graph Exploration
+
+Independent of any question, users can navigate to a dedicated page and freely pan, zoom, and click around the entire Knowledge Graph, with Communities always visible and a detail panel showing any Entity's connections, details, and Tags.
+
+### Story 6.1: Explore the Full Knowledge Graph
+
+As the creator,
+I want a dedicated page where I can freely pan and zoom the entire Knowledge Graph, with Communities always visible,
+So that I can browse the graph's actual structure, independent of any specific question (FR16).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus has been ingested (Epic 2) and Communities detected (Epic 3)
+**When** I click the persistent Explore link/tab in the main screen's app bar (UX-DR16)
+**Then** the Explore page loads the full Knowledge Graph, queried via `graphrag-adapter-neo4j` (AD-2), rendered pannable and zoomable
+**And** Community hulls are always visible on this page — no toggle, unlike the main screen (UX-DR7, using the same colorblind-best-effort palette, UX-DR14)
+**And** if no Corpus has been ingested yet, the page shows a plain-language empty state pointing back to the main screen's ingestion entry point (UX-DR17)
+
+### Story 6.2: Inspect an Entity's Details
+
+As the creator,
+I want to click any Entity on the Explore page to see its connections, details, and Tags,
+So that I can understand any part of the graph on demand, without asking a question (FR17).
+
+**Acceptance Criteria:**
+
+**Given** the Explore page (Story 6.1) is showing the Knowledge Graph
+**When** I click an Entity node
+**Then** a detail panel slides in from the right, showing that Entity's Relationships, details, and Tags as chips (UX-DR13)
+**And** clicking elsewhere on the canvas or the same node again closes the panel
+**And** editing an Entity, its Relationships, or its Tags is not possible — this is a read-only view for v1
