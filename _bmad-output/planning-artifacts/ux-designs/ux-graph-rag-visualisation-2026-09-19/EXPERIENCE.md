@@ -28,7 +28,7 @@ There is deliberately no separate start/setup screen. The empty state — no Cor
 
 No modal stacking, no settings screen (API key is environment-variable-only per PRD FR-15, with no in-app configuration UI for v1). The main screen is a single continuous view — chat and graph are both live and visible while ingestion and Community detection run in the background; nothing gates the user behind a wizard step. The Explore page is reached via a simple persistent link/tab in the app bar. (Reconciling the Explore page as a formal PRD feature/FR is still pending — see the memlog and this pass's Finalize reconciliation step.)
 
-→ Composition reference: `.working/direction-instrument.html` (main-screen "Instrument" mockup, both the active-Replay state and the idle/resting-canvas state variant). Spine wins on conflict.
+→ Composition reference: `mockups/direction-instrument.html` (main-screen "Instrument" mockup, both the active-Replay state and the idle/resting-canvas state variant). Spine wins on conflict. The Explore page has no visual mock by choice — built from the spine tables above alone.
 
 ## Voice and Tone
 
