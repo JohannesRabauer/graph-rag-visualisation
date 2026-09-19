@@ -294,3 +294,62 @@ So that the signature "communities folding into clusters" moment plays automatic
 **Then** the community-visualization toggle defaults to ON, and the frontend animates Communities visibly folding into hulls as the detection progress events arrive (UX-DR7, UX-DR11)
 **And** when I switch the toggle OFF, the animation and hull overlay stop being shown, but detection continues unaffected underneath
 **And** toggling the switch never re-runs detection, and the backend has no knowledge of the toggle's state at all — the same progress events are emitted regardless (AD-6)
+
+## Epic 4: Query Interface
+
+Users can ask a natural-language question through a chat interface, explicitly choosing Local Search or Global Search, and see a real, generated answer — including an honest "no answer found" result when retrieval comes up empty, distinct from an actual failure.
+
+### Story 4.1: Submit a Question via Chat
+
+As the creator,
+I want a chat-style interface where I can type a question,
+So that I can ask GraphRAG Lens about my ingested Corpus (FR8).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus has been ingested (Epic 2)
+**When** I type a question into the Composer and submit it
+**Then** the question appears in the Chat panel's message thread (UX-DR2, UX-DR4)
+**And** the request is sent as `POST /api/corpora/{corpusId}/query` with body `{"question": "...", "mode": "LOCAL" | "GLOBAL"}` (AD-13)
+
+### Story 4.2: Answer via Local Search
+
+As the creator,
+I want to explicitly select Local Search and get an answer via entity-neighborhood traversal,
+So that I can demonstrate targeted, entity-specific retrieval (FR9).
+
+**Acceptance Criteria:**
+
+**Given** I have the Local/Global Search toggle set to Local (UX-DR3) and I submit a question
+**When** `AnswerLocalSearch` runs
+**Then** it reads whatever Knowledge Graph state is currently committed, without waiting for or locking against any in-flight ingestion (AD-14)
+**And** on success, the response is `{"answerId", "traceId", "answer"}` (AD-13)
+**And** if neighborhood traversal from the matched Entities yields nothing relevant, the response is instead the distinct `{"answerId", "traceId", "noAnswer": true, "reason"}` shape — never the generic error shape (AD-13, FR9 consequence)
+
+### Story 4.3: Answer via Global Search
+
+As the creator,
+I want to explicitly select Global Search and get an answer aggregated from Community summaries,
+So that I can demonstrate corpus-wide, thematic retrieval as distinct from Local Search (FR10).
+
+**Acceptance Criteria:**
+
+**Given** I have the Local/Global Search toggle set to Global (UX-DR3) and I submit a question
+**When** `AnswerGlobalSearch` runs
+**Then** it reads the Community summaries already generated and persisted in Story 3.1 — it never generates a summary on demand (AD-6)
+**And** on success, the response is `{"answerId", "traceId", "answer"}` (AD-13)
+**And** if no Communities exist yet (detection hasn't completed), the response is the distinct `{"answerId", "traceId", "noAnswer": true, "reason"}` shape — never the generic error shape (AD-13, FR10 consequence)
+
+### Story 4.4: Render the Final Answer in Chat
+
+As the creator,
+I want the generated answer displayed in the chat once it's ready, tagged with which search mode produced it,
+So that I immediately see the result alongside my question, and know how it was produced (FR11).
+
+**Acceptance Criteria:**
+
+**Given** a query (Story 4.2 or 4.3) has completed successfully
+**When** the answer is returned
+**Then** it renders in the Chat panel's message thread, tagged with its search mode (`{components.message-answer}`, UX-DR2)
+**And** a Replay CTA appears, offering the step-by-step Retrieval Trace (leads into Epic 5)
+**And** if the LLM call fails during answer generation itself, the same `{"error": "..."}` shape and Error banner used for extraction failures (Story 2.5) apply here too, with no automatic retry (NFR2, extending FR5's principle to generation failures)
