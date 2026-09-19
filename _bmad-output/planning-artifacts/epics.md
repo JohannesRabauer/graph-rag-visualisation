@@ -135,3 +135,54 @@ After an answer arrives, users can scrub back and forth through exactly how it w
 ### Epic 6: Graph Exploration
 Independent of any question, users can navigate to a dedicated page and freely pan, zoom, and click around the entire Knowledge Graph, with Communities always visible and a detail panel showing any Entity's connections, details, and Tags.
 **FRs covered:** FR16, FR17
+
+<!-- Repeat for each epic in epics_list (N = 1, 2, 3...) -->
+
+## Epic 1: Foundation & One-Command Setup
+
+Establishes the project skeleton (Hexagonal module layout, Spring Boot + Thymeleaf shell, base design tokens) and delivers the PRD's own Setup & Deployment capability: anyone can clone the repo, run a single Docker Compose command, and reach the app's empty-state main screen — Neo4j (with the GDS plugin) running alongside it, ready to accept a Corpus. Realizes UJ-2.
+
+### Story 1.1: Project Skeleton & Module Boundaries
+
+As a developer,
+I want the Maven multi-module project scaffolded with the Hexagonal Architecture boundaries and empty port interfaces defined,
+So that all future work has a consistent home and `graphrag-core` stays framework-free from day one (AD-1).
+
+**Acceptance Criteria:**
+
+**Given** a fresh clone of the repository
+**When** the project is built
+**Then** it contains five Maven modules: `graphrag-core`, `graphrag-adapter-neo4j`, `graphrag-adapter-langchain4j`, `graphrag-adapter-parsing`, `graphrag-web`
+**And** `graphrag-core`'s `pom.xml` declares no dependency on Spring, the Neo4j Java Driver, or LangChain4j
+**And** `graphrag-core` defines the empty `GraphStorePort`, `LlmPort`, and `DocumentParserPort` interfaces
+**And** the project builds successfully with Maven on Java 25
+
+### Story 1.2: One-Command Local Environment
+
+As the creator,
+I want to start the whole app and Neo4j with a single `docker compose up`,
+So that setting up before a stream requires no manual step beyond providing my OpenAI API key (FR14, FR15).
+
+**Acceptance Criteria:**
+
+**Given** Docker and Docker Compose are installed and `OPENAI_API_KEY` is set in the environment
+**When** I run `docker compose up`
+**Then** exactly two services start: `app` and `neo4j` (AD-8)
+**And** the `neo4j` service has the GDS plugin enabled
+**And** the `app` service reads the OpenAI API key from the `OPENAI_API_KEY` environment variable, with no in-app configuration UI for it (FR15)
+**And** no third service (e.g. a separate frontend dev server) is defined in `docker-compose.yml`
+
+### Story 1.3: Empty-State Main Screen
+
+As the creator,
+I want the main screen to load in a resting, empty state once the app is running,
+So that opening the app for the first time already shows the right entry point, with no separate setup screen (FR14, UX-DR15).
+
+**Acceptance Criteria:**
+
+**Given** the app is running via Docker Compose and no Corpus has been ingested yet
+**When** I navigate to the app's root URL
+**Then** the Thymeleaf-rendered page shell loads with the "Instrument" design tokens applied (UX-DR1) — light-mode palette, system-sans typography
+**And** the canvas shows the idle-state copy pattern ("Knowledge Graph — Resting") with its eyebrow label
+**And** the idle-state subtitle carries the differentiation line from EXPERIENCE.md's Voice and Tone section (UX-DR18)
+**And** the page renders correctly with no upload or ingestion logic wired yet (that begins in Epic 2)
