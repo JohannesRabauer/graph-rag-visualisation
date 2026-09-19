@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GraphRAG Lens — Direction: Field Notes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ============================================================
+   DIRECTION B — "FIELD NOTES"
+   Warm editorial / storytelling register — the graph rendered
+   like an annotated case board / manuscript diagram rather than
+   a technical instrument. Serif carries content (headings, the
+   answer text) so reading the story of the graph feels like
+   reading well-typeset prose; small sans caps carry UI chrome
+   so it visibly recedes. Light "paper" mode chosen on purpose:
+   a warm, matte page supports long reading and suits the
+   Sherlock Holmes demo's manuscript feel; a dark theme would
+   fight the "case board" paper-and-ink metaphor.
+
+   PALETTE (all hex documented here, used nowhere else undocumented)
+   --paper:       #F6F0E4  page background (warm cream)
+   --paper-panel: #FBF7EE  card / panel surface, slightly lighter
+   --ink:         #2B2420  primary text (warm near-black)
+   --ink-soft:    #6B5F51  secondary text
+   --ink-faint:   #A79A87  tertiary / placeholder text
+   --rule:        #E4D8C3  hairline borders
+   --rule-strong: #D2C3A6  scrubber track / stronger borders
+   --terracotta:  #C1622D  Local Search accent, active node ring
+   --terracotta-tint:#F3DFCF
+   --teal:        #2F5D5A  Global Search accent
+   --teal-tint:   #DCE6E1
+   --community-1: #F1D9B5  community wash — Bohemian Scandal
+   --community-2: #D9E2D6  community wash — Baker Street Circle
+   --community-3: #E3D3DE  community wash — Moriarty Network
+   --node-fill:   #FBF7EE  node fill
+   --node-line:   #8A7A63  default node ink line
+   --active:      #B23B2E  active node + current trace step (deep red, "string on the board")
+   ============================================================ */
+  :root{
+    --paper:#F6F0E4; --paper-panel:#FBF7EE; --ink:#2B2420; --ink-soft:#6B5F51; --ink-faint:#A79A87;
+    --rule:#E4D8C3; --rule-strong:#D2C3A6; --terracotta:#C1622D; --terracotta-tint:#F3DFCF;
+    --teal:#2F5D5A; --teal-tint:#DCE6E1; --community-1:#F1D9B5; --community-2:#D9E2D6; --community-3:#E3D3DE;
+    --node-fill:#FBF7EE; --node-line:#8A7A63; --active:#B23B2E;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#E8DFCB; font-family:Georgia,'Iowan Old Style','Times New Roman',serif;
+    color:var(--ink); padding:32px 16px; display:flex; flex-direction:column; align-items:center; gap:26px;
+  }
+  .sans{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;}
+  .rationale{
+    max-width:900px; font-size:14px; line-height:1.65; color:var(--ink-soft); background:var(--paper-panel);
+    border:1px solid var(--rule); border-radius:4px; padding:16px 20px; font-family:-apple-system,sans-serif;
+  }
+  .rationale b{color:var(--ink);}
+  .browser{
+    width:100%; max-width:1180px; background:var(--paper-panel); border-radius:6px; overflow:hidden;
+    box-shadow:0 1px 2px rgba(43,36,32,.08), 0 16px 36px rgba(43,36,32,.14); border:1px solid var(--rule);
+  }
+  .chrome{
+    display:flex; align-items:center; gap:8px; padding:10px 14px; background:#EFE6D3; border-bottom:1px solid var(--rule);
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:#DED0B4;}
+  .urlbar{
+    flex:1; margin-left:8px; background:var(--paper-panel); border:1px solid var(--rule); border-radius:4px; padding:4px 10px;
+    font-size:11px; color:var(--ink-faint); font-family:Georgia,serif; font-style:italic;
+  }
+  .appbar{
+    display:flex; align-items:center; justify-content:space-between; padding:14px 22px; border-bottom:1px solid var(--rule);
+  }
+  .brand{display:flex;align-items:baseline;gap:9px;}
+  .brand .word{font-size:17px; font-weight:700; letter-spacing:.01em;}
+  .brand .sub{font-size:10.5px; color:var(--ink-faint); font-family:-apple-system,sans-serif; letter-spacing:.08em; text-transform:uppercase;}
+  .corpus-chip{
+    font-size:11px; color:var(--ink-soft); font-family:-apple-system,sans-serif; letter-spacing:.02em;
+    border-bottom:1px dotted var(--rule-strong); padding-bottom:2px;
+  }
+
+  .layout{display:grid; grid-template-columns:360px 1fr; min-height:580px;}
+  /* ---- CHAT PANEL ---- */
+  .chat{border-right:1px solid var(--rule); display:flex; flex-direction:column;}
+  .chat-head{padding:18px 20px 12px; border-bottom:1px solid var(--rule);}
+  .mode-toggle{display:flex; gap:6px; font-family:-apple-system,sans-serif;}
+  .mode-toggle button{
+    flex:1; padding:8px 0; border-radius:20px; border:1px solid var(--rule-strong); background:transparent;
+    font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); font-family:inherit;
+  }
+  .mode-toggle .active{background:var(--terracotta); border-color:var(--terracotta); color:#fff;}
+  .mode-hint{margin-top:10px; font-size:12.5px; color:var(--ink-soft); font-style:italic; line-height:1.55;}
+  .thread{flex:1; padding:18px 20px; display:flex; flex-direction:column; gap:16px; overflow:hidden;}
+  .msg-q{
+    align-self:flex-end; max-width:88%; background:var(--paper); border:1px solid var(--rule); color:var(--ink);
+    font-size:14.5px; line-height:1.5; padding:10px 14px; border-radius:12px 12px 2px 12px; font-style:italic;
+  }
+  .msg-a{max-width:96%; font-size:16px; line-height:1.7; color:var(--ink);}
+  .msg-a .tag{
+    display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--terracotta); margin-bottom:8px; font-family:-apple-system,sans-serif;
+  }
+  .msg-a .tag .sw{width:6px;height:6px;border-radius:50%;background:var(--terracotta);}
+  .dropcap::first-letter{font-size:2.1em; float:left; line-height:0.8; padding-right:6px; padding-top:4px; font-weight:700; color:var(--terracotta);}
+  .replay-cta{
+    margin-top:14px; display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--ink-soft);
+    border-top:1px solid var(--rule); padding-top:10px; font-family:-apple-system,sans-serif; letter-spacing:.02em;
+  }
+  .replay-cta b{color:var(--terracotta); font-weight:700;}
+  .composer{border-top:1px solid var(--rule); padding:14px 18px; display:flex; gap:8px; align-items:center;}
+  .composer input{
+    flex:1; border:none; border-bottom:1px solid var(--rule-strong); padding:8px 4px; font-size:14px; color:var(--ink);
+    font-family:Georgia,serif; font-style:italic; background:transparent;
+  }
+  .composer .send{
+    width:30px;height:30px;border-radius:50%;background:var(--terracotta);flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  }
+  .composer .send::before{content:"";display:block;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid #fff;margin-left:2px;}
+
+  /* ---- GRAPH CANVAS ("case board") ---- */
+  .canvas{position:relative; background:var(--paper); display:flex; flex-direction:column;}
+  .canvas-head{display:flex; align-items:baseline; justify-content:space-between; padding:16px 24px 0;}
+  .canvas-title{font-size:15px; font-weight:700; color:var(--ink);}
+  .canvas-title small{font-size:11px; color:var(--ink-faint); font-family:-apple-system,sans-serif; font-weight:400; margin-left:8px; letter-spacing:.03em;}
+  .legend{display:flex; gap:16px; font-size:10.5px; color:var(--ink-soft); font-family:-apple-system,sans-serif;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .svgwrap{flex:1; padding:8px 16px 0;}
+  .step-badge{
+    position:absolute; top:56px; left:40px; background:var(--paper-panel); border:1px solid var(--rule-strong); border-radius:3px;
+    padding:6px 12px; font-family:-apple-system,sans-serif; font-size:11.5px; color:var(--ink); transform:rotate(-1deg);
+    box-shadow:1px 2px 4px rgba(43,36,32,.12);
+  }
+  .step-badge b{color:var(--active);}
+
+  /* ---- SCRUBBER: filmstrip style ---- */
+  .scrubber{border-top:1px solid var(--rule); padding:14px 24px 18px; background:var(--paper-panel); font-family:-apple-system,sans-serif;}
+  .scrub-row{display:flex; align-items:center; gap:14px;}
+  .transport{display:flex; align-items:center; gap:8px;}
+  .tbtn{width:30px;height:30px;border-radius:50%;border:1px solid var(--rule-strong);background:var(--paper);display:flex;align-items:center;justify-content:center;}
+  .tbtn.play{background:var(--terracotta); border-color:var(--terracotta);}
+  .track{flex:1; position:relative; height:26px; display:flex; align-items:center;}
+  .track .rail{position:absolute; left:0; right:0; height:3px; background:var(--rule-strong); border-radius:2px;}
+  .track .fill{position:absolute; left:0; height:3px; background:var(--terracotta); border-radius:2px; width:52%;}
+  .frame{position:absolute; top:50%; width:13px; height:13px; border-radius:3px; background:var(--paper-panel); border:1.5px solid var(--rule-strong); transform:translate(-50%,-50%) rotate(-3deg);}
+  .frame.done{border-color:var(--terracotta);}
+  .frame.now{border-color:var(--active); background:var(--active); transform:translate(-50%,-50%) rotate(3deg) scale(1.15);}
+  .step-label{font-size:11px; color:var(--ink-soft); white-space:nowrap;}
+  .scrub-caption{margin-top:10px; font-size:12.5px; color:var(--ink-soft); font-style:italic;}
+  .scrub-caption b{color:var(--ink); font-style:normal; font-weight:600;}
+
+  /* secondary/idle state panel */
+  .secondary{width:100%; max-width:1180px; font-family:-apple-system,sans-serif;}
+  .secondary h3{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft); margin:0 0 10px 4px;}
+  .idle-frame{border:1px solid var(--rule); border-radius:6px; background:var(--paper-panel); overflow:hidden; box-shadow:0 1px 2px rgba(43,36,32,.08);}
+  .idle-canvas{ background:var(--paper); padding:24px; display:flex; align-items:center; gap:26px;}
+  .idle-copy{flex:1;}
+  .idle-copy .eyebrow{font-family:Georgia,serif; font-size:15px; font-weight:700; color:var(--ink); margin-bottom:6px;}
+  .idle-copy p{margin:0; font-size:13px; color:var(--ink-soft); line-height:1.6; max-width:380px; font-family:-apple-system,sans-serif;}
+  .idle-canvas svg{flex-shrink:0;}
+</style>
+</head>
+<body>
+
+<div class="rationale">
+  <b>Direction B — "Field Notes."</b> A warm, editorial register: cream paper, serif prose for the answer and headings, small sans caps for UI chrome so the interface itself visibly recedes. The graph reads as an annotated case board — soft ink washes for Communities, a hand-set filmstrip scrubber instead of a mechanical slider — fitting the Sherlock Holmes material without becoming a costume. Light "paper" mode by design: it's a reading surface, and reading surfaces are light.
+</div>
+
+<div class="browser">
+  <div class="chrome">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <div class="urlbar">localhost:5173/session/sherlock-holmes</div>
+  </div>
+  <div class="appbar">
+    <div class="brand"><span class="word">GraphRAG Lens</span><span class="sub">Field Notes</span></div>
+    <div class="corpus-chip">Reading: <em>The Adventures of Sherlock Holmes</em> — 12 stories</div>
+  </div>
+  <div class="layout">
+    <!-- CHAT -->
+    <div class="chat">
+      <div class="chat-head">
+        <div class="mode-toggle">
+          <button class="active">Local Search</button>
+          <button>Global Search</button>
+        </div>
+        <div class="mode-hint">Following a thread through specific people and places in the story.</div>
+      </div>
+      <div class="thread">
+        <div class="msg-q">Why was Irene Adler able to outwit Holmes in "A Scandal in Bohemia"?</div>
+        <div class="msg-a">
+          <div class="tag"><span class="sw"></span> Local Search · Answer</div>
+          <span class="dropcap">She recognized Holmes's disguise-based reconnaissance for what it was, and moved the photograph before he could retrieve it — by the time he acted on his plan, the King's leverage over her was already gone.</span>
+          <div class="replay-cta">Retrace how we got here — <b>5 steps</b>, scrubbable →</div>
+        </div>
+      </div>
+      <div class="composer">
+        <input type="text" value="Ask about the story…" readonly>
+        <div class="send"></div>
+      </div>
+    </div>
+    <!-- GRAPH CANVAS -->
+    <div class="canvas">
+      <div class="canvas-head">
+        <div class="canvas-title">The case board <small>— retracing the answer</small></div>
+        <div class="legend">
+          <span><i style="background:var(--community-1)"></i>Bohemian Scandal</span>
+          <span><i style="background:var(--community-2)"></i>Baker Street Circle</span>
+          <span><i style="background:var(--community-3)"></i>Moriarty Network</span>
+        </div>
+      </div>
+      <div class="step-badge">Step <b>3 of 5</b> — followed "outwitted"</div>
+      <div class="svgwrap">
+        <svg viewBox="0 0 760 420" width="100%" height="100%">
+          <ellipse cx="230" cy="150" rx="150" ry="105" fill="var(--community-1)" opacity="0.75"/>
+          <ellipse cx="560" cy="110" rx="120" ry="85" fill="var(--community-2)" opacity="0.65"/>
+          <ellipse cx="560" cy="315" rx="140" ry="90" fill="var(--community-3)" opacity="0.6"/>
+          <text x="110" y="58" font-size="11" fill="#8A5A34" font-family="Georgia,serif" font-style="italic">the Bohemian scandal</text>
+          <text x="470" y="38" font-size="11" fill="#3F6B57" font-family="Georgia,serif" font-style="italic">the Baker Street circle</text>
+          <text x="470" y="235" font-size="11" fill="#7A4E6B" font-family="Georgia,serif" font-style="italic">the Moriarty affair</text>
+
+          <!-- edges as soft curved "string" -->
+          <g fill="none" stroke="var(--node-line)" stroke-width="1.2">
+            <path d="M230,150 Q190,180 150,200"/>
+            <path d="M300,90 Q350,110 400,130"/>
+            <path d="M230,150 Q200,120 180,90"/>
+            <path d="M400,130 Q480,120 560,110" stroke-dasharray="1 5" stroke-linecap="round"/>
+            <path d="M400,130 Q450,90 500,60"/>
+            <path d="M500,60 Q560,70 620,90"/>
+            <path d="M400,130 Q440,200 480,260" stroke-dasharray="1 5" stroke-linecap="round"/>
+            <path d="M480,260 Q520,290 560,315"/>
+            <path d="M560,315 Q610,300 650,275"/>
+            <path d="M560,315 Q600,340 640,355"/>
+          </g>
+          <path d="M230,150 Q265,120 300,90" fill="none" stroke="var(--active)" stroke-width="2.2"/>
+
+          <g font-family="Georgia,serif" font-size="12" fill="var(--ink)">
+            <circle cx="150" cy="200" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="150" y="222" text-anchor="middle">Dr. Watson</text>
+
+            <circle cx="180" cy="90" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="180" y="72" text-anchor="middle">221B Baker St.</text>
+
+            <circle cx="400" cy="130" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="400" y="152" text-anchor="middle">King of Bohemia</text>
+
+            <circle cx="560" cy="110" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="560" y="132" text-anchor="middle">Mrs. Hudson</text>
+
+            <circle cx="500" cy="60" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="500" y="42" text-anchor="middle">Insp. Lestrade</text>
+
+            <circle cx="620" cy="90" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="640" y="112" text-anchor="middle">Scotland Yard</text>
+
+            <circle cx="480" cy="260" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="480" y="282" text-anchor="middle">Godfrey Norton</text>
+
+            <circle cx="650" cy="275" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="650" y="257" text-anchor="middle">Prof. Moriarty</text>
+
+            <circle cx="640" cy="355" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.4"/>
+            <text x="640" y="377" text-anchor="middle">Col. Moran</text>
+          </g>
+
+          <circle cx="230" cy="150" r="12" fill="var(--terracotta-tint)" stroke="var(--terracotta)" stroke-width="2"/>
+          <text x="230" y="177" text-anchor="middle" font-family="Georgia,serif" font-size="13" font-weight="700" fill="var(--ink)">Irene Adler</text>
+
+          <circle cx="300" cy="90" r="16" fill="#F6D9CE" stroke="var(--active)" stroke-width="2.5"/>
+          <text x="300" y="68" text-anchor="middle" font-family="Georgia,serif" font-size="14" font-weight="700" fill="var(--ink)">Sherlock Holmes</text>
+        </svg>
+      </div>
+
+      <div class="scrubber">
+        <div class="scrub-row">
+          <div class="transport">
+            <div class="tbtn"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M8 1 L2 5 L8 9 Z M2 1 L2 9" stroke="#6B5F51" stroke-width="1.3" fill="none"/></svg></div>
+            <div class="tbtn play"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1 L2 9 M6 1 L6 9" stroke="#fff" stroke-width="1.6"/></svg></div>
+            <div class="tbtn"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1 L8 5 L2 9 Z M8 1 L8 9" stroke="#6B5F51" stroke-width="1.3" fill="none"/></svg></div>
+          </div>
+          <div class="track">
+            <div class="rail"></div>
+            <div class="fill"></div>
+            <div class="frame done" style="left:8%"></div>
+            <div class="frame done" style="left:30%"></div>
+            <div class="frame now" style="left:52%"></div>
+            <div class="frame" style="left:74%"></div>
+            <div class="frame" style="left:96%"></div>
+          </div>
+          <div class="step-label">Page 3 of 5</div>
+        </div>
+        <div class="scrub-caption">matched <b>Irene Adler</b> → followed "outwitted" → <b>Sherlock Holmes</b> → next: "employed" → King of Bohemia</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="secondary">
+  <h3>State variant — before a question is asked</h3>
+  <div class="idle-frame">
+    <div class="idle-canvas">
+      <div class="idle-copy">
+        <div class="eyebrow">The case board, freshly pinned</div>
+        <p>The Corpus has been read, the Communities drawn. Ask something on the left, and watch which pins and threads the answer actually came from.</p>
+      </div>
+      <svg width="360" height="220" viewBox="0 0 360 220">
+        <ellipse cx="110" cy="110" rx="90" ry="70" fill="var(--community-1)" opacity="0.55"/>
+        <ellipse cx="260" cy="70" rx="80" ry="55" fill="var(--community-2)" opacity="0.5"/>
+        <ellipse cx="270" cy="160" rx="75" ry="50" fill="var(--community-3)" opacity="0.45"/>
+        <g fill="none" stroke="#9C8B72" stroke-width="1.1">
+          <path d="M110,110 Q90,130 70,150"/>
+          <path d="M110,110 Q130,85 150,60"/>
+          <path d="M150,60 Q185,70 220,80"/>
+          <path d="M220,80 Q250,68 280,55"/>
+          <path d="M220,80 Q235,115 250,150"/>
+          <path d="M250,150 Q275,163 300,175"/>
+        </g>
+        <g fill="var(--paper-panel)" stroke="#8A7A63" stroke-width="1.4">
+          <circle cx="110" cy="110" r="7"/><circle cx="70" cy="150" r="7"/><circle cx="150" cy="60" r="7"/>
+          <circle cx="220" cy="80" r="7"/><circle cx="280" cy="55" r="7"/><circle cx="250" cy="150" r="7"/><circle cx="300" cy="175" r="7"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
