@@ -10,10 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Covers the Acceptance Criteria of Story 1.3 for {@code GET /}, updated by
- * Story 2.1 to reflect the upload control it explicitly adds to the idle
- * state (corpus chip / error banner slots and {@code upload.js} are now
- * expected, rather than absent).
+ * Covers the Acceptance Criteria for the resting state and the chat UI shell.
  */
 @WebMvcTest(MainController.class)
 class MainControllerTest {
@@ -22,7 +19,7 @@ class MainControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void rendersTheRestingStateWithExactCopyAndNoLaterEpicUi() throws Exception {
+    void rendersTheRestingStateAndTheQuestionChatShell() throws Exception {
         String body = mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -33,11 +30,10 @@ class MainControllerTest {
         assertThat(body).contains(
                 "Watch a Knowledge Graph get built, clustered, and searched — the mechanics most GraphRAG tools keep hidden.");
         assertThat(body).contains("instrument.css");
-
-        String lowerCaseBody = body.toLowerCase();
-        assertThat(lowerCaseBody).doesNotContain("chat");
-        assertThat(lowerCaseBody).doesNotContain("composer");
-        assertThat(lowerCaseBody).doesNotContain("cytoscape");
+        assertThat(body).contains("id=\"chat-panel\"");
+        assertThat(body).contains("Local Search");
+        assertThat(body).contains("Global Search");
+        assertThat(body).doesNotContain("cytoscape");
     }
 
     @Test
@@ -49,10 +45,11 @@ class MainControllerTest {
                 .getContentAsString();
 
         assertThat(body).contains("type=\"file\"");
-        assertThat(body).contains("accept=\".txt\"");
+        assertThat(body).contains("accept=\".txt,.pdf\"");
         assertThat(body).contains("multiple");
         assertThat(body).contains("id=\"corpus-chip\"");
         assertThat(body).contains("id=\"error-banner\"");
+        assertThat(body).contains("Use the built-in Sherlock Holmes Demo Dataset");
         assertThat(body).contains("upload.js");
     }
 }

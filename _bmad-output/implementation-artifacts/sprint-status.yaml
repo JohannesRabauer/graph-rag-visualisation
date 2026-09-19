@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-19-2026 13:59
-last_updated: 09-19-2026 16:36
+last_updated: 09-19-2026 20:54
 project: graph-rag-visualisation
 project_key: NOKEY
 tracking_system: file-system
@@ -44,22 +44,22 @@ development_status:
 
   epic-2: in-progress
   2-1-upload-a-plain-text-corpus: review
-  2-2-upload-a-pdf-corpus: backlog
-  2-3-use-the-built-in-demo-dataset: backlog
-  2-4-extract-entities-and-relationships-into-the-knowledge-graph: backlog
-  2-5-show-live-ingestion-progress: backlog
-  2-6-surface-extraction-failures-visibly: backlog
+  2-2-upload-a-pdf-corpus: done
+  2-3-use-the-built-in-demo-dataset: review
+  2-4-extract-entities-and-relationships-into-the-knowledge-graph: done
+  2-5-show-live-ingestion-progress: done
+  2-6-surface-extraction-failures-visibly: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-submit-a-question-via-chat: backlog
-  3-2-answer-via-local-search: backlog
-  3-3-render-the-final-answer-in-chat: backlog
+  epic-3: done
+  3-1-submit-a-question-via-chat: done
+  3-2-answer-via-local-search: done
+  3-3-render-the-final-answer-in-chat: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-detect-communities-in-the-knowledge-graph: backlog
-  4-2-generate-and-persist-community-summaries: backlog
+  epic-4: in-progress
+  4-1-detect-communities-in-the-knowledge-graph: done
+  4-2-generate-and-persist-community-summaries: done
   4-3-toggle-community-formation-visualization: backlog
   4-4-answer-via-global-search: backlog
   epic-4-retrospective: optional

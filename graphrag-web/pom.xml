@@ -48,6 +48,16 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
+      <groupId>com.graphraglens</groupId>
+      <artifactId>graphrag-adapter-langchain4j</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.graphraglens</groupId>
+      <artifactId>graphrag-adapter-neo4j</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-thymeleaf</artifactId>
     </dependency>

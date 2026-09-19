@@ -13,7 +13,11 @@ import java.util.List;
  * @param id a generated identifier, unique per Corpus
  * @param documents the uploaded documents that make up this Corpus
  */
-public record Corpus(String id, List<UploadedDocument> documents) {
+public record Corpus(String id, List<UploadedDocument> documents, String name) {
+
+    public Corpus(String id, List<UploadedDocument> documents) {
+        this(id, documents, defaultName(documents));
+    }
 
     public List<String> documentNames() {
         return documents.stream().map(UploadedDocument::filename).toList();
@@ -21,5 +25,15 @@ public record Corpus(String id, List<UploadedDocument> documents) {
 
     public int documentCount() {
         return documents.size();
+    }
+
+    private static String defaultName(List<UploadedDocument> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return "Untitled Corpus";
+        }
+        if (documents.size() == 1) {
+            return documents.getFirst().filename();
+        }
+        return documents.stream().map(UploadedDocument::filename).collect(java.util.stream.Collectors.joining(", "));
     }
 }

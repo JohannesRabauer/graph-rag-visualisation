@@ -18,14 +18,39 @@
     </header>
     <main class="canvas" aria-label="Knowledge Graph canvas">
       <div class="error-banner" id="error-banner" role="alert" hidden></div>
-      <div class="canvas-idle">
+      <div class="canvas-idle" id="canvas-idle">
         <p class="eyebrow">Knowledge Graph — Resting</p>
         <p class="subtitle">Watch a Knowledge Graph get built, clustered, and searched — the mechanics most GraphRAG tools keep hidden.</p>
         <div class="upload-control">
-          <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) Corpus to get started</label>
-          <input type="file" id="corpus-file-input" multiple accept=".txt">
+          <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) or PDF (.pdf) Corpus to get started</label>
+          <input type="file" id="corpus-file-input" multiple accept=".txt,.pdf">
+          <button type="button" id="demo-dataset-button" class="demo-dataset-button">Use the built-in Sherlock Holmes Demo Dataset</button>
         </div>
       </div>
+
+      <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
+        <label class="community-toggle" for="community-visualization-toggle">
+          <span class="community-toggle-label">Community formation view</span>
+          <span class="community-toggle-meta">Shows the clustering animation as communities form.</span>
+          <input id="community-visualization-toggle" type="checkbox" checked>
+          <span class="community-toggle-slider" aria-hidden="true"></span>
+        </label>
+      </div>
+
+      <aside class="chat-panel" id="chat-panel" aria-label="Question chat" hidden>
+        <div class="chat-head">
+          <div class="mode-toggle" role="tablist" aria-label="Search mode">
+            <button type="button" class="mode-button active" data-mode="LOCAL" aria-pressed="true">Local Search</button>
+            <button type="button" class="mode-button" data-mode="GLOBAL" aria-pressed="false">Global Search</button>
+          </div>
+          <div class="mode-hint" id="mode-hint">Local Search traverses specific Entities and Relationships around your question.</div>
+        </div>
+        <div class="thread" id="chat-thread" aria-live="polite"></div>
+        <form class="composer" id="chat-form">
+          <input id="chat-input" name="question" type="text" placeholder="Ask a question about the Corpus…" aria-label="Ask a question about the Corpus">
+          <button type="submit" class="send-button" aria-label="Submit question"></button>
+        </form>
+      </aside>
     </main>
   </div>
   <script th:src="@{/js/upload.js}" src="/js/upload.js"></script>

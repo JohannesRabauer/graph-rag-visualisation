@@ -2,10 +2,10 @@ package com.graphraglens.adapter.parsing;
 
 import com.graphraglens.core.port.DocumentParserPort;
 
+import java.nio.charset.StandardCharsets;
+
 /**
- * First real {@link DocumentParserPort} implementation: handles plain-text
- * ({@code .txt}) uploads (Story 2.1). PDF support (Story 2.2) is a separate
- * adapter, added later.
+ * Handles plain-text ({@code .txt}) uploads.
  */
 public class PlainTextDocumentParserAdapter implements DocumentParserPort {
 
@@ -14,5 +14,13 @@ public class PlainTextDocumentParserAdapter implements DocumentParserPort {
     @Override
     public boolean supports(String filename) {
         return filename != null && filename.toLowerCase().endsWith(SUPPORTED_EXTENSION);
+    }
+
+    @Override
+    public String extract(String filename, byte[] content) {
+        if (content == null) {
+            return "";
+        }
+        return new String(content, StandardCharsets.UTF_8);
     }
 }

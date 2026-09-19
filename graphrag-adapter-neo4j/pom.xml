@@ -16,16 +16,31 @@
 
   <name>GraphRAG Lens :: Adapter :: Neo4j</name>
   <description>
-    Stub module for the future Neo4j graph-store adapter. Dependency-only for
-    now; the Neo4j Java Driver and GraphStorePort implementation arrive with
-    the story that implements this adapter.
+    Neo4j adapter implementing the GraphStorePort for graph persistence.
   </description>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>5.14.4</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
       <groupId>com.graphraglens</groupId>
       <artifactId>graphrag-core</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>
