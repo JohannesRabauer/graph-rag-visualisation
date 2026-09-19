@@ -62,7 +62,7 @@ graph TD
 
 - **Binds:** `graphrag-adapter-neo4j` (implements `GraphStorePort`).
 - **Prevents:** Two contributors picking incompatible persistence styles (one OGM-mapped, one raw Cypher), and Spring Data Neo4j's object mapping fighting the raw GDS/Cypher traversal this app needs.
-- **Rule:** All Neo4j access goes through the plain Neo4j Java Driver with hand-written Cypher. Spring Data Neo4j is never used.
+- **Rule:** All Neo4j access goes through the plain Neo4j Java Driver with hand-written Cypher. Spring Data Neo4j is never used. (Spring's `Neo4jClient` — raw Cypher under Spring-managed transactions, without SDN's object mapping — was considered as a middle ground; rejected only for simplicity, since the driver alone is sufficient for a single-module persistence layer with no other Spring-transaction-scoped work to coordinate with.)
 
 ### AD-3 — LLM access is port-only
 
@@ -76,17 +76,17 @@ graph TD
 - **Prevents:** A directed-only relationship model silently breaking GDS Leiden, which requires undirected input.
 - **Rule:** Relationships fed into GDS Leiden calls are projected as `UNDIRECTED`, regardless of how they're stored/directed elsewhere in the graph.
 
-### AD-5 — Retrieval Traces are transient
+### AD-5 — Retrieval Traces are transient and individually addressed
 
 - **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch` use cases; `graphrag-web`.
-- **Prevents:** Ephemeral UI-replay data being written into Neo4j as graph nodes, polluting the Knowledge Graph with non-domain state.
-- **Rule:** A Retrieval Trace is held in memory, scoped to its query/answer, and is never persisted to Neo4j. Restarting the app loses in-flight traces; that's acceptable (PRD: no fallback/safety-net ethos).
+- **Prevents:** Ephemeral UI-replay data being written into Neo4j as graph nodes; a "single current trace" design that clobbers concurrent or sequential queries.
+- **Rule:** A Retrieval Trace is held in memory, keyed by a UUID `traceId` generated when the answer is produced and returned alongside it. Replay is fetched by that id (`GET /api/traces/{traceId}`), never a single ambient "current trace" slot. Traces are never persisted to Neo4j; restarting the app loses in-flight traces (PRD: no fallback/safety-net ethos).
 
-### AD-6 — Detection always runs; the toggle only gates its animation
+### AD-6 — Detection and summary generation always run; the toggle only gates animation
 
-- **Binds:** `DetectCommunities` use case (FR-6); `graphrag-web`'s community-visualization toggle (FR-7).
-- **Prevents:** The toggle being implemented as a gate on whether/when detection *executes*, contradicting the PRD's explicit FR-6/FR-7 split.
-- **Rule:** `DetectCommunities` runs automatically and asynchronously immediately after Knowledge Graph construction completes, unconditionally. The toggle is read only by the presentation layer, to decide whether to animate/render that step — never passed into the use case itself.
+- **Binds:** `DetectCommunities` use case (FR-6); `AnswerGlobalSearch` (FR-10); `graphrag-web`'s community-visualization toggle (FR-7).
+- **Prevents:** The toggle gating whether/when detection *executes* (contradicting the PRD's FR-6/FR-7 split); Global Search generating community summaries lazily and on-demand, which would make answer latency and summary existence depend on query order.
+- **Rule:** `DetectCommunities` runs automatically and asynchronously immediately after Knowledge Graph construction completes, unconditionally — and as part of that same run, generates and persists each Community's summary (via `LlmPort`) onto its `(:Community)` node (AD-11). `AnswerGlobalSearch` only reads existing summaries; it never generates one on demand. The visualization toggle is read only by the frontend, to decide whether to animate/render the step and its SSE events — the backend has no knowledge of the toggle's state at all, and emits the same progress events regardless.
 
 ### AD-7 — Server push is SSE, not WebSocket
 
@@ -100,11 +100,29 @@ graph TD
 - **Prevents:** A third frontend-dev-server container creeping in and breaking the one-command-setup requirement.
 - **Rule:** `docker-compose.yml` defines exactly two services: `app` (the Spring Boot jar, serving REST + SSE + the pre-built static SPA from its own classpath) and `neo4j` (Community Edition, GDS plugin enabled). The frontend is never its own service/container.
 
-### AD-9 — File-type support is adapter-scoped
+### AD-9 — File-type support is adapter-scoped, dispatched by the adapter itself
 
 - **Binds:** `graphrag-adapter-parsing` (implements `DocumentParserPort`); FR-1/FR-2.
-- **Prevents:** A future file type (explicitly a Non-Goal for v1, but named as a "maybe later" in the brief) requiring changes to `graphrag-core`'s ingestion use case.
-- **Rule:** Each supported file type (plain text, PDF via Apache PDFBox) is one adapter class implementing `DocumentParserPort`. `IngestCorpus` calls the port, never a concrete parser.
+- **Prevents:** A future file type (explicitly a Non-Goal for v1, but named as a "maybe later" in the brief) requiring changes to `graphrag-core`'s ingestion use case; file-type-selection knowledge leaking into `graphrag-web` via framework-level wiring (e.g. Spring `@Qualifier`/bean-name dispatch), which would undermine the isolation this AD exists for.
+- **Rule:** Each supported file type (plain text, PDF via Apache PDFBox) is one adapter class implementing `DocumentParserPort`, exposing its own `supports(filename): boolean`. A core-owned dispatcher (injected with all available parser adapters) selects the matching one by calling `supports()` — `graphrag-web` never wires a specific parser by type or name.
+
+### AD-10 — Entities are deduplicated by identity, never blind-created
+
+- **Binds:** `IngestCorpus` use case; `graphrag-adapter-neo4j`.
+- **Prevents:** The same real-world entity, mentioned multiple times across a Corpus (or across repeated LLM extraction calls), producing multiple Entity nodes — which would silently degrade Community detection (FR-6) and Explore-page structure (FR-16) depending purely on which contributor wrote the write path.
+- **Rule:** Entity writes use Cypher `MERGE` keyed on a normalized identity (lowercased name + entity type), never a blind `CREATE`. The same identity key always resolves to the same node within a Corpus.
+
+### AD-11 — Communities are first-class nodes, not a scalar property
+
+- **Binds:** `DetectCommunities`, `AnswerGlobalSearch` use cases; `graphrag-adapter-neo4j`; FR-6/FR-7/FR-10/FR-16.
+- **Prevents:** A `communityId` scalar property on Entity nodes (which cannot hold a per-community summary, and gives Explore/FR-16 nothing to query directly) coexisting with, or being chosen instead of, real Community nodes.
+- **Rule:** Each detected Community is written as its own `(:Community {id, summary})` node, related to its member Entities via `[:BELONGS_TO]` relationships. `AD-4`'s undirected projection for GDS Leiden governs the *input* to detection; this AD governs the *output* written back to the graph.
+
+### AD-12 — Progress is one multiplexed SSE stream per Corpus, with a fixed event envelope
+
+- **Binds:** `graphrag-web`; the frontend SPA; AD-7.
+- **Prevents:** Two independently-built halves (backend emitter, frontend consumer) agreeing on "SSE, not WebSocket" (AD-7) while using mutually unconsumable event shapes — e.g. one bare endpoint per progress type vs. a single multiplexed stream.
+- **Rule:** All ingestion/construction/detection progress for one Corpus is pushed over a single stream, `GET /api/corpora/{corpusId}/progress`, as named SSE events (e.g. `entity-extracted`, `community-detected`, `ingestion-complete`, `error`), each with a `{"type": "<event-name>", "data": {...}}` JSON payload. No second progress endpoint is introduced.
 
 ## Consistency Conventions
 
@@ -120,9 +138,9 @@ graph TD
 | --- | --- |
 | Java | 25 (LTS) |
 | Spring Boot | 4.1.x (Spring Framework 7) |
-| LangChain4j | 1.19.x |
+| LangChain4j | latest at implementation start (≥1.20.x — biweekly release cadence, don't hard-pin from this document) |
 | Neo4j | 2026.x, Community Edition, with Graph Data Science (GDS) plugin |
-| Neo4j Java Driver | 6.1.x |
+| Neo4j Java Driver | latest at implementation start (≥6.2.x — ships frequently, don't hard-pin from this document) |
 | Apache PDFBox | 3.0.x |
 | Cytoscape.js | current (frontend graph canvas) |
 | Docker / Docker Compose | current |
@@ -153,18 +171,37 @@ graph LR
 
 Single environment: a developer's own machine, via `docker-compose up`. No staging/production environment exists or is planned for v1 (PRD: single-user, local-only). Observability is deliberately minimal — application logs to console only; no metrics/tracing infrastructure — appropriate to a solo hobby project's actual operational needs, not an oversight.
 
+Neo4j graph schema (per AD-10, AD-11 — names and relationships only, not a full property list):
+
+```mermaid
+erDiagram
+    ENTITY ||--o{ RELATIONSHIP : "source of"
+    ENTITY ||--o{ RELATIONSHIP : "target of"
+    ENTITY }o--o{ COMMUNITY : "BELONGS_TO"
+    ENTITY ||--o{ TAG : "has"
+    COMMUNITY {
+        string id
+        string summary
+    }
+    ENTITY {
+        string identityKey "merge key: lowercased name + type"
+    }
+```
+
+Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of ingested documents (its identity lives in `graphrag-web`, not the graph), and a Retrieval Trace is transient, addressed by `traceId` (AD-5), never persisted.
+
 ## Capability → Architecture Map
 
 | Capability / Area | Lives in | Governed by |
 | --- | --- | --- |
 | Document Ingestion (FR-1–FR-3) | `graphrag-adapter-parsing`, `IngestCorpus` use case | AD-9 |
-| Knowledge Graph Construction (FR-4–FR-5) | `IngestCorpus` use case, `LlmPort`, `graphrag-adapter-langchain4j` | AD-1, AD-3 |
-| Community Detection & Visualization (FR-6–FR-7) | `DetectCommunities` use case, `graphrag-adapter-neo4j` (GDS Leiden) | AD-4, AD-6 |
-| Query Interface (FR-8–FR-11) | `AnswerLocalSearch`, `AnswerGlobalSearch` use cases | AD-1, AD-3 |
+| Knowledge Graph Construction (FR-4–FR-5) | `IngestCorpus` use case, `LlmPort`, `graphrag-adapter-langchain4j` | AD-1, AD-3, AD-10 |
+| Community Detection & Visualization (FR-6–FR-7) | `DetectCommunities` use case, `graphrag-adapter-neo4j` (GDS Leiden) | AD-4, AD-6, AD-11 |
+| Query Interface (FR-8–FR-11) | `AnswerLocalSearch`, `AnswerGlobalSearch` use cases | AD-1, AD-3, AD-6, AD-11 |
 | Retrieval Trace & Playback (FR-12–FR-13) | Use cases (trace capture) + `graphrag-web` (in-memory store, replay API) | AD-5 |
 | Setup & Deployment (FR-14–FR-15) | `docker-compose.yml`, `graphrag-web` config | AD-8, Consistency Conventions (config) |
-| Graph Exploration (FR-16–FR-17) | `ExploreGraph` use case, `graphrag-adapter-neo4j` | AD-1, AD-2 |
-| Live ingestion progress (EXPERIENCE.md State Patterns) | `graphrag-web` SSE endpoints | AD-7 |
+| Graph Exploration (FR-16–FR-17) | `ExploreGraph` use case, `graphrag-adapter-neo4j` | AD-1, AD-2, AD-11 |
+| Live ingestion progress (EXPERIENCE.md State Patterns) | `graphrag-web` SSE endpoints | AD-7, AD-12 |
 
 ## Deferred
 
