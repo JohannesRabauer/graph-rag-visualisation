@@ -44,6 +44,13 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **UJ-2. Setting up before a stream.**
   - The creator clones the repo and runs a single Docker Compose command, which provisions Neo4j (and any other required infra) automatically. The only manual step is setting the `OPENAI_API_KEY` environment variable. No other configuration is needed before UJ-1 can run.
 
+- **UJ-3. Freely exploring the Knowledge Graph.**
+  - **Persona + context:** the creator (or a viewer), after a Corpus has been ingested, wanting to browse the graph itself rather than ask it a question.
+  - **Entry state:** a Corpus has already been ingested via UJ-1; the Knowledge Graph exists.
+  - **Path:** navigates to the Explore page → sees the full Knowledge Graph with Communities always visible → pans and zooms freely → clicks an Entity → sees its connections, details, and Tags.
+  - **Climax:** the graph stops being an abstraction tied to one question's answer — it's simply there, browsable on its own terms.
+  - **Resolution:** the creator (or viewer) has a concrete, self-directed sense of the graph's actual structure, independent of any specific query.
+
 ## 3. Glossary
 
 - **Corpus / Document Set** — the documents provided for ingestion in a given run (uploaded plain text/PDF files, or the built-in demo set).
@@ -56,6 +63,7 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **Global Search** — a retrieval mode that answers corpus-wide, thematic questions by aggregating over Community summaries.
 - **Retrieval Trace** — the captured, ordered record of which Entities, Relationships, and Communities were touched while answering a query.
 - **Replay** — the scrubbable, step-by-step visualization of a Retrieval Trace, shown after retrieval completes.
+- **Tag** — a small, user-facing label on an Entity, shown in the Explore page's node detail panel alongside that Entity's connections.
 
 ## 4. Features
 
@@ -99,7 +107,7 @@ If an LLM call fails during Knowledge Graph construction, the system displays an
 
 ### 4.3 Community Detection & Visualization
 
-**Description:** The constructed Knowledge Graph is clustered into Communities, and the clustering process itself is shown as a distinct, watchable step. Realizes UJ-1.
+**Description:** The constructed Knowledge Graph is clustered into Communities, and the clustering process itself can be shown as a distinct, watchable step (on by default for a first run, toggleable after). Realizes UJ-1.
 
 #### FR-6: Detect communities
 System runs community detection (Leiden-style clustering) over the constructed Knowledge Graph.
@@ -108,7 +116,10 @@ System runs community detection (Leiden-style clustering) over the constructed K
 - Detected Communities are persisted so they can be used by Global Search (FR-10) and by the community-formation visualization (FR-7).
 
 #### FR-7: Visualize community formation
-System visualizes the community-detection process itself (e.g., nodes visibly folding into clusters) — not just a static rendering of the final grouping.
+User can toggle whether community-detection formation is visualized on the main screen (e.g., nodes visibly folding into clusters, not just a static rendering of the final grouping). The toggle defaults ON for a fresh Corpus's first run — so this signature step plays automatically rather than depending on the user remembering to enable it — and is freely switchable afterward.
+
+**Consequences (testable):**
+- Toggling this control never re-runs or affects community detection itself (FR-6), which always proceeds in the background regardless of toggle state — it only shows or hides the formation animation.
 
 ### 4.4 Query Interface
 
@@ -156,6 +167,22 @@ The application and Neo4j can be started via a single Docker Compose command.
 #### FR-15: API key via environment variable
 The OpenAI API key is supplied via an environment variable at startup; no in-app configuration UI is required for v1.
 
+### 4.7 Graph Exploration
+
+**Description:** A dedicated page for free-form exploration of the full Knowledge Graph, independent of any query — browsing the graph's actual structure rather than asking it a question. Realizes UJ-3.
+
+#### FR-16: Explore the full Knowledge Graph
+User can navigate to a dedicated Explore page showing the full Knowledge Graph, with pan and zoom, reached via a persistent link/tab from the main screen.
+
+**Consequences (testable):**
+- Communities are always visualized on this page (no toggle, unlike FR-7's main-screen behavior) — this page's purpose is structural exploration, so hiding Community structure would work against it.
+- If no Corpus has been ingested yet, the page shows a clear empty state pointing back to the main screen's ingestion entry point, rather than a blank or broken canvas.
+
+#### FR-17: Inspect an Entity's details
+User can click any Entity on the Explore page to see its connections (Relationships), details, and Tags.
+
+**Out of Scope:** Editing an Entity, its Relationships, or its Tags — this is a read-only exploration view for v1.
+
 ## 5. Cross-Cutting NFRs
 
 - **UI tone:** the interface should read as modern and minimalist, running entirely in the browser with minimal setup friction (per the brief). Full visual/interaction direction is deferred to the `bmad-ux` pass — this is a pointer forward, not a spec.
@@ -183,9 +210,11 @@ The OpenAI API key is supplied via an environment variable at startup; no in-app
 - Chat-based query interface answering via Local Search and Global Search (FR-8–FR-11).
 - Captured, replayable Retrieval Trace with scrub controls (FR-12–FR-13).
 - One-command (Docker Compose) setup with API key via environment variable (FR-14–FR-15).
+- Free-form Knowledge Graph exploration on a dedicated page, with Entity detail inspection (FR-16–FR-17).
 
 ### 7.2 Out of Scope for MVP
 - Everything listed under Non-Goals above.
+- Editing Entities, Relationships, or Tags on the Explore page — read-only for v1 (FR-17).
 - Library extraction/publishing — deferred to a future version, once the demo itself works. *(Revisit once v1 is stable and used on-stream a few times.)*
 - Marketing website, README polish, and app icon — deferred; parked in the brief's addendum as future roadmap items.
 
