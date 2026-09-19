@@ -261,3 +261,36 @@ So that a failure is honest and obvious rather than a silent hang or crash (FR5)
 **Then** an `error` Server-Sent Event is emitted on the Corpus's progress stream (AD-12)
 **And** the frontend displays the Error banner component (UX-DR12) naming what failed, in plain language
 **And** the system does not automatically retry or substitute cached/canned output (NFR2) — this is a deliberate, accepted risk, not an oversight
+
+## Epic 3: Community Detection & Visualization
+
+Building on an ingested Corpus, the Knowledge Graph is automatically clustered into Communities, and users can watch that clustering happen (on by default for a first run) or toggle it off to compare with/without — the signature "watchable step" the whole project is built to teach.
+
+### Story 3.1: Detect Communities in the Knowledge Graph
+
+As the creator,
+I want the system to automatically cluster the Knowledge Graph into Communities and generate a summary for each,
+So that Community structure and summaries are always ready, whether I'm about to watch them form, query with Global Search, or explore the graph later (FR6).
+
+**Acceptance Criteria:**
+
+**Given** Knowledge Graph construction (Story 2.4) has completed for a Corpus
+**When** community detection runs
+**Then** it starts automatically and asynchronously, unconditionally — never gated by any UI toggle state (AD-6)
+**And** relationships fed into the GDS Leiden call are projected as `UNDIRECTED` (AD-4)
+**And** each detected Community is written as a first-class `(:Community {id, summary})` node related to its member Entities via `[:BELONGS_TO]` — never a scalar property on Entity (AD-11)
+**And** as part of this same run, each Community's summary is generated via `LlmPort` and persisted onto its node — `AnswerGlobalSearch` (Epic 4) will only ever read this summary, never generate one on demand (AD-6)
+
+### Story 3.2: Toggle Community Formation Visualization
+
+As the creator,
+I want a toggle on the main screen controlling whether I see the community-formation animation, defaulting on for a Corpus's first run,
+So that the signature "communities folding into clusters" moment plays automatically for a first-time viewer, while I can still turn it off afterward to demonstrate "with vs. without" (FR7).
+
+**Acceptance Criteria:**
+
+**Given** a fresh Corpus is being ingested for the first time
+**When** community detection (Story 3.1) begins
+**Then** the community-visualization toggle defaults to ON, and the frontend animates Communities visibly folding into hulls as the detection progress events arrive (UX-DR7, UX-DR11)
+**And** when I switch the toggle OFF, the animation and hull overlay stop being shown, but detection continues unaffected underneath
+**And** toggling the switch never re-runs detection, and the backend has no knowledge of the toggle's state at all — the same progress events are emitted regardless (AD-6)
