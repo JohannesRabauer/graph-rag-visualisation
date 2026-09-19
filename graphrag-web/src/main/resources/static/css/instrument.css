@@ -118,11 +118,13 @@ body {
 }
 
 /* ---- app bar ----
-   Brand mark + wordmark only for this story — no corpus chip until
-   Epic 2 introduces a Corpus. */
+   Brand mark + wordmark, plus a Corpus chip slot (DESIGN.md
+   `components.corpus-chip`) that stays hidden until a Corpus is
+   uploaded (Story 2.1). */
 .app-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
@@ -166,15 +168,18 @@ body {
 
 /* ---- graph canvas (resting / idle state) ----
    DESIGN.md `components.graph-canvas`: faint 24px grid on {colors.paper},
-   uppercase eyebrow title. No chat panel, composer, upload control, or
-   Cytoscape.js in this story — the canvas fills the full frame width. */
+   uppercase eyebrow title. No chat panel, composer, or Cytoscape.js in
+   this story — the canvas fills the full frame width. The idle state now
+   carries the upload control (Story 2.1) that gets a Corpus into the app. */
 .canvas {
+  position: relative;
   flex: 1;
   background:
     linear-gradient(var(--line) 1px, transparent 1px) 0 0 / var(--space-grid-unit) var(--space-grid-unit),
     linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / var(--space-grid-unit) var(--space-grid-unit),
     var(--paper);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
@@ -201,4 +206,69 @@ body {
   font-size: var(--font-body-size);
   line-height: var(--font-body-line-height);
   color: var(--ink-600);
+}
+
+/* ---- upload control ----
+   Plain-language prompt plus the native file input; no chat/composer
+   styling reused, since this is not that component. */
+.upload-control {
+  margin-top: var(--space-6);
+}
+
+.upload-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  color: var(--ink-600);
+}
+
+/* ---- corpus chip ----
+   DESIGN.md `components.corpus-chip`: pill in the app bar naming the
+   active Corpus and document count, monospace, with a small neutral
+   status dot. Hidden until a Corpus is uploaded. */
+.corpus-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-900);
+}
+
+.corpus-chip[hidden] {
+  display: none;
+}
+
+.corpus-chip .status-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--ink-400);
+}
+
+/* ---- error banner ----
+   DESIGN.md `components.error-banner`: Active-soft fill, Active border,
+   plain-language message, no icon glyphs beyond the warm-color cue. */
+.error-banner {
+  width: 100%;
+  max-width: 420px;
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--active-soft);
+  border: 1px solid var(--active);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+}
+
+.error-banner[hidden] {
+  display: none;
 }

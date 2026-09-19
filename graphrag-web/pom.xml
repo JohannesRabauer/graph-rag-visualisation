@@ -43,6 +43,11 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
+      <groupId>com.graphraglens</groupId>
+      <artifactId>graphrag-adapter-parsing</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-thymeleaf</artifactId>
     </dependency>

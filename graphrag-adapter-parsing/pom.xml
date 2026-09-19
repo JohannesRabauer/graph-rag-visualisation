@@ -16,16 +16,32 @@
 
   <name>GraphRAG Lens :: Adapter :: Parsing</name>
   <description>
-    Stub module for the future PDF/text parsing adapter. Dependency-only for
-    now; PDFBox and the DocumentParserPort implementation arrive with the
-    story that implements this adapter.
+    Plain-text and (later) PDF parsing adapter implementing
+    DocumentParserPort. PDFBox arrives with the story that adds PDF support.
   </description>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>5.14.4</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
       <groupId>com.graphraglens</groupId>
       <artifactId>graphrag-core</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>

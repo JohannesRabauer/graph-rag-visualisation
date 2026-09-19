@@ -2,7 +2,7 @@
 title: 'Upload a Plain Text Corpus'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -36,18 +36,18 @@ baseline_commit: '3a5d514d5efc798c5bcf4ecb12351dde62e19d40'
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `graphrag-core/src/main/java/com/graphraglens/core/port/DocumentParserPort.java` -- add `boolean supports(String filename)` -- the dispatch contract adapters implement
-- [ ] `graphrag-core/src/main/java/com/graphraglens/core/domain/UploadedDocument.java` -- new record `(String filename, String content)` -- framework-free input to the use case
-- [ ] `graphrag-core/src/main/java/com/graphraglens/core/domain/Corpus.java` -- new record `(String id, List<UploadedDocument> documents)` with `documentNames()`/`documentCount()` helpers -- the domain object the chip and later stories read
-- [ ] `graphrag-core/src/main/java/com/graphraglens/core/domain/UnsupportedFileTypeException.java` -- new unchecked exception carrying the rejected filename -- signals an unsupported upload without any HTTP concept leaking into core
-- [ ] `graphrag-core/src/main/java/com/graphraglens/core/usecase/IngestCorpus.java` -- new use case: constructor takes `List<DocumentParserPort>`; validates every document's filename against all parsers (`supports`), throws `UnsupportedFileTypeException` on the first unsupported one, else returns a new `Corpus` with a generated UUID id -- the one place upload validation logic lives
-- [ ] `graphrag-adapter-parsing/src/main/java/com/graphraglens/adapter/parsing/PlainTextDocumentParserAdapter.java` -- new class implementing `DocumentParserPort`; `supports` returns true iff the filename ends with `.txt` (case-insensitive) -- first real adapter for this port
-- [ ] `graphrag-web/src/main/java/com/graphraglens/web/config/ParserConfig.java` -- new `@Configuration` with a `@Bean` method returning `new PlainTextDocumentParserAdapter()` -- wires the adapter without adding Spring to `graphrag-adapter-parsing`
-- [ ] `graphrag-web/src/main/java/com/graphraglens/web/CorpusStore.java` -- new `@Component`, `ConcurrentHashMap<String, Corpus>`-backed, `put`/`get` -- the in-memory Corpus registry (identity lives here, not Neo4j)
-- [ ] `graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- new `@RestController`, `POST /api/corpora` accepting `List<MultipartFile> files`; maps each to `UploadedDocument` (UTF-8 decoded content), calls `IngestCorpus`, stores the result in `CorpusStore`, returns `201` with `{"corpusId", "documentNames", "documentCount"}`; an `@ExceptionHandler` for `UnsupportedFileTypeException` returns `400` with `{"error": "<plain-language message naming the rejected file>"}` -- the upload entry point
-- [ ] `graphrag-web/src/main/resources/static/js/upload.js` -- new plain JS: wires the file input's `change` event, `fetch`-POSTs to `/api/corpora` as `multipart/form-data`, on success renders the corpus-chip into the app-bar, on 400 renders the error banner with the response's `error` message -- the only client-side script in the project so far
-- [ ] `graphrag-web/src/main/resources/templates/index.html` -- replace the idle-state copy with an upload control (`<input type="file" multiple accept=".txt">` + a plain-language prompt), an empty corpus-chip slot in the app-bar (hidden until populated), an empty error-banner slot in the canvas (hidden until populated), and a `<script>` tag loading `upload.js` -- the actual UI this story delivers
-- [ ] `graphrag-web/src/main/resources/static/css/instrument.css` -- add `.corpus-chip` and `.error-banner` rules using the existing `DESIGN.md` component tokens (no new colors) -- styles for the two new UI pieces
+- [x] `graphrag-core/src/main/java/com/graphraglens/core/port/DocumentParserPort.java` -- add `boolean supports(String filename)` -- the dispatch contract adapters implement
+- [x] `graphrag-core/src/main/java/com/graphraglens/core/domain/UploadedDocument.java` -- new record `(String filename, String content)` -- framework-free input to the use case
+- [x] `graphrag-core/src/main/java/com/graphraglens/core/domain/Corpus.java` -- new record `(String id, List<UploadedDocument> documents)` with `documentNames()`/`documentCount()` helpers -- the domain object the chip and later stories read
+- [x] `graphrag-core/src/main/java/com/graphraglens/core/domain/UnsupportedFileTypeException.java` -- new unchecked exception carrying the rejected filename -- signals an unsupported upload without any HTTP concept leaking into core
+- [x] `graphrag-core/src/main/java/com/graphraglens/core/usecase/IngestCorpus.java` -- new use case: constructor takes `List<DocumentParserPort>`; validates every document's filename against all parsers (`supports`), throws `UnsupportedFileTypeException` on the first unsupported one, else returns a new `Corpus` with a generated UUID id -- the one place upload validation logic lives
+- [x] `graphrag-adapter-parsing/src/main/java/com/graphraglens/adapter/parsing/PlainTextDocumentParserAdapter.java` -- new class implementing `DocumentParserPort`; `supports` returns true iff the filename ends with `.txt` (case-insensitive) -- first real adapter for this port
+- [x] `graphrag-web/src/main/java/com/graphraglens/web/config/ParserConfig.java` -- new `@Configuration` with a `@Bean` method returning `new PlainTextDocumentParserAdapter()` -- wires the adapter without adding Spring to `graphrag-adapter-parsing`
+- [x] `graphrag-web/src/main/java/com/graphraglens/web/CorpusStore.java` -- new `@Component`, `ConcurrentHashMap<String, Corpus>`-backed, `put`/`get` -- the in-memory Corpus registry (identity lives here, not Neo4j)
+- [x] `graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- new `@RestController`, `POST /api/corpora` accepting `List<MultipartFile> files`; maps each to `UploadedDocument` (UTF-8 decoded content), calls `IngestCorpus`, stores the result in `CorpusStore`, returns `201` with `{"corpusId", "documentNames", "documentCount"}`; an `@ExceptionHandler` for `UnsupportedFileTypeException` returns `400` with `{"error": "<plain-language message naming the rejected file>"}` -- the upload entry point
+- [x] `graphrag-web/src/main/resources/static/js/upload.js` -- new plain JS: wires the file input's `change` event, `fetch`-POSTs to `/api/corpora` as `multipart/form-data`, on success renders the corpus-chip into the app-bar, on 400 renders the error banner with the response's `error` message -- the only client-side script in the project so far
+- [x] `graphrag-web/src/main/resources/templates/index.html` -- replace the idle-state copy with an upload control (`<input type="file" multiple accept=".txt">` + a plain-language prompt), an empty corpus-chip slot in the app-bar (hidden until populated), an empty error-banner slot in the canvas (hidden until populated), and a `<script>` tag loading `upload.js` -- the actual UI this story delivers
+- [x] `graphrag-web/src/main/resources/static/css/instrument.css` -- add `.corpus-chip` and `.error-banner` rules using the existing `DESIGN.md` component tokens (no new colors) -- styles for the two new UI pieces
 
 **Acceptance Criteria:**
 - Given the app's empty state, when one or more `.txt` files are selected and uploaded, then `POST /api/corpora` returns `201` with a `corpusId`, and the Corpus chip appears in the app bar naming the uploaded file(s)
@@ -57,17 +57,34 @@ baseline_commit: '3a5d514d5efc798c5bcf4ecb12351dde62e19d40'
 
 ## Implementation Notes
 
+- Core additions exactly as specified: `DocumentParserPort.supports(String)`, the `UploadedDocument`/`Corpus`/`UnsupportedFileTypeException` domain types, and `IngestCorpus` (validates every document against every registered parser, throws on the first unsupported filename, else returns a `Corpus` with a generated `UUID` id). `Corpus.documentNames()`/`documentCount()` are stream-derived, not stored fields.
+- `PlainTextDocumentParserAdapter` (new `graphrag-adapter-parsing` module code — the module previously had no `src/`) does a case-insensitive `.endsWith(".txt")` check, null-safe.
+- `graphrag-adapter-parsing/pom.xml` gained a `junit-jupiter` test-scope dependency (with its own `junit-bom` import, mirroring `graphrag-core/pom.xml`'s pattern) so `PlainTextDocumentParserAdapterTest` could be added; still no Spring dependency anywhere in the module.
+- `graphrag-web/pom.xml` gained a dependency on `graphrag-adapter-parsing` (needed for `ParserConfig` to construct the adapter). `ParserConfig` (`@Configuration`) declares two `@Bean` methods: one for the `DocumentParserPort` (`new PlainTextDocumentParserAdapter()`), and one for `IngestCorpus` itself, taking the auto-collected `List<DocumentParserPort>` — this was the one small addition beyond the spec's literal Code Map (the Code Map's wiring-pattern note describes the parser bean but `IngestCorpus` also needs a Spring-side factory method to be injectable into `CorpusController`; keeping it in the same `ParserConfig` avoided an extra file for a single `@Bean` method).
+- `CorpusController.upload` reads each `MultipartFile` fully into memory (`file.getBytes()`, UTF-8-decoded) — no disk/temp-file usage, matching the in-memory-only constraint. An `IOException` while reading bytes is wrapped in `UncheckedIOException` (not spec'd, but needed for the method reference in the `.map(this::toUploadedDocument)` stream to compile without a checked-exception leak).
+- `index.html`: the idle state keeps its exact Story 1.3 eyebrow/subtitle copy and adds an `<input type="file" id="corpus-file-input" multiple accept=".txt">` plus a plain-language `<label>`, a `#corpus-chip` slot in the `.app-bar` (`hidden` until populated), and a `#error-banner` slot (`role="alert"`, `hidden`) at the top of `.canvas`. `upload.js` is loaded via a trailing `<script>` tag (both a Thymeleaf `th:src` and a static `src` fallback, matching the existing `th:href`/`href` pattern already used for `instrument.css`).
+- `upload.js`: on the file input's `change` event, builds a `FormData` with every selected file under the `files` field (matching `@RequestParam("files")`), `fetch`-POSTs to `/api/corpora`, and on a 2xx response renders the chip (`<filenames joined by ", "> · <N> document(s)`, plus a `.status-dot` span) and hides any prior error banner; on a non-2xx response it shows the banner with the response body's `error` text (or a generic fallback if the body is unparseable/network fails). The file input is reset after each attempt so re-selecting the same file re-fires `change`.
+- `instrument.css`: added `.corpus-chip`/`.corpus-chip .status-dot` (background `--paper`, border `--line`, radius `--radius-full`, `--font-mono`/`--font-mono-size`, per `DESIGN.md`'s `components.corpus-chip`) and `.error-banner` (background `--active-soft`, border `--active`, per `components.error-banner`) — no new color tokens. `.app-bar` gained `justify-content: space-between` to push the chip to the right; `.canvas` gained `flex-direction: column` so the error banner stacks above the idle content instead of sitting beside it. Removed the now-stale `static/js/.gitkeep` placeholder since `upload.js` is the project's first real JS file.
+- Updated `MainControllerTest` (Story 1.3's test): its `doesNotContain("upload")` / `doesNotContain("<script")` assertions were the *old* Story 1.3 boundary, which this story explicitly supersedes per its own Boundaries ("replace the idle-state copy with an upload control... and a `<script>` tag loading `upload.js`"). Removed those two now-incorrect assertions, kept the rest (exact eyebrow/subtitle copy, `instrument.css` link, still no chat/composer/Cytoscape), and added a second test asserting the new upload control, corpus-chip slot, error-banner slot, and `upload.js` script tag are present.
+- Added automated test coverage beyond the spec's literal file list, to back the Acceptance Criteria with something that reruns rather than only prose/manual `curl`: `IngestCorpusTest` (core, stub `DocumentParserPort` lambdas — supported/unsupported/first-unsupported-wins/multi-parser-OR), `PlainTextDocumentParserAdapterTest` (case-insensitivity, null-safety, rejection), and `CorpusControllerTest` (`@SpringBootTest` + `@AutoConfigureMockMvc` + `MockMultipartFile`, covering the 201/400 responses and asserting the `CorpusStore` actually holds the created `Corpus` with its document names and content — AC3).
+
 ## Spec Change Log
 
 ## Review Triage Log
 
 ## Verification
 
-**Commands:**
-- `mvn -q package` -- expected: `BUILD SUCCESS`, including the new `IngestCorpus`/`CorpusController` code
-- `mvn -pl graphrag-web spring-boot:run` then `curl -F "files=@/tmp/test.txt" http://localhost:8080/api/corpora` -- expected: `201`, JSON body with `corpusId` and `documentNames: ["test.txt"]`
-- `curl -F "files=@/tmp/test.pdf" http://localhost:8080/api/corpora` (any non-`.txt` file) -- expected: `400`, JSON body `{"error": "..."}` naming the rejected file
-- `grep -riE "spring" graphrag-adapter-parsing/pom.xml` -- expected: no matches
+**Commands run:**
+- `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn package` (full reactor) -- `Tests run: 4/4/2/3` across `IngestCorpusTest`, `PlainTextDocumentParserAdapterTest`, `MainControllerTest`, `CorpusControllerTest`, all `Failures: 0, Errors: 0` -- `BUILD SUCCESS`
+- `grep -riE "spring" graphrag-adapter-parsing/pom.xml` -- no matches (confirmed AC4; the only other `spring` hits in the repo are `graphrag-core/pom.xml`'s enforcer-rule text, which bans Spring rather than depending on it)
+- `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn install -DskipTests` (needed once so `graphrag-core`/`graphrag-adapter-parsing` snapshot jars exist in `~/.m2` for a standalone module run) then, from `graphrag-web/`, `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn spring-boot:run &`
+- `curl -i -F "files=@/tmp/test.txt" http://localhost:8080/api/corpora` -- `201`, `{"documentNames":["test.txt"],"corpusId":"1f5855d3-f7b5-4c09-b38d-00cf9d9d5cc5","documentCount":1}`
+- `curl -i -F "files=@/tmp/test.pdf" http://localhost:8080/api/corpora` -- `400`, `{"error":"Unsupported file type: \"test.pdf\". Only .txt files are supported."}`
+- `curl http://localhost:8080/` -- 200 OK; body contains the `#corpus-chip` (hidden) and `#error-banner` (hidden) slots, the `<input type="file" ... accept=".txt">` control, and the `upload.js` script tag
+- `curl -o /dev/null -w "%{http_code}" http://localhost:8080/css/instrument.css` and `.../js/upload.js` -- both `200`
+- Process stopped cleanly after verification; confirmed no lingering `spring-boot`/`graphrag` process afterward
+
+**Result:** All four Acceptance Criteria pass — 201/corpusId/documentNames on `.txt` upload, 400/plain-language `error` naming the file on an unsupported upload, the created `Corpus` is present in `CorpusStore` with its document names and content preserved (`CorpusControllerTest`), and neither `graphrag-core/pom.xml` nor `graphrag-adapter-parsing/pom.xml` declares a Spring dependency.
 
 **Manual checks (if no CLI):**
 - Open `http://localhost:8080/`, upload a `.txt` file via the browser control, confirm the corpus chip appears with the filename; then try a `.jpg` and confirm the error banner appears with a clear message.
