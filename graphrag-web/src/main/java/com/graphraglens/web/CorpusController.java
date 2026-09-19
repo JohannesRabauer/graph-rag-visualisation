@@ -10,8 +10,10 @@ import com.graphraglens.core.domain.UploadedDocument;
 import com.graphraglens.core.port.DocumentParserPort;
 import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
+import com.graphraglens.core.usecase.AnswerGlobalSearch;
 import com.graphraglens.core.usecase.BuildKnowledgeGraph;
 import com.graphraglens.core.usecase.DetectCommunities;
+import com.graphraglens.core.usecase.GlobalSearchAnswer;
 import com.graphraglens.core.usecase.IngestCorpus;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -120,12 +122,36 @@ public class CorpusController {
         Corpus corpus = corpusStore.get(corpusId)
                 .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
 
-        String answer = buildAnswer(corpus, question, mode);
+        if ("GLOBAL".equalsIgnoreCase(mode)) {
+            return globalSearchResponse(question);
+        }
+
+        String answer = buildAnswer(corpus, question);
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
                 "traceId", UUID.randomUUID().toString(),
                 "answer", answer,
                 "mode", mode.toUpperCase(Locale.ROOT)));
+    }
+
+    private ResponseEntity<Map<String, Object>> globalSearchResponse(String question) {
+        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStorePort).answer(question);
+
+        if (result.noAnswer()) {
+            // AD-13's distinct no-answer shape — a normal outcome (Communities
+            // not detected/summarized yet), never the generic {"error": ...} shape.
+            return ResponseEntity.ok(Map.of(
+                    "answerId", UUID.randomUUID().toString(),
+                    "traceId", UUID.randomUUID().toString(),
+                    "noAnswer", true,
+                    "reason", result.reason()));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "answerId", UUID.randomUUID().toString(),
+                "traceId", UUID.randomUUID().toString(),
+                "answer", result.answer(),
+                "mode", "GLOBAL"));
     }
 
     @ExceptionHandler(UnsupportedFileTypeException.class)
@@ -192,7 +218,7 @@ public class CorpusController {
                 "memberEntityIdentities", memberEntityIdentities);
     }
 
-    private String buildAnswer(Corpus corpus, String question, String mode) {
+    private String buildAnswer(Corpus corpus, String question) {
         String lowerQuestion = question.toLowerCase(Locale.ROOT);
         List<String> tokens = new ArrayList<>();
         for (String token : lowerQuestion.split("[^a-z0-9]+")) {
@@ -208,15 +234,11 @@ public class CorpusController {
             String content = document.content();
             String candidate = findBestSentence(content, lowerQuestion, tokens);
             if (candidate != null) {
-                return mode.equalsIgnoreCase("GLOBAL")
-                        ? "Across the corpus, the strongest signal is that " + candidate
-                        : "Based on the local neighborhood in this corpus, " + candidate;
+                return "Based on the local neighborhood in this corpus, " + candidate;
             }
         }
 
-        return mode.equalsIgnoreCase("GLOBAL")
-                ? "The corpus does not contain an obvious global match for that question yet. Try asking about a named person, place, or event."
-                : "The loaded corpus does not contain a direct local match for that question. Try asking about a person, place, or event mentioned in the documents.";
+        return "The loaded corpus does not contain a direct local match for that question. Try asking about a person, place, or event mentioned in the documents.";
     }
 
     private String findBestSentence(String content, String lowerQuestion, List<String> tokens) {

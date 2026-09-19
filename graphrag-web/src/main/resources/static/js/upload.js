@@ -88,7 +88,10 @@
         })
         .then(function (result) {
           if (result.ok) {
-            appendAnswer(result.body.answer, result.body.mode || currentSearchMode);
+            // A "no Communities yet" response has no `answer`, only a
+            // plain-language `reason` (AD-13's distinct noAnswer shape) —
+            // prefer that over the generic "No answer was returned." fallback.
+            appendAnswer(result.body.answer || result.body.reason, result.body.mode || currentSearchMode);
           } else {
             showErrorBanner(errorMessage(result.body));
           }

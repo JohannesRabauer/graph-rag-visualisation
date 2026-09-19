@@ -261,6 +261,52 @@ class CorpusControllerTest {
     }
 
     @Test
+    void globalSearchAnswersFromACommunitySummaryOnceCommunitiesExist() throws Exception {
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
+                        .contentType("application/json")
+                        .content("{\"question\":\"What community centers on Irene Adler?\",\"mode\":\"GLOBAL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answerId").exists())
+                .andExpect(jsonPath("$.traceId").exists())
+                .andExpect(jsonPath("$.mode").value("GLOBAL"))
+                .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.containsString("Irene Adler")))
+                .andExpect(jsonPath("$.noAnswer").doesNotExist());
+    }
+
+    @Test
+    void globalSearchStillReturnsAnOrdinaryAnswerWhenNoCommunityClearlyMatchesTheQuestion() throws Exception {
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
+                        .contentType("application/json")
+                        .content("{\"question\":\"zzqqxx nonsense gibberish flimflam\",\"mode\":\"GLOBAL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answerId").exists())
+                .andExpect(jsonPath("$.traceId").exists())
+                .andExpect(jsonPath("$.mode").value("GLOBAL"))
+                .andExpect(jsonPath("$.answer").exists())
+                .andExpect(jsonPath("$.noAnswer").doesNotExist());
+    }
+
+    @Test
     void uploadingAnUnsupportedFileTypeReturns400WithAPlainLanguageErrorNamingTheFile() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "files", "test.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "not really a docx".getBytes(StandardCharsets.UTF_8));
