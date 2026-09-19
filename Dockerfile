@@ -20,7 +20,7 @@ RUN mvn -q -B package -DskipTests
 FROM eclipse-temurin:25.0.4_7-jre-noble AS runtime
 WORKDIR /app
 
-COPY --from=build /workspace/graphrag-web/target/graphrag-web-0.1.0-SNAPSHOT.jar app.jar
+COPY --from=build /workspace/graphrag-web/target/graphrag-web.jar app.jar
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

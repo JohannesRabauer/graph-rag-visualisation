@@ -26,4 +26,18 @@ mvn package
 ```
 
 This builds all five modules and produces the executable jar at
-`graphrag-web/target/graphrag-web-<version>.jar`.
+`graphrag-web/target/graphrag-web.jar`.
+
+## Running the app
+
+```
+OPENAI_API_KEY=sk-... docker compose up
+```
+
+This is the only setup step: it builds the `app` image, starts Neo4j
+(with the GDS plugin) alongside it, and serves the app on port 8080.
+
+Caveat: `NEO4J_AUTH`/the Neo4j password is only applied when Neo4j's data
+volume is first created. If you change it after the first run, also run
+`docker compose down -v` first — otherwise the running database keeps its
+original credentials and silently diverges from `docker-compose.yml`.

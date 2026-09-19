@@ -2,7 +2,7 @@
 title: 'One-Command Local Environment'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -53,6 +53,7 @@ baseline_commit: 'a95a8e7cb88e97740d91120f852fcfa9102ef5f5'
 - `app` depends on `neo4j` via `condition: service_healthy`, and `app`'s own container has no defined healthcheck (not required by the spec — this story doesn't need the app to reach Neo4j yet, Epic 2+).
 - Verification performed: `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn -q package` at repo root → `BUILD SUCCESS`, produced `graphrag-web/target/graphrag-web-0.1.0-SNAPSHOT.jar` (confirming the Dockerfile's hardcoded jar path is correct and the source it builds still compiles unchanged from Story 1.1). `docker compose config` → resolves cleanly, service list is exactly `app` and `neo4j` (verified via `docker compose config --services`). Confirmed all three pinned image tags exist on Docker Hub via the tag-listing API (`maven:3.9.16-eclipse-temurin-25-noble`, `eclipse-temurin:25.0.4_7-jre-noble`, `neo4j:2026.08.1-community` all return HTTP 200).
 - Reproduced this sandbox's documented egress constraint directly: `docker pull hello-world` fails with `403 Forbidden` from `production.cloudfront.docker.com`, confirming (again, independently) that a full `docker build`/`docker compose up` cannot complete here. This matches the Code Map's pre-existing note and is not a defect in the Dockerfile/compose file — both are otherwise config/schema-valid. A real `docker compose up` with internet access is still required to confirm both containers start and `app` serves on port 8080 (last Acceptance Criterion, explicitly flagged in the spec as unverifiable in-sandbox).
+- **Patch round 1** applied all six `→ patch` review findings: README `## Running the app` section added (`OPENAI_API_KEY=sk-... docker compose up`, plus the `NEO4J_AUTH`-only-applies-to-a-fresh-volume caveat); `docker-compose.yml`'s `NEO4J_AUTH` changed to `neo4j/${NEO4J_PASSWORD:-graphraglens}` with the healthcheck's `-p` updated to the same `${NEO4J_PASSWORD:-graphraglens}` so they can't drift; `OPENAI_API_KEY` changed to the required form `${OPENAI_API_KEY:?OPENAI_API_KEY must be set}`; `neo4j` healthcheck budget widened to `start_period: 60s` / `retries: 20` / `interval: 10s` (~260s total); `graphrag-web/pom.xml` given `<finalName>graphrag-web</finalName>` and the Dockerfile's runtime `COPY` updated to the fixed `graphrag-web/target/graphrag-web.jar` path (decoupling it from the pom's version). Independently re-verified (not just trusting the fix): `mvn -q clean package` → `BUILD SUCCESS`, `graphrag-web/target/` contains exactly `graphrag-web.jar` (no versioned filename); `docker compose config` (with `OPENAI_API_KEY` set) → resolves cleanly to exactly `app`/`neo4j`, `NEO4J_AUTH` and the healthcheck both show `graphraglens` by default and both shift together to a custom value when `NEO4J_PASSWORD` is set (tested directly); `docker compose config` with `OPENAI_API_KEY` unset → fails fast with `required variable OPENAI_API_KEY is missing a value: OPENAI_API_KEY must be set` instead of silently defaulting to blank.
 
 ## Spec Change Log
 

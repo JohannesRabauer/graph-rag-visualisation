@@ -37,7 +37,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-project-skeleton-module-boundaries: review
-  1-2-one-command-local-environment: in-progress
+  1-2-one-command-local-environment: review
   1-3-empty-state-main-screen: backlog
   epic-1-retrospective: optional
 
