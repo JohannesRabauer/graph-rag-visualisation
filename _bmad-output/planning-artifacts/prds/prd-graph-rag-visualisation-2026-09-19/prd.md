@@ -6,7 +6,6 @@ updated: 2026-09-19
 ---
 
 # PRD: GraphRAG Lens
-*Working title — confirm alongside the brief's title.*
 
 ## 0. Document Purpose
 

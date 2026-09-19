@@ -1,11 +1,11 @@
 ---
-title: GraphRAG Visualization Tool — Product Brief
+title: GraphRAG Lens — Product Brief
 status: final
 created: 2026-09-19
 updated: 2026-09-19
 ---
 
-# Product Brief: GraphRAG Lens *(working title — needs a real name)*
+# Product Brief: GraphRAG Lens
 
 ## Executive Summary
 
