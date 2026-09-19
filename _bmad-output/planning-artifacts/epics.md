@@ -87,8 +87,51 @@ UX-DR21: Implement the three Key Flows end-to-end as testable journeys: UJ-1 (Ex
 
 ### FR Coverage Map
 
-{{requirements_coverage_map}}
+FR1: Epic 2 - Upload plain text files as a Corpus
+FR2: Epic 2 - Upload PDF files as a Corpus
+FR3: Epic 2 - Select the built-in Sherlock Holmes Demo Dataset
+FR4: Epic 2 - Extract Entities/Relationships into Neo4j via live LLM calls
+FR5: Epic 2 - Surface extraction failures visibly
+FR6: Epic 3 - Detect Communities (Leiden clustering)
+FR7: Epic 3 - Toggle community-formation visualization (defaults ON first run)
+FR8: Epic 4 - Submit a query via chat interface
+FR9: Epic 4 - Answer via Local Search
+FR10: Epic 4 - Answer via Global Search
+FR11: Epic 4 - Render the final answer in chat
+FR12: Epic 5 - Capture the Retrieval Trace
+FR13: Epic 5 - Replay the Retrieval Trace
+FR14: Epic 1 - One-command infrastructure setup
+FR15: Epic 1 - API key via environment variable
+FR16: Epic 6 - Explore the full Knowledge Graph
+FR17: Epic 6 - Inspect an Entity's details
+
+NFR1 (UI tone): Established in Epic 1 (design tokens/shell), enforced across all epics.
+NFR2 (Reliability, bounded): Enforced in Epic 2 (extraction failures) and Epic 4 (generation failures).
+NFR3 (Single-user, local-only): Enforced in Epic 1 (deployment topology, no auth).
+NFR4 (Provider flexibility): Established in Epic 2 (first epic to introduce the LlmPort/LangChain4j adapter boundary).
 
 ## Epic List
 
-{{epics_list}}
+### Epic 1: Foundation & One-Command Setup
+Establishes the project skeleton (Hexagonal module layout, Spring Boot + Thymeleaf shell, base design tokens) and delivers the PRD's own Setup & Deployment capability: anyone can clone the repo, run a single Docker Compose command, and reach the app's empty-state main screen — Neo4j (with the GDS plugin) running alongside it, ready to accept a Corpus. Realizes UJ-2.
+**FRs covered:** FR14, FR15
+
+### Epic 2: Corpus Ingestion & Knowledge Graph Construction
+Users can bring their own documents (plain text or PDF) or pick the built-in Sherlock Holmes Demo Dataset, and watch a real Knowledge Graph get built in Neo4j via live LLM extraction — with visible, honest errors if a file is rejected or an LLM call fails, never a silent hang. This is the first epic where a user has genuine graph data to show for their input.
+**FRs covered:** FR1, FR2, FR3, FR4, FR5
+
+### Epic 3: Community Detection & Visualization
+Building on an ingested Corpus, the Knowledge Graph is automatically clustered into Communities, and users can watch that clustering happen (on by default for a first run) or toggle it off to compare with/without — the signature "watchable step" the whole project is built to teach.
+**FRs covered:** FR6, FR7
+
+### Epic 4: Query Interface
+Users can ask a natural-language question through a chat interface, explicitly choosing Local Search or Global Search, and see a real, generated answer — including an honest "no answer found" result when retrieval comes up empty, distinct from an actual failure.
+**FRs covered:** FR8, FR9, FR10, FR11
+
+### Epic 5: Retrieval Trace Replay
+After an answer arrives, users can scrub back and forth through exactly how it was produced — which Entities, Relationships, and Communities were touched, in order — turning "GraphRAG found an answer" into "here's precisely how."
+**FRs covered:** FR12, FR13
+
+### Epic 6: Graph Exploration
+Independent of any question, users can navigate to a dedicated page and freely pan, zoom, and click around the entire Knowledge Graph, with Communities always visible and a detail panel showing any Entity's connections, details, and Tags.
+**FRs covered:** FR16, FR17
