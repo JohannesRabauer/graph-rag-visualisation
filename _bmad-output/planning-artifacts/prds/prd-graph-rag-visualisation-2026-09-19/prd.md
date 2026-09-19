@@ -63,7 +63,7 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **Global Search** — a retrieval mode that answers corpus-wide, thematic questions by aggregating over Community summaries.
 - **Retrieval Trace** — the captured, ordered record of which Entities, Relationships, and Communities were touched while answering a query.
 - **Replay** — the scrubbable, step-by-step visualization of a Retrieval Trace, shown after retrieval completes.
-- **Tag** — a small, user-facing label on an Entity, shown in the Explore page's node detail panel alongside that Entity's connections.
+- **Tag** — a small, user-facing label on an Entity, shown alongside that Entity's connections and details on the Explore page.
 
 ## 4. Features
 
@@ -116,7 +116,7 @@ System runs community detection (Leiden-style clustering) over the constructed K
 - Detected Communities are persisted so they can be used by Global Search (FR-10) and by the community-formation visualization (FR-7).
 
 #### FR-7: Visualize community formation
-User can toggle whether community-detection formation is visualized on the main screen (e.g., nodes visibly folding into clusters, not just a static rendering of the final grouping). The toggle defaults ON for a fresh Corpus's first run — so this signature step plays automatically rather than depending on the user remembering to enable it — and is freely switchable afterward.
+User can toggle whether community formation is visualized on the main screen (e.g., nodes visibly folding into clusters, not just a static rendering of the final grouping). The toggle defaults ON for a fresh Corpus's first run — so this signature step plays automatically rather than depending on the user remembering to enable it — and is freely switchable afterward.
 
 **Consequences (testable):**
 - Toggling this control never re-runs or affects community detection itself (FR-6), which always proceeds in the background regardless of toggle state — it only shows or hides the formation animation.
@@ -200,6 +200,7 @@ User can click any Entity on the Explore page to see its connections (Relationsh
 - Live/real-time streaming visualization of retrieval (replay only).
 - Packaging or publishing this as a standalone library (future — see brief's Vision).
 - A marketing/showcase website, polished README, and app icon — explicitly parked for later (see addendum).
+- Editing Entities, Relationships, or Tags on the Explore page (read-only for v1).
 
 ## 7. MVP Scope
 
