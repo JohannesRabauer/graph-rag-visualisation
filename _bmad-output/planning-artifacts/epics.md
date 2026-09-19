@@ -353,3 +353,36 @@ So that I immediately see the result alongside my question, and know how it was 
 **Then** it renders in the Chat panel's message thread, tagged with its search mode (`{components.message-answer}`, UX-DR2)
 **And** a Replay CTA appears, offering the step-by-step Retrieval Trace (leads into Epic 5)
 **And** if the LLM call fails during answer generation itself, the same `{"error": "..."}` shape and Error banner used for extraction failures (Story 2.5) apply here too, with no automatic retry (NFR2, extending FR5's principle to generation failures)
+
+## Epic 5: Retrieval Trace Replay
+
+After an answer arrives, users can scrub back and forth through exactly how it was produced — which Entities, Relationships, and Communities were touched, in order — turning "GraphRAG found an answer" into "here's precisely how."
+
+### Story 5.1: Capture the Retrieval Trace
+
+As the creator,
+I want the system to capture an ordered record of which Entities, Relationships, and Communities were touched while answering a query,
+So that I can later show exactly how that answer was produced, not just that it was (FR12).
+
+**Acceptance Criteria:**
+
+**Given** a query (Story 4.2 or 4.3) is executing
+**When** Local Search or Global Search touches an Entity, Relationship, or Community
+**Then** that touch is appended as one step to an ordered, in-memory Retrieval Trace — never an unordered set (AD-5)
+**And** the trace is addressed by a UUID `traceId`, generated when the answer is produced and returned alongside it
+**And** the trace is never persisted to Neo4j and is fetchable only via `GET /api/traces/{traceId}` (AD-5)
+
+### Story 5.2: Replay the Retrieval Trace
+
+As the creator,
+I want to play back a captured Retrieval Trace step by step, with controls to move forward and backward,
+So that I can show, live, exactly how GraphRAG arrived at an answer (FR13).
+
+**Acceptance Criteria:**
+
+**Given** an answer with a Replay CTA (Story 4.4) is showing in chat
+**When** I click the Replay CTA
+**Then** the Retrieval Trace scrubber appears below the graph canvas, fetched via `GET /api/traces/{traceId}` (UX-DR9)
+**And** play/pause autoplays through the steps, step-forward/step-back move exactly one step per press, and dragging the scrubber head jumps to the nearest discrete step
+**And** each step highlights the relevant node/edge on the canvas (active, previous-step, and traversed/upcoming edge states, UX-DR6) alongside a plain-language step-badge caption (UX-DR8)
+**And** Replay is available only after generation completes — there is no live/streaming visualization of retrieval as it happens (explicitly out of scope for v1)
