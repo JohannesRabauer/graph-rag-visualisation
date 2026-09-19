@@ -110,18 +110,16 @@ System visualizes the community-detection process itself (e.g., nodes visibly fo
 
 ### 4.4 Query Interface
 
-**Description:** Users ask questions through a chat-style interface, answered via Local Search or Global Search. Realizes UJ-1.
-
-[ASSUMPTION: the user explicitly chooses Local vs. Global Search per query via a UI control (e.g., a toggle), rather than the system auto-routing based on query type — chosen to support the brief's goal of showcasing GraphRAG's methods side by side rather than hiding the choice. Needs confirmation.]
+**Description:** Users ask questions through a chat-style interface, explicitly choosing Local Search or Global Search via a UI toggle before each query — a deliberate choice over automatic routing, so the two methods can be shown side by side rather than hidden behind the system's own decision. Realizes UJ-1.
 
 #### FR-8: Submit a query
 User can submit a natural-language question via a chat-style interface.
 
 #### FR-9: Answer via Local Search
-System can answer a query using Local Search (Entity-neighborhood traversal).
+User can explicitly select Local Search via a UI toggle; system answers the query using Local Search (Entity-neighborhood traversal).
 
 #### FR-10: Answer via Global Search
-System can answer a query using Global Search (Community-summary aggregation).
+User can explicitly select Global Search via a UI toggle; system answers the query using Global Search (Community-summary aggregation).
 
 #### FR-11: Render the final answer in chat
 The generated answer is displayed in the chat interface once retrieval and generation complete.
@@ -193,10 +191,9 @@ The OpenAI API key is supplied via an environment variable at startup; no in-app
 
 ## 9. Open Questions
 
-1. Local vs. Global Search selection: explicit user toggle, or automatic routing by the system based on query shape? (See §4.4 assumption — needs confirmation.)
-2. Exact Replay UI controls (play/pause/step granularity/speed) — likely detailed during the UX pass (`bmad-ux`) rather than here.
-3. Minimum Java and Neo4j version targets — deferred to architecture (`bmad-architecture`).
+1. Exact Replay UI controls (play/pause/step granularity/speed) — likely detailed during the UX pass (`bmad-ux`) rather than here.
+2. Minimum Java and Neo4j version targets — deferred to architecture (`bmad-architecture`).
 
 ## 10. Assumptions Index
 
-- [ASSUMPTION] §4.4 (FR-9, FR-10) — assumed the user explicitly selects Local vs. Global Search via a UI control, rather than automatic system routing, to support showcasing both methods side by side. Needs confirmation.
+None outstanding — the one open assumption (§4.4, Local vs. Global Search selection) was confirmed during review: explicit UI toggle, not automatic routing.
