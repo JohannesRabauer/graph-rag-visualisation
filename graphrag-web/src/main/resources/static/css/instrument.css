@@ -138,6 +138,12 @@ body {
   color: var(--ink-900);
 }
 
+.brand-title {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
 .brand-mark {
   width: 16px;
   height: 16px;
@@ -186,7 +192,7 @@ body {
   font-weight: var(--font-eyebrow-weight);
   letter-spacing: var(--font-eyebrow-tracking);
   text-transform: uppercase;
-  color: var(--ink-400);
+  color: var(--ink-600);
 }
 
 .canvas-idle .subtitle {
