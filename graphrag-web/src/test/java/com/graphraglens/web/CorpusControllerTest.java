@@ -9,6 +9,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
@@ -74,5 +75,55 @@ class CorpusControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("test.pdf")));
+    }
+
+    @Test
+    void uploadingNoFilesReturns400WithANoFilesProvidedError() throws Exception {
+        mockMvc.perform(multipart("/api/corpora"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("No files were provided."));
+    }
+
+    @Test
+    void uploadingAMixOfSupportedAndUnsupportedFilesReturns400AndRegistersNoCorpus() throws Exception {
+        int sizeBefore = corpusStore.size();
+        MockMultipartFile valid = new MockMultipartFile(
+                "files", "ok.txt", "text/plain", "hello".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile invalid = new MockMultipartFile(
+                "files", "bad.pdf", "application/pdf", "nope".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/corpora").file(valid).file(invalid))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("bad.pdf")));
+
+        assertThat(corpusStore.size()).isEqualTo(sizeBefore);
+    }
+
+    @Test
+    void uploadingAFileThatFailsToReadReturns500WithAGenericPlainLanguageError() throws Exception {
+        MockMultipartFile file = new ThrowingMultipartFile("files", "broken.txt", "text/plain");
+
+        mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error").value("Failed to read an uploaded file. Please try again."));
+    }
+
+    /**
+     * A {@link MockMultipartFile} whose {@code getBytes()} always throws, to
+     * exercise {@code CorpusController}'s {@code IOException} handling
+     * without needing a real broken stream. Flows through {@code MockMvc}'s
+     * multipart request unchanged (no re-parsing), so it reaches the
+     * controller exactly as constructed here.
+     */
+    private static final class ThrowingMultipartFile extends MockMultipartFile {
+
+        ThrowingMultipartFile(String name, String originalFilename, String contentType) {
+            super(name, originalFilename, contentType, new byte[0]);
+        }
+
+        @Override
+        public byte[] getBytes() throws IOException {
+            throw new IOException("Simulated read failure");
+        }
     }
 }

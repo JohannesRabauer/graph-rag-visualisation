@@ -37,7 +37,12 @@ public class CorpusController {
     }
 
     @PostMapping("/api/corpora")
-    public ResponseEntity<Map<String, Object>> upload(@RequestParam("files") List<MultipartFile> files) {
+    public ResponseEntity<Map<String, Object>> upload(
+            @RequestParam(value = "files", required = false) List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "No files were provided."));
+        }
+
         List<UploadedDocument> documents = files.stream()
                 .map(this::toUploadedDocument)
                 .toList();
@@ -57,12 +62,22 @@ public class CorpusController {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", ex.getMessage()));
     }
 
+    @ExceptionHandler(UncheckedIOException.class)
+    public ResponseEntity<Map<String, String>> handleUncheckedIOException(UncheckedIOException ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to read an uploaded file. Please try again."));
+    }
+
     private UploadedDocument toUploadedDocument(MultipartFile file) {
+        String filename = file.getOriginalFilename();
+        if (filename == null || filename.isBlank()) {
+            filename = "(unnamed file)";
+        }
         try {
             String content = new String(file.getBytes(), StandardCharsets.UTF_8);
-            return new UploadedDocument(file.getOriginalFilename(), content);
+            return new UploadedDocument(filename, content);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read uploaded file: " + file.getOriginalFilename(), e);
+            throw new UncheckedIOException("Failed to read uploaded file: " + filename, e);
         }
     }
 }

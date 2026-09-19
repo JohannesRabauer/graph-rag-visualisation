@@ -21,6 +21,7 @@
     }
 
     hideErrorBanner();
+    fileInput.disabled = true;
 
     fetch('/api/corpora', {
       method: 'POST',
@@ -43,6 +44,7 @@
       })
       .finally(function () {
         fileInput.value = '';
+        fileInput.disabled = false;
       });
   });
 

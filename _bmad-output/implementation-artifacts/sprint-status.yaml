@@ -43,7 +43,7 @@ development_status:
   epic-1-retrospective: optional
 
   epic-2: in-progress
-  2-1-upload-a-plain-text-corpus: done
+  2-1-upload-a-plain-text-corpus: review
   2-2-upload-a-pdf-corpus: backlog
   2-3-use-the-built-in-demo-dataset: backlog
   2-4-extract-entities-and-relationships-into-the-knowledge-graph: backlog

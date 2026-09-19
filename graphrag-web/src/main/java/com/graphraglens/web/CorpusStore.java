@@ -26,4 +26,8 @@ public class CorpusStore {
     public Optional<Corpus> get(String id) {
         return Optional.ofNullable(corpora.get(id));
     }
+
+    public int size() {
+        return corpora.size();
+    }
 }
