@@ -76,10 +76,12 @@
       }
       hideErrorBanner();
 
+      var requestedSearchMode = currentSearchMode;
+
       fetch('/api/corpora/' + activeCorpusId + '/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: question, mode: currentSearchMode })
+        body: JSON.stringify({ question: question, mode: requestedSearchMode })
       })
         .then(function (response) {
           return response.json().then(function (body) {
@@ -91,7 +93,10 @@
             // A "no Communities yet" response has no `answer`, only a
             // plain-language `reason` (AD-13's distinct noAnswer shape) —
             // prefer that over the generic "No answer was returned." fallback.
-            appendAnswer(result.body.answer || result.body.reason, result.body.mode || currentSearchMode);
+            // Use the mode that was actually sent with this request (not the
+            // live global, which may have changed if the user toggled modes
+            // while this request was in flight).
+            appendAnswer(result.body.answer || result.body.reason, result.body.mode || requestedSearchMode);
           } else {
             showErrorBanner(errorMessage(result.body));
           }

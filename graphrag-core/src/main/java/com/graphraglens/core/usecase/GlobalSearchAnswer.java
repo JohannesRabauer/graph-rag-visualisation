@@ -17,10 +17,6 @@ public record GlobalSearchAnswer(boolean noAnswer, String answer, String reason)
         return new GlobalSearchAnswer(false, answer, null);
     }
 
-    public static GlobalSearchAnswer noClearMatch(String answer) {
-        return new GlobalSearchAnswer(false, answer, null);
-    }
-
     public static GlobalSearchAnswer noCommunitiesYet() {
         return new GlobalSearchAnswer(true, null,
                 "No Communities have been detected for this corpus yet — community detection and summary "

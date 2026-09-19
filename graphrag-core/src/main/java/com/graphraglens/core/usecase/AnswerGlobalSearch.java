@@ -3,10 +3,8 @@ package com.graphraglens.core.usecase;
 import com.graphraglens.core.domain.Community;
 import com.graphraglens.core.port.GraphStorePort;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
+import java.util.Set;
 
 /**
  * Answers a Global Search question by aggregating already-persisted
@@ -17,6 +15,13 @@ import java.util.Locale;
  * (AD-6). Communities are scored against the question the same
  * keyword-overlap way Local Search already scores sentences, so the demo
  * stays deterministic and provider-agnostic.
+ *
+ * <p>{@link GraphStorePort#communities()} is a process-global, unscoped
+ * store: it is not filtered by any particular corpus. A Global Search
+ * answer can therefore be drawn from a Community that belongs to a
+ * different corpus than the one named in the request. This is an
+ * intentionally accepted, pre-existing limitation (same as Story 4.3), not
+ * a bug in this class.
  */
 public class AnswerGlobalSearch {
 
@@ -32,12 +37,13 @@ public class AnswerGlobalSearch {
             return GlobalSearchAnswer.noCommunitiesYet();
         }
 
-        List<String> tokens = tokenize(question);
+        Set<String> tokens = KeywordMatcher.tokenize(question);
         Community best = null;
         int bestScore = -1;
         for (Community community : communities) {
-            int score = score(community.summary(), tokens);
-            if (score > bestScore) {
+            int score = KeywordMatcher.score(community.summary(), tokens);
+            if (score > bestScore
+                    || (score == bestScore && best != null && community.id().compareTo(best.id()) < 0)) {
                 bestScore = score;
                 best = community;
             }
@@ -48,33 +54,8 @@ public class AnswerGlobalSearch {
                     "Across the corpus, the strongest signal is that " + best.summary());
         }
 
-        return GlobalSearchAnswer.noClearMatch(
+        return GlobalSearchAnswer.matched(
                 "The corpus has Community summaries, but none of them clearly match that question yet. "
                         + "Try asking about a named person, place, or event.");
-    }
-
-    private List<String> tokenize(String question) {
-        List<String> tokens = new ArrayList<>();
-        String lowerQuestion = question == null ? "" : question.toLowerCase(Locale.ROOT);
-        for (String token : lowerQuestion.split("[^a-z0-9]+")) {
-            if (!token.isBlank() && token.length() > 2) {
-                tokens.add(token);
-            }
-        }
-        return tokens;
-    }
-
-    private int score(String summary, List<String> tokens) {
-        if (summary == null) {
-            return 0;
-        }
-        String lowered = summary.toLowerCase(Locale.ROOT);
-        int score = 0;
-        for (String token : tokens) {
-            if (lowered.contains(token)) {
-                score += 2;
-            }
-        }
-        return score;
     }
 }

@@ -15,6 +15,7 @@ import com.graphraglens.core.usecase.BuildKnowledgeGraph;
 import com.graphraglens.core.usecase.DetectCommunities;
 import com.graphraglens.core.usecase.GlobalSearchAnswer;
 import com.graphraglens.core.usecase.IngestCorpus;
+import com.graphraglens.core.usecase.KeywordMatcher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,11 +30,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -219,20 +220,14 @@ public class CorpusController {
     }
 
     private String buildAnswer(Corpus corpus, String question) {
-        String lowerQuestion = question.toLowerCase(Locale.ROOT);
-        List<String> tokens = new ArrayList<>();
-        for (String token : lowerQuestion.split("[^a-z0-9]+")) {
-            if (!token.isBlank() && token.length() > 2) {
-                tokens.add(token);
-            }
-        }
+        Set<String> tokens = KeywordMatcher.tokenize(question);
 
         for (var document : corpus.documents()) {
             if (document == null || document.content() == null) {
                 continue;
             }
             String content = document.content();
-            String candidate = findBestSentence(content, lowerQuestion, tokens);
+            String candidate = findBestSentence(content, tokens);
             if (candidate != null) {
                 return "Based on the local neighborhood in this corpus, " + candidate;
             }
@@ -241,18 +236,12 @@ public class CorpusController {
         return "The loaded corpus does not contain a direct local match for that question. Try asking about a person, place, or event mentioned in the documents.";
     }
 
-    private String findBestSentence(String content, String lowerQuestion, List<String> tokens) {
+    private String findBestSentence(String content, Set<String> tokens) {
         String[] sentences = content.split("(?<=[.!?])\\s+");
         String best = null;
         int bestScore = -1;
         for (String sentence : sentences) {
-            String lowered = sentence.toLowerCase(Locale.ROOT);
-            int score = 0;
-            for (String token : tokens) {
-                if (lowered.contains(token)) {
-                    score += 2;
-                }
-            }
+            int score = KeywordMatcher.score(sentence, tokens);
             if (score > bestScore) {
                 bestScore = score;
                 best = sentence;

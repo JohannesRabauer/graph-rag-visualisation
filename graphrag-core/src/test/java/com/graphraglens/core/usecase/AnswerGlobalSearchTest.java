@@ -45,6 +45,24 @@ class AnswerGlobalSearchTest {
     }
 
     @Test
+    void breaksATieBetweenEquallyScoredCommunitiesByLexicographicallySmallestId() {
+        // Both communities share the token "adler" and so score identically;
+        // only the tie-break (smallest id) should decide the winner. Order of
+        // both the list itself and the ids within it is deliberately mixed so
+        // the test would fail if the outcome depended on iteration order.
+        StubGraphStore graphStore = new StubGraphStore(List.of(
+                new Community("community-z", "This community centers on Irene Adler and disguises."),
+                new Community("community-a", "This community centers on Irene Adler and photographs.")));
+
+        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStore).answer("Tell me about Adler.");
+
+        assertFalse(result.noAnswer());
+        assertNotNull(result.answer());
+        assertTrue(result.answer().contains("photographs"));
+        assertFalse(result.answer().contains("disguises"));
+    }
+
+    @Test
     void stillReturnsAnOrdinaryAnswerWhenCommunitiesExistButNoneMatchTheQuestion() {
         StubGraphStore graphStore = new StubGraphStore(List.of(
                 new Community("community-1", "This community centers on Baker Street and stray cats.")));

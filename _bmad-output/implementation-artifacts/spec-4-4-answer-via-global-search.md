@@ -2,7 +2,7 @@
 title: 'Answer via Global Search'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-progress'
+status: 'done'
 route: 'oneshot'
 review_loop_iteration: 0
 context: []
@@ -35,3 +35,21 @@ baseline_commit: '2db6fcf6282f0f997f83e49e86b955b0db5e6b43'
 </frozen-after-approval>
 
 ## Implementation Notes
+
+- Added `AnswerGlobalSearch`/`GlobalSearchAnswer` (`graphrag-core`), wired into `CorpusController`'s `GLOBAL` branch via a new `globalSearchResponse()` helper. `LOCAL` mode's response wording is unchanged; `buildAnswer()`/`findBestSentence()` now delegate tokenizing/scoring to a new shared `KeywordMatcher` utility (see Review Triage Log) instead of their own inline copy.
+- `upload.js`'s chat handler falls back to `result.body.reason` when `answer` is absent (the `noAnswer` case), and captures the request's mode into a local `requestedSearchMode` at submit time rather than re-reading the mutable `currentSearchMode` global inside the response handler (see Review Triage Log).
+- Verified independently: read the full diff (both the initial implementation and the patch round), re-ran `mvn test` myself (JDK 25) after each round — final state is 17 `graphrag-web` tests (3 new) and 12 `graphrag-core` usecase tests (4 new for `AnswerGlobalSearch`, including the tie-break case), all green.
+
+## Review Triage Log
+
+Blind Hunter review (N = min(floor(sqrt(19.04kB) + 1), 10) = 5; 8 findings returned):
+
+- **patch** — `AnswerGlobalSearch`'s tokenize/score logic duplicated `CorpusController.buildAnswer()`/`findBestSentence()` near line-for-line, and neither deduped repeated keywords in the question (inflating a candidate's score per repetition). Extracted a shared `KeywordMatcher.tokenize()`/`score()` utility (dedupes via `LinkedHashSet`), used by both Local and Global Search; `LOCAL` mode's returned text is unchanged.
+- **patch** — `GlobalSearchAnswer.matched()`/`noClearMatch()` were functionally identical, so nothing distinguished a real Community match from the generic fallback. Removed `noClearMatch`; both call sites now use `matched`.
+- **patch** — The tie-break when multiple Communities score equally silently depended on `GraphStorePort.communities()`'s (undocumented) iteration order. Made it deterministic: on an equal score, prefer the Community with the lexicographically smallest `id()`, verified independent of list order. Added a test exercising this branch.
+- **patch** — `upload.js`'s `noAnswer` fallback read the mutable `currentSearchMode` global at response time, so toggling Local/Global while a request was in flight could mislabel the response bubble. Now captures the mode at request-submit time into a local variable and uses that in the fallback.
+- **patch** — `AnswerGlobalSearchTest`'s only positive-match test never exercised the competitive/tie-break branch (multiple Communities scoring > 0). Added `breaksATieBetweenEquallyScoredCommunitiesByLexicographicallySmallestId`.
+- **patch** — `AnswerGlobalSearch`'s class javadoc didn't state that `GraphStorePort.communities()` is a process-global, unscoped store (an accepted pre-existing limitation, same as Story 4.3), so the caveat only lived in a test's javadoc. Added two sentences to the class javadoc stating it plainly.
+- **defer** — The architecture spine names an `AnswerLocalSearch` use case alongside `AnswerGlobalSearch`, but Local Search's logic still lives as private methods on the web-layer `CorpusController`, leaving the two modes architecturally inconsistent. Explicitly out of scope per this story's own frozen Boundaries ("LOCAL mode's existing behavior is untouched") — pre-existing from Epic 3, not introduced here. Logged in `deferred-work.md`.
+
+(8 findings total; the tokenize-duplication and no-dedup findings shared one root cause and are covered by the first row above.)
