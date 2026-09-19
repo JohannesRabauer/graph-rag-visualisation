@@ -1,6 +1,6 @@
 ---
 title: GraphRAG Lens — Design
-status: draft
+status: final
 created: 2026-09-19
 updated: 2026-09-19
 name: GraphRAG Lens

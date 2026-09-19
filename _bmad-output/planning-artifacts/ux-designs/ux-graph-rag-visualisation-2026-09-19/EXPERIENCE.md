@@ -1,6 +1,6 @@
 ---
 title: GraphRAG Lens — Experience
-status: draft
+status: final
 created: 2026-09-19
 updated: 2026-09-19
 sources:
@@ -15,18 +15,18 @@ sources:
 
 ## Foundation
 
-Web, single-user, local-only (no auth, no hosting, no multi-tenancy — per PRD §5). Two surfaces total: the **main screen** (a single continuous page — chat + Knowledge Graph canvas + Retrieval Trace Replay, all on one screen with no gated setup step) and a second **Explore page** for free-form graph exploration, added during this UX pass and pending PRD reconciliation (per memlog). No component library is named; `DESIGN.md` is the visual identity reference in full — this spine specifies behavior only. No dark mode: `DESIGN.md`'s Instrument direction is light-mode-only by design (highest contrast for a teaching tool on stream).
+Web, single-user, local-only (no auth, no hosting, no multi-tenancy — per PRD §5). Two surfaces total: the **main screen** (a single continuous page — chat + Knowledge Graph canvas + Retrieval Trace Replay, all on one screen with no gated setup step) and a second **Explore page** for free-form graph exploration (PRD §4.7, FR-16/FR-17), discovered during this UX pass and now reconciled into the PRD. No component library is named; `DESIGN.md` is the visual identity reference in full — this spine specifies behavior only. No dark mode: `DESIGN.md`'s Instrument direction is light-mode-only by design (highest contrast for a teaching tool on stream).
 
-There is deliberately no separate start/setup screen. The empty state — no Corpus ingested yet — lives directly on the main screen (see State Patterns), reinforcing the "no-brainer to use" mandate: opening the app *is* starting it.
+The empty state — no Corpus ingested yet — lives directly on the main screen (see State Patterns), reinforcing the "no-brainer to use" mandate: opening the app *is* starting it.
 
 ## Information Architecture
 
 | Surface | Reached from | Purpose |
 |---|---|---|
 | Main screen | App load (only entry point) | Choose/upload a Corpus, watch Knowledge Graph construction and Community detection, ask a question via Local Search or Global Search, view the answer, replay its Retrieval Trace |
-| Explore page | Nav link/button from the main screen (exact placement is a layout, not a UX, decision) | Free-form pan/zoom/click exploration of the full Knowledge Graph and its Communities, independent of any query |
+| Explore page | A persistent link/tab in the main screen's app bar (exact pixel placement is a layout decision, not a UX one) | Free-form pan/zoom/click exploration of the full Knowledge Graph and its Communities, independent of any query |
 
-No modal stacking, no settings screen (API key is environment-variable-only per PRD FR-15, with no in-app configuration UI for v1). The main screen is a single continuous view — chat and graph are both live and visible while ingestion and Community detection run in the background; nothing gates the user behind a wizard step. The Explore page is reached via a simple persistent link/tab in the app bar. (Reconciling the Explore page as a formal PRD feature/FR is still pending — see the memlog and this pass's Finalize reconciliation step.)
+No modal stacking, no settings screen (API key is environment-variable-only per PRD FR-15, with no in-app configuration UI for v1). The main screen is a single continuous view — chat and graph are both live and visible while ingestion and Community detection run in the background; nothing gates the user behind a wizard step. The Explore page is reached via a simple persistent link/tab in the app bar.
 
 → Composition reference: `mockups/direction-instrument.html` (main-screen "Instrument" mockup, both the active-Replay state and the idle/resting-canvas state variant). Spine wins on conflict. The Explore page has no visual mock by choice — built from the spine tables above alone.
 
@@ -55,8 +55,8 @@ Behavioral rules. Visual specs live in `DESIGN.md.Components`.
 | Local/Global Search toggle | Chat panel header | Explicit two-way toggle, no automatic routing (PRD FR-9/FR-10 — a deliberate choice so both retrieval paths can be demonstrated side by side). Exactly one mode active per query; switching updates the inline explanatory hint immediately. Selected mode is recorded on the Retrieval Trace (FR-9/FR-10 consequences). |
 | Community-visualization toggle | Main screen, near/above the graph canvas | **Defaults ON for a fresh Corpus's first run** — so the signature "Communities folding into clusters" moment plays automatically rather than depending on the creator remembering to enable it, honoring the brief's "distinct, watchable step" framing. Community detection itself always runs in the background regardless of toggle state (FR-6) — the toggle controls only whether its *formation* is shown/animated (FR-7). After that first run, the creator can freely toggle it OFF/ON to demonstrate "with vs. without" live. Toggling does not re-run detection. |
 | Retrieval Trace replay scrubber | Below the graph canvas, appears once an answer's Retrieval Trace (FR-12) is captured | Play/pause toggles autoplay through trace steps; step-forward/step-back move exactly one step per press. Dragging the scrubber head jumps directly to the nearest step (steps are discrete, not continuous time — there's no "between steps" state). Current step always shows a plain-language caption of what happened at that step (see `DESIGN.md.scrubber`). Replay is available only after generation completes — no live/streaming visualization (PRD FR-13, explicitly out of scope). |
-| Explore page — always-on community view | Explore page canvas | Communities are always visible here (no toggle, unlike the main screen) — this page's entire purpose is free structural exploration, so hiding Community structure would work against it. |
-| Explore page — node-click detail panel | Explore page, triggered by clicking any node | Clicking a node opens a detail view showing that Entity's connections (its Relationships), its details, and its tags. Independent of any query — this is browsing the Knowledge Graph itself, not asking it a question. |
+| Explore page — always-on community view | Explore page canvas | Communities are always visible here (no toggle, unlike the main screen) — this page's entire purpose is free structural exploration, so hiding Community structure would work against it (FR-16). |
+| Explore page — node-click detail panel | Explore page, triggered by clicking any node | Clicking a node opens a detail view showing that Entity's connections (its Relationships), its details, and its Tags (FR-17). Independent of any query — this is browsing the Knowledge Graph itself, not asking it a question. |
 
 ## State Patterns
 
@@ -76,7 +76,7 @@ Behavioral rules. Visual specs live in `DESIGN.md.Components`.
 - **Click a node** — on the graph canvas during/after a Replay, or on the Explore page: opens that Entity's detail (Explore page) or highlights it in context (main-canvas Replay).
 - **Toggle switches** — Local/Global Search and the community-visualization toggle are both binary, single-click, immediate-effect controls with no confirmation step; each carries an inline plain-language explanation per the Voice and Tone rule.
 - **Scrubber drag / step** — drag the scrubber head to jump to the nearest discrete trace step; use step-forward/step-back for exactly one step at a time; play/pause autoplays through remaining steps. This fixes the control set the PRD deferred to this UX pass (play/pause + single-step forward/back + drag-to-nearest-step, matching the mockup's transport row); autoplay speed and keyboard shortcuts are left as an implementation-level detail below this spine's altitude.
-- **Upload vs. Demo Dataset choice** — presented together at the idle state as two equally-weighted paths into the same pipeline (upload one or more `.txt`/PDF files, FR-1/FR-2, or one-click the built-in Sherlock Holmes Demo Dataset, FR-3); neither is the "default" or visually primary option, since the Demo Dataset exists specifically to make first use a "no-brainer."
+- **Upload vs. Demo Dataset choice** — presented together at the idle state as two equally-weighted paths into the same pipeline (upload one or more `.txt`/PDF files, FR-1/FR-2, or one-click the built-in Sherlock Holmes Demo Dataset, FR-3); neither is the "default" nor the visually primary option, since the Demo Dataset exists specifically to make first use a "no-brainer."
 
 ## Accessibility Floor
 
@@ -117,7 +117,7 @@ Behavioral floor only; visual contrast and palette live in `DESIGN.md`. Per the 
 2. The full Knowledge Graph renders immediately, Communities always visible as grouped/colored clusters (no toggle needed — this page has nothing to hide).
 3. They pan and zoom freely across the graph, independent of any question or query.
 4. They click a node.
-5. **Climax:** a detail panel opens showing that Entity's connections, details, and tags — the graph becomes something you can wander through and inspect on its own terms, not just something that lights up in response to a query. This is the moment the Explore page exists for: structural curiosity, satisfied directly.
+5. **Climax:** a detail panel opens showing that Entity's connections, details, and Tags — the graph becomes something you can wander through and inspect on its own terms, not just something that lights up in response to a query. This is the moment the Explore page exists for: structural curiosity, satisfied directly.
 6. They click another node to keep exploring, or return to the main screen to ask a targeted question informed by what they just saw.
 
 **Edge case:** no Corpus has been ingested yet — the Explore page shows a plain-language empty state pointing back to the main screen's ingestion entry point, consistent with the "no-brainer to use" mandate, rather than a blank or broken canvas.
