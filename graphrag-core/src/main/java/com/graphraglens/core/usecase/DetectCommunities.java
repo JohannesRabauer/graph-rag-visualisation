@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 /**
  * Creates simple connected-component communities from the persisted knowledge graph.
@@ -39,6 +41,17 @@ public class DetectCommunities {
     }
 
     public List<Community> detect(Corpus corpus) {
+        return detect(corpus, null);
+    }
+
+    /**
+     * Detects Communities and persists them, then reports each detected Community
+     * (with its member Entity identities) to the optional callback, one invocation
+     * per Community, invoked only after both persistCommunities() and
+     * persistCommunityMemberships() have run — a callback that throws can no longer
+     * lose already-detected Communities.
+     */
+    public List<Community> detect(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
         Collection<Entity> entities = graphStorePort.entities();
         if (entities == null || entities.isEmpty()) {
             return List.of();
@@ -102,11 +115,29 @@ public class DetectCommunities {
 
         graphStorePort.persistCommunities(communities);
         graphStorePort.persistCommunityMemberships(memberships);
+
+        if (onCommunityDetected != null) {
+            Map<String, List<String>> memberIdentitiesByCommunityId = new LinkedHashMap<>();
+            for (CommunityMembership membership : memberships) {
+                memberIdentitiesByCommunityId
+                        .computeIfAbsent(membership.communityId(), ignored -> new ArrayList<>())
+                        .add(membership.entityIdentity());
+            }
+            for (Community community : communities) {
+                onCommunityDetected.accept(community,
+                        memberIdentitiesByCommunityId.getOrDefault(community.id(), List.of()));
+            }
+        }
+
         return communities;
     }
 
     public void run(Corpus corpus) {
         detect(corpus);
+    }
+
+    public void run(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
+        detect(corpus, onCommunityDetected);
     }
 
     private String summarizeCommunity(List<Entity> members) {

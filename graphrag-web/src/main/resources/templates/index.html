@@ -28,6 +28,8 @@
         </div>
       </div>
 
+      <div id="graph-canvas" hidden aria-hidden="true"></div>
+
       <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
         <label class="community-toggle" for="community-visualization-toggle">
           <span class="community-toggle-label">Community formation view</span>
@@ -36,6 +38,8 @@
           <span class="community-toggle-slider" aria-hidden="true"></span>
         </label>
       </div>
+
+      <div id="graph-legend" class="graph-legend" hidden aria-hidden="true"></div>
 
       <aside class="chat-panel" id="chat-panel" aria-label="Question chat" hidden>
         <div class="chat-head">
@@ -53,6 +57,8 @@
       </aside>
     </main>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script th:src="@{/js/graph-canvas.js}" src="/js/graph-canvas.js"></script>
   <script th:src="@{/js/upload.js}" src="/js/upload.js"></script>
 </body>
 </html>

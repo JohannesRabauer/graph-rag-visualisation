@@ -168,9 +168,12 @@ body {
 
 /* ---- graph canvas (resting / idle state) ----
    DESIGN.md `components.graph-canvas`: faint 24px grid on {colors.paper},
-   uppercase eyebrow title. No chat panel, composer, or Cytoscape.js in
-   this story — the canvas fills the full frame width. The idle state now
-   carries the upload control (Story 2.1) that gets a Corpus into the app. */
+   uppercase eyebrow title. The idle state carries the upload control
+   (Story 2.1) that gets a Corpus into the app; #graph-canvas (Story 4.3)
+   mounts Cytoscape.js once a Corpus is loaded. The invariant JS keeps is
+   that exactly one of #canvas-idle / #graph-canvas is `hidden` at a time —
+   this stylesheet does not itself guarantee any stacking/paint order
+   between the two. */
 .canvas {
   position: relative;
   flex: 1;
@@ -188,6 +191,61 @@ body {
 .canvas-idle {
   max-width: 420px;
   text-align: center;
+}
+
+/* ---- graph canvas (Cytoscape mount) ----
+   Fills the whole `.canvas` frame once a Corpus is loaded; sits behind the
+   community toggle and legend, which are absolutely positioned on top. */
+#graph-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#graph-canvas[hidden] {
+  display: none;
+}
+
+/* ---- graph legend ----
+   DESIGN.md `components.graph-canvas`: "a legend row lists visible
+   Community names with color swatches" whenever hulls are shown. A row of
+   small pills, one per visible Community, monospace labels matching the
+   corpus-chip/step-badge treatment. */
+.graph-legend {
+  position: absolute;
+  left: var(--space-5);
+  bottom: var(--space-4);
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-width: calc(100% - var(--space-8));
+}
+
+.graph-legend[hidden] {
+  display: none;
+}
+
+.graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-900);
+}
+
+.graph-legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid transparent;
+  flex-shrink: 0;
 }
 
 .community-toggle-wrap {

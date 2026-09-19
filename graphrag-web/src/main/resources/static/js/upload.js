@@ -14,6 +14,7 @@
   var modeHint = document.getElementById('mode-hint');
   var communityToggleWrap = document.getElementById('community-toggle-wrap');
   var communityVisualizationToggle = document.getElementById('community-visualization-toggle');
+  var graphCanvasEl = document.getElementById('graph-canvas');
   var activeProgressSource = null;
   var activeCorpusId = null;
   var currentSearchMode = 'LOCAL';
@@ -45,10 +46,12 @@
 
   if (communityVisualizationToggle) {
     communityVisualizationToggle.addEventListener('change', function () {
-      if (communityVisualizationToggle.checked) {
-        console.log('Community visualization enabled');
-      } else {
-        console.log('Community visualization disabled');
+      // Toggle affects only client-side rendering (AD-6) — the backend
+      // stays unaware of this state and keeps emitting the same events
+      // regardless. Nodes/edges stay visible either way; only the hull
+      // overlay and its fold-in animation are toggle-controlled.
+      if (window.GraphCanvas) {
+        window.GraphCanvas.setHullsVisible(communityVisualizationToggle.checked);
       }
     });
   }
@@ -182,6 +185,14 @@
   }
 
   function showCorpusChip(body) {
+    // Close any still-open previous EventSource before touching GraphCanvas,
+    // so a late event from a just-replaced corpus can't render into the
+    // newly-initialized canvas.
+    if (activeProgressSource) {
+      activeProgressSource.close();
+      activeProgressSource = null;
+    }
+
     var names = body && body.name ? body.name : (body.documentNames || []).join(', ');
     var count = body.documentCount || 0;
     var unit = count === 1 ? 'document' : 'documents';
@@ -210,6 +221,14 @@
     }
     if (communityVisualizationToggle) {
       communityVisualizationToggle.checked = true;
+    }
+    if (graphCanvasEl) {
+      graphCanvasEl.hidden = false;
+      graphCanvasEl.setAttribute('aria-hidden', 'false');
+    }
+    if (window.GraphCanvas) {
+      window.GraphCanvas.init();
+      window.GraphCanvas.setHullsVisible(true);
     }
     connectProgressStream(body && body.corpusId);
   }
@@ -264,10 +283,6 @@
       return;
     }
 
-    if (activeProgressSource) {
-      activeProgressSource.close();
-    }
-
     activeProgressSource = new EventSource('/api/corpora/' + corpusId + '/progress');
     activeProgressSource.addEventListener('heartbeat', function (event) {
       try {
@@ -288,6 +303,43 @@
         }
       } catch (e) {
         console.warn('Invalid SSE ingestion payload', e);
+      }
+    });
+
+    activeProgressSource.addEventListener('entity-extracted', function (event) {
+      try {
+        var payload = JSON.parse(event.data);
+        var data = payload && payload.data;
+        if (data && window.GraphCanvas) {
+          window.GraphCanvas.addEntity(data.identity, data.name, data.type);
+        }
+      } catch (e) {
+        console.warn('Invalid SSE entity-extracted payload', e);
+      }
+    });
+
+    activeProgressSource.addEventListener('relationship-extracted', function (event) {
+      try {
+        var payload = JSON.parse(event.data);
+        var data = payload && payload.data;
+        if (data && window.GraphCanvas) {
+          window.GraphCanvas.addRelationship(
+            data.sourceIdentity, data.source, data.targetIdentity, data.target, data.type);
+        }
+      } catch (e) {
+        console.warn('Invalid SSE relationship-extracted payload', e);
+      }
+    });
+
+    activeProgressSource.addEventListener('community-detected', function (event) {
+      try {
+        var payload = JSON.parse(event.data);
+        var data = payload && payload.data;
+        if (data && window.GraphCanvas) {
+          window.GraphCanvas.addCommunity(data.communityId, data.summary, data.memberEntityIdentities);
+        }
+      } catch (e) {
+        console.warn('Invalid SSE community-detected payload', e);
       }
     });
 

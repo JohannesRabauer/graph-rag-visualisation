@@ -1,6 +1,7 @@
 package com.graphraglens.web;
 
 import com.graphraglens.core.domain.Corpus;
+import com.graphraglens.core.port.GraphStorePort;
 import com.jayway.jsonpath.JsonPath;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -8,18 +9,26 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -34,11 +43,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class CorpusControllerTest {
 
+    private static final long PIPELINE_TIMEOUT_MS = 5_000L;
+
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private CorpusStore corpusStore;
+
+    @Autowired
+    private GraphStorePort graphStorePort;
+
+    @MockitoSpyBean
+    private CorpusProgressService corpusProgressService;
 
     @Test
     void progressEndpointStreamsHeartbeatEventsWithNamedEventEnvelope() throws Exception {
@@ -125,6 +142,98 @@ class CorpusControllerTest {
         assertThat(stored.get().documents()).allSatisfy(document ->
                 assertThat(document.content()).isNotBlank());
         assertThat(stored.get().documents().get(0).content()).contains("Irene Adler");
+    }
+
+    @Test
+    void uploadingACorpusWithManyDisjointEntitiesGrowsCommunitiesAndMembershipsBeyondSharedTestClassState() throws Exception {
+        // GraphStorePort is a shared, unreset @SpringBootTest singleton (no
+        // per-Corpus isolation — see this story's Never boundary), so a bare
+        // non-empty check on communities()/communityMemberships() could pass
+        // from another test's leftover data. Capturing before/after sizes
+        // around the demo-dataset endpoint specifically is not enough either:
+        // its extraction is fully deterministic, so once any test in this
+        // class has run it once, its "community-N" ids and member identities
+        // are identical on every later run and simply overwrite the same map
+        // entries rather than growing them. To prove *this* test's own
+        // pipeline run produced new data, upload a corpus engineered to
+        // contain many mutually-unrelated named entities — comfortably more
+        // than the demo dataset could ever produce Communities for — so both
+        // collections are guaranteed to grow regardless of what earlier
+        // tests in this class already populated or what order tests run in.
+        int communitiesBefore = graphStorePort.communities().size();
+        int membershipsBefore = graphStorePort.communityMemberships().size();
+
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "many-entities.txt", "text/plain",
+                manyDisjointEntitiesCorpusText().getBytes(StandardCharsets.UTF_8));
+
+        String responseBody = mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        assertThat(graphStorePort.communities().size()).isGreaterThan(communitiesBefore);
+        assertThat(graphStorePort.communityMemberships().size()).isGreaterThan(membershipsBefore);
+    }
+
+    /**
+     * 20 sentences, each naming exactly one two-word proper noun and no
+     * other capitalized words, so {@code LangChain4jLlmPort} extracts 20
+     * distinct Entities with zero Relationships between them — 20 singleton
+     * connected components, i.e. 20 Communities, comfortably more than the
+     * fixed, deterministic count the three-document Sherlock demo dataset
+     * produces.
+     */
+    private static String manyDisjointEntitiesCorpusText() {
+        String[] names = {
+                "Aria Solberg", "Bruno Castellan", "Celia Dunmore", "Dario Fenwick", "Elena Granger",
+                "Felix Harrow", "Greta Ibsen", "Hugo Jarrow", "Ines Kestrel", "Jonas Larkspur",
+                "Kira Marchetti", "Leo Norwood", "Mira Okafor", "Nils Prescott", "Odette Quillon",
+                "Pavel Ronan", "Quinn Sorensen", "Rhea Thackeray", "Silas Underwood", "Tessa Voss"
+        };
+        StringBuilder text = new StringBuilder();
+        for (String name : names) {
+            text.append(name).append(" pioneered a completely unrelated idea. ");
+        }
+        return text.toString();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void demoPipelineEmitsGranularSseEventsWithTheExpectedPayloadKeys() throws Exception {
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        ArgumentCaptor<String> eventTypeCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(corpusProgressService, org.mockito.Mockito.atLeastOnce())
+                .emit(eq(corpusId), eventTypeCaptor.capture(), payloadCaptor.capture());
+
+        List<String> eventTypes = eventTypeCaptor.getAllValues();
+        List<Map<String, Object>> payloads = payloadCaptor.getAllValues();
+
+        assertThat(eventTypes).contains("entity-extracted", "relationship-extracted", "community-detected");
+
+        Map<String, Object> entityPayload = payloads.get(eventTypes.indexOf("entity-extracted"));
+        assertThat(entityPayload).containsKeys("identity", "name", "type");
+
+        Map<String, Object> relationshipPayload = payloads.get(eventTypes.indexOf("relationship-extracted"));
+        assertThat(relationshipPayload).containsKeys("sourceIdentity", "source", "targetIdentity", "target", "type");
+
+        Map<String, Object> communityPayload = payloads.get(eventTypes.indexOf("community-detected"));
+        assertThat(communityPayload).containsKeys("communityId", "summary", "memberEntityIdentities");
     }
 
     @Test

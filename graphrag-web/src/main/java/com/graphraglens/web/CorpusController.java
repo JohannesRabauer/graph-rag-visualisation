@@ -1,6 +1,9 @@
 package com.graphraglens.web;
 
+import com.graphraglens.core.domain.Community;
 import com.graphraglens.core.domain.Corpus;
+import com.graphraglens.core.domain.Entity;
+import com.graphraglens.core.domain.Relationship;
 import com.graphraglens.core.domain.UnreadableDocumentException;
 import com.graphraglens.core.domain.UnsupportedFileTypeException;
 import com.graphraglens.core.domain.UploadedDocument;
@@ -149,8 +152,14 @@ public class CorpusController {
     private void startKnowledgeGraphConstruction(Corpus corpus) {
         CompletableFuture.runAsync(() -> {
             try {
-                new BuildKnowledgeGraph(llmPort, graphStorePort).run(corpus);
-                new DetectCommunities(graphStorePort, llmPort).run(corpus);
+                new BuildKnowledgeGraph(llmPort, graphStorePort).run(corpus,
+                        entity -> corpusProgressService.emit(corpus.id(), "entity-extracted",
+                                entityEventPayload(entity)),
+                        relationship -> corpusProgressService.emit(corpus.id(), "relationship-extracted",
+                                relationshipEventPayload(relationship)));
+                new DetectCommunities(graphStorePort, llmPort).run(corpus,
+                        (community, memberEntityIdentities) -> corpusProgressService.emit(corpus.id(), "community-detected",
+                                communityEventPayload(community, memberEntityIdentities)));
                 corpusProgressService.emit(corpus.id(), "ingestion-complete",
                         Map.of("message", "Knowledge graph construction and community detection completed for " + corpus.name()));
             } catch (Exception ex) {
@@ -158,6 +167,29 @@ public class CorpusController {
                         Map.of("error", EXTRACTION_FAILURE_MESSAGE));
             }
         });
+    }
+
+    private Map<String, Object> entityEventPayload(Entity entity) {
+        return Map.of(
+                "identity", entity.normalizedIdentity(),
+                "name", entity.name(),
+                "type", entity.type());
+    }
+
+    private Map<String, Object> relationshipEventPayload(Relationship relationship) {
+        return Map.of(
+                "sourceIdentity", new Entity(relationship.source(), relationship.sourceType()).normalizedIdentity(),
+                "source", relationship.source(),
+                "targetIdentity", new Entity(relationship.target(), relationship.targetType()).normalizedIdentity(),
+                "target", relationship.target(),
+                "type", relationship.type());
+    }
+
+    private Map<String, Object> communityEventPayload(Community community, List<String> memberEntityIdentities) {
+        return Map.of(
+                "communityId", community.id(),
+                "summary", community.summary(),
+                "memberEntityIdentities", memberEntityIdentities);
     }
 
     private String buildAnswer(Corpus corpus, String question, String mode) {
