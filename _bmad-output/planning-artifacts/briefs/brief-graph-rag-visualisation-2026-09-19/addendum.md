@@ -33,7 +33,9 @@ Supporting depth behind the product brief — landscape research and options con
 - RAGViz (ACL 2024 demo paper) — academic, visualizes token/document attention during retrieval; vector-RAG-focused, sets a rigor bar.
 - Takeaway: a strong "visual RAG pipeline explainer" genre exists for vanilla vector RAG; essentially none tackle graph traversal or community structure, and none run on Neo4j in Java.
 
-## Options Considered: Demo Corpus
+## Options Considered: Demo Dataset
+
+Note: this section predates the decision (made during PRD discovery) to support arbitrary user-provided files as a real v1 feature. It's preserved as the rationale for *which dataset ships as the built-in demo* — a separate question from what the ingestion pipeline itself supports.
 
 Three options were considered.
 
@@ -43,5 +45,6 @@ Three options were considered.
 
 ## Notes for Architecture
 
+- File ingestion (plain text and PDF for v1) needs a real parsing/extraction boundary, not a hardcoded loader — PDF text extraction in particular should be isolated behind an interface so it doesn't leak into the graph-construction logic.
 - Provider abstraction (LangChain4j, OpenAI initially) exists specifically to make swapping LLM providers cheap later — this should be reflected as an explicit architectural boundary, not an incidental library choice.
 - The "library-in-mind" ambition affects module boundaries (e.g., separating core GraphRAG/graph logic from the demo web app) more than it affects any v1 feature — no v1 scope item should exist purely to serve the future-library goal.

@@ -9,7 +9,7 @@ updated: 2026-09-19
 
 ## Executive Summary
 
-GraphRAG Lens is a Java web application that makes GraphRAG visible. It takes a small public-domain fiction corpus (the Sherlock Holmes stories), builds a knowledge graph of it in Neo4j through live LLM calls, clusters that graph into communities, and lets someone type a real question and watch how the answer actually gets assembled — via entity-level local search or community-level global search. Nothing is scripted or cached: every run is a genuine LLM call against a genuine graph.
+GraphRAG Lens is a Java web application that makes GraphRAG visible. Feed it a set of documents — the public-domain Sherlock Holmes stories are the built-in demo — and it builds a knowledge graph of them in Neo4j through live LLM calls, clusters that graph into communities, and lets someone type a real question and watch how the answer actually gets assembled — via entity-level local search or community-level global search. Nothing is scripted or cached: every run is a genuine LLM call against a genuine graph.
 
 It exists because GraphRAG is one of the most talked-about evolutions of RAG right now, but almost impossible to actually *see* working, and because existing tooling barely touches Java. This is, first, a passion project for its creator — a way to understand GraphRAG deeply enough to explain it live, correctly, on a coding stream — built with enough care that it could later become the seed of a Java-native GraphRAG library, in a space that turns out to have confirmed whitespace.
 
@@ -27,7 +27,7 @@ The practical cost: a Java developer curious about GraphRAG has to either learn 
 
 A locally run Java application with a web UI that:
 
-1. Ingests the Sherlock Holmes corpus and extracts entities/relationships into a Neo4j graph via live LLM calls.
+1. Ingests user-provided documents (plain text or PDF — the Sherlock Holmes corpus by default) and extracts entities/relationships into a Neo4j graph via live LLM calls.
 2. Runs community detection (Leiden-style clustering) on that graph and visualizes the clustering itself as a distinct, watchable step — not just its output.
 3. Accepts a real user query and answers it two ways: **local search** (entity-neighborhood traversal, for specific questions) and **global search** (community-summary map-reduce, for corpus-wide "what are the themes" questions) — visualizing which nodes and communities each path actually touches.
 
@@ -54,7 +54,7 @@ Built in Java with LangChain4j as the LLM orchestration layer, OpenAI as the ini
 ## Scope
 
 **In for v1:**
-- Fixed corpus: public-domain Sherlock Holmes stories
+- User-provided file ingestion (plain text and PDF), with the public-domain Sherlock Holmes stories as the built-in demo/test dataset
 - Neo4j as the only graph store
 - Live LLM-driven knowledge graph construction (entity/relationship extraction) — real calls, non-deterministic by design
 - Community detection/clustering, visualized as its own step
@@ -64,7 +64,7 @@ Built in Java with LangChain4j as the LLM orchestration layer, OpenAI as the ini
 - Modern, minimalist, browser-based UI with minimal setup friction
 
 **Explicitly out for v1:**
-- Arbitrary or user-uploaded corpora (fixed corpus only, for now)
+- File types beyond plain text and PDF (e.g. Word docs, audio/video, images)
 - Graph databases other than Neo4j
 - Formal retrieval-quality benchmarking or evaluation dashboards
 - Any fallback/cached "safety net" for live-demo LLM failures — failure on stream is an accepted risk, not a defect
