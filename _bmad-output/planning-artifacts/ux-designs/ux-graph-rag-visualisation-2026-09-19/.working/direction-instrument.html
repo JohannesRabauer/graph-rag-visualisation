@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GraphRAG Lens — Direction: Instrument</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ============================================================
+   DIRECTION A — "INSTRUMENT"
+   Scientific data-viz / lab-instrument register.
+   Light mode chosen deliberately: a bright, evenly-lit canvas
+   reads more like a measurement instrument (oscilloscope,
+   Observable notebook) than a media app, and keeps graph-line
+   contrast highest for a teaching tool people squint at on a
+   stream. Chrome is reduced to hairlines and uppercase micro-
+   labels so the only saturated color in the frame is the graph.
+
+   PALETTE (all hex documented here, used nowhere else undocumented)
+   --paper:      #FAFAF9  page background
+   --panel:      #FFFFFF  chat / control surfaces
+   --ink-900:    #14181C  primary text
+   --ink-600:    #4B5563  secondary text
+   --ink-400:    #8B94A0  tertiary / placeholder text
+   --line:       #E4E7EB  hairline borders / grid
+   --line-strong:#CBD1D8  scrubber track
+   --accent:     #2563EB  primary interactive accent (Local Search, links)
+   --accent-soft:#DCE7FD  accent tint (active chip fill)
+   --global:     #0E7C86  Global Search accent (teal, cool complement)
+   --global-soft:#DCF2F1  global tint
+   --community-1:#FDE7D8  community hull tint (Bohemian Scandal)
+   --community-2:#DCE9FD  community hull tint (Baker Street Circle)
+   --community-3:#E4F5DE  community hull tint (Moriarty Network)
+   --node-fill:  #FFFFFF  default node fill
+   --node-line:  #4B5563  default node stroke
+   --active:     #E85D2B  active/highlighted node + trace marker (warm, only alert-ish color)
+   ============================================================ */
+  :root{
+    --paper:#FAFAF9; --panel:#FFFFFF; --ink-900:#14181C; --ink-600:#4B5563; --ink-400:#8B94A0;
+    --line:#E4E7EB; --line-strong:#CBD1D8; --accent:#2563EB; --accent-soft:#DCE7FD;
+    --global:#0E7C86; --global-soft:#DCF2F1;
+    --community-1:#FDE7D8; --community-2:#DCE9FD; --community-3:#E4F5DE;
+    --node-fill:#FFFFFF; --node-line:#4B5563; --active:#E85D2B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#DCE0E5; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    color:var(--ink-900); padding:32px 16px; display:flex; flex-direction:column; align-items:center; gap:28px;
+  }
+  .rationale{
+    max-width:900px; font-size:14px; line-height:1.6; color:var(--ink-600); background:var(--panel);
+    border:1px solid var(--line); border-radius:8px; padding:16px 20px;
+  }
+  .rationale b{color:var(--ink-900);}
+  .browser{
+    width:100%; max-width:1180px; background:var(--panel); border-radius:10px; overflow:hidden;
+    box-shadow:0 1px 2px rgba(20,24,28,.06), 0 12px 32px rgba(20,24,28,.10); border:1px solid var(--line);
+  }
+  .chrome{
+    display:flex; align-items:center; gap:8px; padding:10px 14px; background:#F1F2F4; border-bottom:1px solid var(--line);
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:#D8DBE0;}
+  .urlbar{
+    flex:1; margin-left:8px; background:#fff; border:1px solid var(--line); border-radius:6px; padding:4px 10px;
+    font-size:11px; color:var(--ink-400); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  .appbar{
+    display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;letter-spacing:.02em;}
+  .brand .mark{width:16px;height:16px;border:1.5px solid var(--ink-900);border-radius:3px;position:relative;}
+  .brand .mark::before,.brand .mark::after{content:"";position:absolute;background:var(--ink-900);}
+  .brand .mark::before{width:1.5px;height:8px;top:4px;left:7px;transform:rotate(35deg);}
+  .brand .mark::after{width:5px;height:5px;border-radius:50%;top:1px;left:1px;background:transparent;border:1.5px solid var(--ink-900);}
+  .corpus-chip{
+    font-size:11px; color:var(--ink-600); background:var(--paper); border:1px solid var(--line); border-radius:20px;
+    padding:4px 10px 4px 8px; display:flex; align-items:center; gap:6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .corpus-chip .sw{width:6px;height:6px;border-radius:50%;background:#7C8591;}
+
+  .layout{display:grid; grid-template-columns:340px 1fr; min-height:560px;}
+  /* ---- CHAT PANEL ---- */
+  .chat{border-right:1px solid var(--line); display:flex; flex-direction:column; background:var(--panel);}
+  .chat-head{padding:16px 18px 10px; border-bottom:1px solid var(--line);}
+  .mode-toggle{display:flex; border:1px solid var(--line-strong); border-radius:7px; overflow:hidden; font-size:11px; font-weight:600; letter-spacing:.03em;}
+  .mode-toggle button{flex:1;padding:7px 0;background:var(--panel);color:var(--ink-400);border:none;font:inherit;letter-spacing:inherit;text-transform:uppercase;}
+  .mode-toggle .active{background:var(--accent-soft); color:var(--accent);}
+  .mode-toggle .off{color:var(--ink-400);}
+  .mode-hint{margin-top:8px;font-size:11px;color:var(--ink-400);line-height:1.5;}
+  .thread{flex:1; padding:16px 18px; display:flex; flex-direction:column; gap:14px; overflow:hidden;}
+  .msg-q{align-self:flex-end; max-width:88%; background:var(--ink-900); color:#fff; font-size:13px; line-height:1.5; padding:9px 12px; border-radius:10px 10px 2px 10px;}
+  .msg-a{max-width:94%; font-size:13.5px; line-height:1.65; color:var(--ink-900);}
+  .msg-a .tag{display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); margin-bottom:6px;}
+  .msg-a .tag .sw{width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  .replay-cta{
+    margin-top:10px; display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--ink-600);
+    border:1px dashed var(--line-strong); border-radius:7px; padding:7px 10px; width:fit-content;
+  }
+  .replay-cta b{color:var(--ink-900); font-weight:600;}
+  .composer{border-top:1px solid var(--line); padding:12px 16px; display:flex; gap:8px; align-items:center;}
+  .composer input{
+    flex:1; border:1px solid var(--line-strong); border-radius:8px; padding:9px 12px; font-size:13px; color:var(--ink-900); font-family:inherit;
+  }
+  .composer .send{width:32px;height:32px;border-radius:8px;background:var(--ink-900);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .composer .send::before{content:"";display:block;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid #fff;margin-left:2px;}
+
+  /* ---- GRAPH CANVAS ---- */
+  .canvas{position:relative; background:
+      linear-gradient(var(--line) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/24px 24px,
+      var(--paper);
+    display:flex; flex-direction:column;}
+  .canvas-head{display:flex; align-items:center; justify-content:space-between; padding:14px 20px 0;}
+  .canvas-title{font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-400);}
+  .legend{display:flex; gap:14px; font-size:10.5px; color:var(--ink-600);}
+  .legend span{display:flex;align-items:center;gap:5px;}
+  .legend i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .svgwrap{flex:1; padding:6px 12px 0;}
+  .step-badge{
+    position:absolute; top:52px; left:34px; background:var(--panel); border:1px solid var(--line-strong); border-radius:6px;
+    padding:5px 9px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:var(--ink-900);
+    box-shadow:0 2px 6px rgba(20,24,28,.08);
+  }
+  .step-badge b{color:var(--active);}
+
+  /* ---- SCRUBBER ---- */
+  .scrubber{border-top:1px solid var(--line); padding:12px 20px 16px; background:var(--panel);}
+  .scrub-row{display:flex; align-items:center; gap:12px;}
+  .transport{display:flex; align-items:center; gap:6px;}
+  .tbtn{width:28px;height:28px;border-radius:6px;border:1px solid var(--line-strong);background:#fff;display:flex;align-items:center;justify-content:center;}
+  .tbtn.play{background:var(--ink-900); border-color:var(--ink-900);}
+  .tbtn svg{display:block;}
+  .track{flex:1; position:relative; height:24px; display:flex; align-items:center;}
+  .track .rail{position:absolute; left:0; right:0; height:2px; background:var(--line-strong); border-radius:2px;}
+  .track .fill{position:absolute; left:0; height:2px; background:var(--accent); border-radius:2px; width:52%;}
+  .tick{position:absolute; top:50%; width:8px; height:8px; border-radius:50%; background:var(--panel); border:2px solid var(--line-strong); transform:translate(-50%,-50%);}
+  .tick.done{border-color:var(--accent);}
+  .tick.now{border-color:var(--active); background:var(--active); width:10px;height:10px;}
+  .step-label{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:var(--ink-600); white-space:nowrap;}
+  .scrub-caption{margin-top:8px; font-size:11.5px; color:var(--ink-600); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+  .scrub-caption b{color:var(--ink-900); font-family:inherit; font-weight:600;}
+
+  /* secondary/idle state panel */
+  .secondary{width:100%; max-width:1180px;}
+  .secondary h3{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-600); margin:0 0 10px 4px;}
+  .idle-frame{border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden; box-shadow:0 1px 2px rgba(20,24,28,.06);}
+  .idle-canvas{
+    background:linear-gradient(var(--line) 1px, transparent 1px) 0 0/24px 24px, linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/24px 24px, var(--paper);
+    padding:22px; display:flex; align-items:center; gap:24px;
+  }
+  .idle-copy{flex:1;}
+  .idle-copy .eyebrow{font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-400); margin-bottom:6px;}
+  .idle-copy p{margin:0; font-size:13px; color:var(--ink-600); line-height:1.6; max-width:360px;}
+  .idle-canvas svg{flex-shrink:0;}
+</style>
+</head>
+<body>
+
+<div class="rationale">
+  <b>Direction A — "Instrument."</b> A scientific-instrument register: white canvas, hairline chrome, one calm accent blue, monospace only for data (step counts, trace labels) so it reads like an oscilloscope reading rather than a UI. Density is low and grid-aligned, motion is implied as precise and mechanical (a ticked scrubber, not a scroll). Light mode by design — a lab-bright canvas keeps graph-line contrast highest for a teaching tool.
+</div>
+
+<div class="browser">
+  <div class="chrome">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <div class="urlbar">localhost:5173/session/sherlock-holmes</div>
+  </div>
+  <div class="appbar">
+    <div class="brand"><span class="mark"></span> GraphRAG Lens</div>
+    <div class="corpus-chip"><span class="sw"></span> Sherlock Holmes — Demo Dataset · 12 documents</div>
+  </div>
+  <div class="layout">
+    <!-- CHAT -->
+    <div class="chat">
+      <div class="chat-head">
+        <div class="mode-toggle">
+          <button class="active">Local Search</button>
+          <button class="off">Global Search</button>
+        </div>
+        <div class="mode-hint">Local Search traverses specific Entities and Relationships around your question.</div>
+      </div>
+      <div class="thread">
+        <div class="msg-q">Why was Irene Adler able to outwit Holmes in "A Scandal in Bohemia"?</div>
+        <div class="msg-a">
+          <div class="tag"><span class="sw"></span> Local Search · Answer</div>
+          She recognized Holmes's disguise-based reconnaissance for what it was and relocated the photograph before he could retrieve it — by the time he acted on his plan, the King's leverage over her was already gone.
+          <div class="replay-cta">▸ Replay this answer's <b>Retrieval Trace</b> — 5 steps</div>
+        </div>
+      </div>
+      <div class="composer">
+        <input type="text" value="Ask a question about the Corpus…" readonly>
+        <div class="send"></div>
+      </div>
+    </div>
+    <!-- GRAPH CANVAS -->
+    <div class="canvas">
+      <div class="canvas-head">
+        <div class="canvas-title">Knowledge Graph — Replaying Trace</div>
+        <div class="legend">
+          <span><i style="background:var(--community-1)"></i>Bohemian Scandal</span>
+          <span><i style="background:var(--community-2)"></i>Baker Street Circle</span>
+          <span><i style="background:var(--community-3)"></i>Moriarty Network</span>
+        </div>
+      </div>
+      <div class="step-badge">Step <b>3</b> / 5 — traversed <b>outwitted</b></div>
+      <div class="svgwrap">
+        <svg viewBox="0 0 760 430" width="100%" height="100%">
+          <!-- community hulls -->
+          <ellipse cx="230" cy="150" rx="150" ry="105" fill="var(--community-1)" opacity="0.7"/>
+          <ellipse cx="560" cy="110" rx="120" ry="85" fill="var(--community-2)" opacity="0.6"/>
+          <ellipse cx="560" cy="320" rx="140" ry="90" fill="var(--community-3)" opacity="0.55"/>
+          <text x="120" y="60" font-size="10" letter-spacing="1" fill="#C77F4F" font-family="ui-monospace,Menlo,monospace">BOHEMIAN SCANDAL</text>
+          <text x="470" y="40" font-size="10" letter-spacing="1" fill="#5C82C4" font-family="ui-monospace,Menlo,monospace">BAKER STREET CIRCLE</text>
+          <text x="470" y="240" font-size="10" letter-spacing="1" fill="#6FA363" font-family="ui-monospace,Menlo,monospace">MORIARTY NETWORK</text>
+
+          <!-- edges -->
+          <line x1="230" y1="150" x2="150" y2="200" stroke="var(--node-line)" stroke-width="1"/>
+          <line x1="230" y1="150" x2="300" y2="90" stroke="var(--active)" stroke-width="2"/>
+          <line x1="300" y1="90" x2="400" y2="130" stroke="var(--node-line)" stroke-width="1"/>
+          <line x1="230" y1="150" x2="180" y2="90" stroke="var(--node-line)" stroke-width="1"/>
+          <line x1="400" y1="130" x2="560" y2="110" stroke="var(--node-line)" stroke-width="1" stroke-dasharray="3 3"/>
+          <line x1="400" y1="130" x2="500" y2="60" stroke="var(--node-line)" stroke-width="1"/>
+          <line x1="500" y1="60" x2="620" y2="90" stroke="var(--node-line)" stroke-width="1"/>
+          <line x1="400" y1="130" x2="480" y2="260" stroke="var(--node-line)" stroke-width="1" stroke-dasharray="3 3"/>
+          <line x1="480" y1="260" x2="560" y2="320" stroke="var(--node-line)" stroke-width="1"/>
+          <line x1="560" y1="320" x2="650" y2="280" stroke="var(--node-line)" stroke-width="1"/>
+          <line x1="560" y1="320" x2="640" y2="360" stroke="var(--node-line)" stroke-width="1"/>
+
+          <!-- default nodes -->
+          <g font-family="-apple-system,Segoe UI,sans-serif" font-size="10.5" fill="var(--ink-900)">
+            <circle cx="150" cy="200" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="150" y="222" text-anchor="middle">Dr. Watson</text>
+
+            <circle cx="180" cy="90" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="180" y="72" text-anchor="middle">221B Baker St</text>
+
+            <circle cx="400" cy="130" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="400" y="152" text-anchor="middle">King of Bohemia</text>
+
+            <circle cx="560" cy="110" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="560" y="132" text-anchor="middle">Mrs. Hudson</text>
+
+            <circle cx="500" cy="60" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="500" y="42" text-anchor="middle">Inspector Lestrade</text>
+
+            <circle cx="620" cy="90" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="640" y="112" text-anchor="middle">Scotland Yard</text>
+
+            <circle cx="480" cy="260" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="480" y="282" text-anchor="middle">Godfrey Norton</text>
+
+            <circle cx="650" cy="280" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="650" y="262" text-anchor="middle">Professor Moriarty</text>
+
+            <circle cx="640" cy="360" r="9" fill="var(--node-fill)" stroke="var(--node-line)" stroke-width="1.5"/>
+            <text x="640" y="382" text-anchor="middle">Colonel Moran</text>
+          </g>
+
+          <!-- source node: Irene Adler (active, previous step) -->
+          <circle cx="230" cy="150" r="12" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="230" y="177" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-size="11" font-weight="600" fill="var(--ink-900)">Irene Adler</text>
+
+          <!-- current active node: Sherlock Holmes -->
+          <circle cx="300" cy="90" r="15" fill="#FFE9DE" stroke="var(--active)" stroke-width="2.5"/>
+          <circle cx="300" cy="90" r="15" fill="none" stroke="var(--active)" stroke-width="1" opacity="0.5">
+            <animate attributeName="r" values="15;15" dur="1s"/>
+          </circle>
+          <text x="300" y="70" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-size="12" font-weight="700" fill="var(--ink-900)">Sherlock Holmes</text>
+        </svg>
+      </div>
+
+      <div class="scrubber">
+        <div class="scrub-row">
+          <div class="transport">
+            <div class="tbtn"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M8 1 L2 5 L8 9 Z M2 1 L2 9" stroke="#4B5563" stroke-width="1.3" fill="none"/></svg></div>
+            <div class="tbtn play"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1 L2 9 M6 1 L6 9" stroke="#fff" stroke-width="1.6"/></svg></div>
+            <div class="tbtn"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1 L8 5 L2 9 Z M8 1 L8 9" stroke="#4B5563" stroke-width="1.3" fill="none"/></svg></div>
+          </div>
+          <div class="track">
+            <div class="rail"></div>
+            <div class="fill"></div>
+            <div class="tick done" style="left:8%"></div>
+            <div class="tick done" style="left:30%"></div>
+            <div class="tick now" style="left:52%"></div>
+            <div class="tick" style="left:74%"></div>
+            <div class="tick" style="left:96%"></div>
+          </div>
+          <div class="step-label">03 / 05</div>
+        </div>
+        <div class="scrub-caption"><b>Trace:</b> matched Irene Adler → traversed outwitted → Sherlock Holmes → next: employed → King of Bohemia</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="secondary">
+  <h3>State variant — idle canvas, before a query</h3>
+  <div class="idle-frame">
+    <div class="idle-canvas">
+      <div class="idle-copy">
+        <div class="eyebrow">Knowledge Graph — Resting</div>
+        <p>Corpus ingested, Communities detected. Ask a question on the left to see the graph light up with the exact Entities and Relationships behind the answer.</p>
+      </div>
+      <svg width="360" height="220" viewBox="0 0 360 220">
+        <ellipse cx="110" cy="110" rx="90" ry="70" fill="var(--community-1)" opacity="0.5"/>
+        <ellipse cx="260" cy="70" rx="80" ry="55" fill="var(--community-2)" opacity="0.45"/>
+        <ellipse cx="270" cy="160" rx="75" ry="50" fill="var(--community-3)" opacity="0.4"/>
+        <g stroke="#C7CCD3" stroke-width="1">
+          <line x1="110" y1="110" x2="70" y2="150"/>
+          <line x1="110" y1="110" x2="150" y2="60"/>
+          <line x1="150" y1="60" x2="220" y2="80"/>
+          <line x1="220" y1="80" x2="280" y2="55"/>
+          <line x1="220" y1="80" x2="250" y2="150"/>
+          <line x1="250" y1="150" x2="300" y2="175"/>
+        </g>
+        <g fill="#FFFFFF" stroke="#B7BEC7" stroke-width="1.5">
+          <circle cx="110" cy="110" r="7"/><circle cx="70" cy="150" r="7"/><circle cx="150" cy="60" r="7"/>
+          <circle cx="220" cy="80" r="7"/><circle cx="280" cy="55" r="7"/><circle cx="250" cy="150" r="7"/><circle cx="300" cy="175" r="7"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

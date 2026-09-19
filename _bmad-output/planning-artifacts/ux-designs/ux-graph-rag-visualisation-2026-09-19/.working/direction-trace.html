@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GraphRAG Lens — Direction: Trace</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ============================================================
+   DIRECTION C — "TRACE"
+   Dense technical / IDE-and-debugger register. Monospace
+   throughout, dark surface, syntax-highlight-style color coding
+   per graph-object type (entity / relationship / community) so
+   the graph reads like inspecting live program state, not a
+   presentation. Chrome recedes by going nearly invisible: thin
+   1px hairlines at 8-10% white, uppercase 10px labels, no
+   decorative chrome at all beyond a terminal-style title bar.
+   Dark mode chosen on purpose: this register targets the
+   creator's own dev/streamer audience, mirrors the IDE/terminal
+   they already work in, and is easier on the eyes through long
+   stream sessions than a bright canvas.
+
+   PALETTE (all hex documented here, used nowhere else undocumented)
+   --bg:         #0D1117  app background (GitHub-dark register)
+   --panel:      #11161D  chat / control surfaces
+   --panel-2:    #0A0E13  graph canvas background (slightly darker, recedes)
+   --border:     rgba(230,237,243,0.09)  hairline borders
+   --border-strong: rgba(230,237,243,0.16) scrubber track
+   --text-hi:    #E6EDF3  primary text
+   --text-mid:   #8B949E  secondary / chrome text
+   --text-dim:   #565D66  tertiary / placeholder text
+   --local:      #58A6FF  Local Search accent (blue, like a var reference)
+   --local-tint: rgba(88,166,255,0.14)
+   --global:     #D2A8FF  Global Search accent (purple, like a type)
+   --global-tint:rgba(210,168,255,0.14)
+   --entity:     #7EE787  entity node stroke (green, like a string literal)
+   --community-1:rgba(227,179,65,0.14)  community fill — Bohemian Scandal (amber)
+   --community-1-line:#E3B341
+   --community-2:rgba(88,166,255,0.10)  community fill — Baker Street Circle (blue)
+   --community-2-line:#58A6FF
+   --community-3:rgba(210,168,255,0.10) community fill — Moriarty Network (purple)
+   --community-3-line:#D2A8FF
+   --active:     #F0883E  active node / current trace step (orange, like a breakpoint)
+   ============================================================ */
+  :root{
+    --bg:#0D1117; --panel:#11161D; --panel-2:#0A0E13; --border:rgba(230,237,243,0.09); --border-strong:rgba(230,237,243,0.16);
+    --text-hi:#E6EDF3; --text-mid:#8B949E; --text-dim:#565D66;
+    --local:#58A6FF; --local-tint:rgba(88,166,255,0.14); --global:#D2A8FF; --global-tint:rgba(210,168,255,0.14);
+    --entity:#7EE787; --community-1:rgba(227,179,65,0.14); --community-1-line:#E3B341;
+    --community-2:rgba(88,166,255,0.10); --community-2-line:#58A6FF; --community-3:rgba(210,168,255,0.10); --community-3-line:#D2A8FF;
+    --active:#F0883E;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#05070A; font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--text-hi); padding:32px 16px; display:flex; flex-direction:column; align-items:center; gap:24px;
+  }
+  .rationale{
+    max-width:900px; font-size:13px; line-height:1.65; color:var(--text-mid); background:var(--panel);
+    border:1px solid var(--border); border-radius:6px; padding:16px 20px;
+  }
+  .rationale b{color:var(--text-hi);}
+  .browser{
+    width:100%; max-width:1180px; background:var(--panel); border-radius:8px; overflow:hidden;
+    box-shadow:0 1px 2px rgba(0,0,0,.4), 0 20px 44px rgba(0,0,0,.55); border:1px solid var(--border);
+  }
+  .chrome{
+    display:flex; align-items:center; gap:8px; padding:9px 14px; background:#0A0E13; border-bottom:1px solid var(--border);
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:#2A313A;}
+  .urlbar{
+    flex:1; margin-left:8px; background:#05070A; border:1px solid var(--border); border-radius:4px; padding:4px 10px;
+    font-size:11px; color:var(--text-dim);
+  }
+  .appbar{
+    display:flex; align-items:center; justify-content:space-between; padding:10px 18px; border-bottom:1px solid var(--border);
+    background:var(--panel);
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text-hi);}
+  .brand .mark{width:14px;height:14px;border:1.5px solid var(--entity);border-radius:3px;}
+  .brand .path{color:var(--text-dim); font-weight:400;}
+  .corpus-chip{
+    font-size:11px; color:var(--text-mid); background:var(--panel-2); border:1px solid var(--border); border-radius:3px;
+    padding:3px 8px;
+  }
+  .corpus-chip .k{color:var(--text-dim);}
+  .corpus-chip .v{color:var(--entity);}
+
+  .layout{display:grid; grid-template-columns:320px 1fr; min-height:580px;}
+  /* ---- CHAT PANEL ---- */
+  .chat{border-right:1px solid var(--border); display:flex; flex-direction:column; background:var(--panel);}
+  .chat-head{padding:12px 16px 10px; border-bottom:1px solid var(--border);}
+  .mode-toggle{display:flex; border:1px solid var(--border-strong); border-radius:4px; overflow:hidden; font-size:10.5px;}
+  .mode-toggle button{flex:1;padding:6px 0;background:var(--panel-2);color:var(--text-dim);border:none;font:inherit;text-transform:uppercase;letter-spacing:.04em;}
+  .mode-toggle .active.local{background:var(--local-tint); color:var(--local); box-shadow:inset 0 0 0 1px var(--local);}
+  .mode-toggle .active.global{background:var(--global-tint); color:var(--global); box-shadow:inset 0 0 0 1px var(--global);}
+  .mode-hint{margin-top:7px;font-size:10.5px;color:var(--text-dim);line-height:1.5;}
+  .mode-hint .fn{color:var(--local);}
+  .thread{flex:1; padding:14px 16px; display:flex; flex-direction:column; gap:12px; overflow:hidden;}
+  .msg-q{align-self:flex-end; max-width:92%; background:var(--panel-2); border:1px solid var(--border); color:var(--text-hi); font-size:12px; line-height:1.5; padding:8px 10px; border-radius:6px 6px 2px 6px;}
+  .msg-q::before{content:"> "; color:var(--text-dim);}
+  .msg-a{max-width:96%; font-size:12.5px; line-height:1.65; color:var(--text-hi);}
+  .msg-a .tag{display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--local); margin-bottom:6px;}
+  .msg-a .tag::before{content:"//"; color:var(--text-dim); font-weight:400;}
+  .replay-cta{
+    margin-top:9px; display:flex; align-items:center; gap:7px; font-size:10.5px; color:var(--text-mid);
+    border:1px solid var(--border); border-radius:4px; padding:6px 9px; width:fit-content; background:var(--panel-2);
+  }
+  .replay-cta b{color:var(--active); font-weight:600;}
+  .composer{border-top:1px solid var(--border); padding:10px 12px; display:flex; gap:8px; align-items:center;}
+  .composer input{
+    flex:1; border:1px solid var(--border-strong); border-radius:4px; padding:8px 10px; font-size:12px; color:var(--text-hi); font-family:inherit;
+    background:var(--panel-2);
+  }
+  .composer input::placeholder{color:var(--text-dim);}
+  .composer .send{width:28px;height:28px;border-radius:4px;background:var(--local);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .composer .send::before{content:"";display:block;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid #05070A;margin-left:2px;}
+
+  /* ---- GRAPH CANVAS ---- */
+  .canvas{position:relative; background:
+      linear-gradient(var(--border) 1px, transparent 1px) 0 0/20px 20px,
+      linear-gradient(90deg, var(--border) 1px, transparent 1px) 0 0/20px 20px,
+      var(--panel-2);
+    display:flex; flex-direction:column;}
+  .canvas-head{display:flex; align-items:center; justify-content:space-between; padding:10px 16px 0;}
+  .canvas-title{font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--text-mid);}
+  .canvas-title .n{color:var(--text-dim);}
+  .legend{display:flex; gap:12px; font-size:10px; color:var(--text-mid);}
+  .legend span{display:flex;align-items:center;gap:5px;}
+  .legend i{width:8px;height:8px;border-radius:2px;display:inline-block;}
+  .svgwrap{flex:1; padding:4px 10px 0;}
+  .step-badge{
+    position:absolute; top:44px; left:26px; background:var(--panel); border:1px solid var(--border-strong); border-radius:4px;
+    padding:5px 9px; font-size:10.5px; color:var(--text-hi);
+  }
+  .step-badge b{color:var(--active);}
+  .step-badge .fn{color:var(--local);}
+
+  /* ---- SCRUBBER: debugger timeline ---- */
+  .scrubber{border-top:1px solid var(--border); padding:10px 16px 14px; background:var(--panel);}
+  .scrub-row{display:flex; align-items:center; gap:10px;}
+  .transport{display:flex; align-items:center; gap:4px;}
+  .tbtn{width:24px;height:24px;border-radius:4px;border:1px solid var(--border-strong);background:var(--panel-2);display:flex;align-items:center;justify-content:center;}
+  .tbtn.play{background:var(--active); border-color:var(--active);}
+  .track{flex:1; position:relative; height:20px; display:flex; align-items:center;}
+  .track .rail{position:absolute; left:0; right:0; height:2px; background:var(--border-strong);}
+  .track .fill{position:absolute; left:0; height:2px; background:var(--local); width:52%;}
+  .tick{position:absolute; top:50%; width:3px; height:14px; background:var(--border-strong); transform:translate(-50%,-50%);}
+  .tick.done{background:var(--local);}
+  .tick.now{background:var(--active); width:3px; height:18px; box-shadow:0 0 0 3px rgba(240,136,62,0.2);}
+  .step-label{font-size:10.5px; color:var(--text-mid); white-space:nowrap;}
+  .scrub-caption{margin-top:8px; font-size:10.5px; color:var(--text-mid);}
+  .scrub-caption .ent{color:var(--entity);}
+  .scrub-caption .rel{color:var(--global);}
+  .scrub-caption b{color:var(--text-hi); font-weight:600;}
+
+  /* secondary/idle state panel */
+  .secondary{width:100%; max-width:1180px;}
+  .secondary h3{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-mid); margin:0 0 10px 4px;}
+  .idle-frame{border:1px solid var(--border); border-radius:8px; background:var(--panel); overflow:hidden;}
+  .idle-canvas{
+    background:linear-gradient(var(--border) 1px, transparent 1px) 0 0/20px 20px, linear-gradient(90deg, var(--border) 1px, transparent 1px) 0 0/20px 20px, var(--panel-2);
+    padding:20px; display:flex; align-items:center; gap:22px;
+  }
+  .idle-copy{flex:1;}
+  .idle-copy .eyebrow{font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--text-dim); margin-bottom:6px;}
+  .idle-copy .eyebrow::before{content:"$ "; color:var(--entity);}
+  .idle-copy p{margin:0; font-size:12px; color:var(--text-mid); line-height:1.6; max-width:360px;}
+  .idle-canvas svg{flex-shrink:0;}
+</style>
+</head>
+<body>
+
+<div class="rationale">
+  <b>Direction C — "Trace."</b> A dense, technical register built for the app's own audience: a dark IDE/debugger surface, monospace everywhere, and syntax-highlight-style color per graph-object type (green entities, amber/blue/purple Communities, orange for the active breakpoint-like node) so the graph reads as live program state, not a presentation. Chrome nearly disappears into 1px hairlines and 10px uppercase labels. Dark mode by design — it mirrors the terminal/IDE the creator already streams from and reduces eye strain over a long session.
+</div>
+
+<div class="browser">
+  <div class="chrome">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <div class="urlbar">localhost:5173/session/sherlock-holmes</div>
+  </div>
+  <div class="appbar">
+    <div class="brand"><span class="mark"></span> graphrag-lens <span class="path">/ session</span></div>
+    <div class="corpus-chip"><span class="k">corpus:</span> <span class="v">sherlock-holmes-demo</span> <span class="k">· docs:</span> <span class="v">12</span></div>
+  </div>
+  <div class="layout">
+    <!-- CHAT -->
+    <div class="chat">
+      <div class="chat-head">
+        <div class="mode-toggle">
+          <button class="active local">local_search()</button>
+          <button>global_search()</button>
+        </div>
+        <div class="mode-hint">traverses <span class="fn">Entity</span>/<span class="fn">Relationship</span> neighborhood around matched nodes</div>
+      </div>
+      <div class="thread">
+        <div class="msg-q">why was irene adler able to outwit holmes in "a scandal in bohemia"?</div>
+        <div class="msg-a">
+          <div class="tag">local_search · answer</div>
+          She recognized Holmes's disguise-based reconnaissance for what it was and relocated the photograph before he could retrieve it — by the time he acted on his plan, the King's leverage over her was already gone.
+          <div class="replay-cta">▸ retrieval_trace.replay() — <b>5 steps</b> captured</div>
+        </div>
+      </div>
+      <div class="composer">
+        <input type="text" placeholder="ask a question about the corpus…" readonly>
+        <div class="send"></div>
+      </div>
+    </div>
+    <!-- GRAPH CANVAS -->
+    <div class="canvas">
+      <div class="canvas-head">
+        <div class="canvas-title">knowledge_graph <span class="n">· replaying trace #a91f</span></div>
+        <div class="legend">
+          <span><i style="background:var(--community-1-line)"></i>bohemian_scandal</span>
+          <span><i style="background:var(--community-2-line)"></i>baker_street_circle</span>
+          <span><i style="background:var(--community-3-line)"></i>moriarty_network</span>
+        </div>
+      </div>
+      <div class="step-badge">step <b>03</b>/05 — traverse(<span class="fn">outwitted</span>)</div>
+      <div class="svgwrap">
+        <svg viewBox="0 0 760 420" width="100%" height="100%">
+          <ellipse cx="230" cy="150" rx="150" ry="105" fill="var(--community-1)" stroke="var(--community-1-line)" stroke-width="1" stroke-dasharray="4 4" opacity="0.9"/>
+          <ellipse cx="560" cy="110" rx="120" ry="85" fill="var(--community-2)" stroke="var(--community-2-line)" stroke-width="1" stroke-dasharray="4 4" opacity="0.9"/>
+          <ellipse cx="560" cy="315" rx="140" ry="90" fill="var(--community-3)" stroke="var(--community-3-line)" stroke-width="1" stroke-dasharray="4 4" opacity="0.9"/>
+          <text x="90" y="52" font-size="10" fill="var(--community-1-line)">// bohemian_scandal</text>
+          <text x="450" y="34" font-size="10" fill="var(--community-2-line)">// baker_street_circle</text>
+          <text x="450" y="232" font-size="10" fill="var(--community-3-line)">// moriarty_network</text>
+
+          <g stroke="#30363D" stroke-width="1">
+            <line x1="230" y1="150" x2="150" y2="200"/>
+            <line x1="230" y1="150" x2="180" y2="90"/>
+            <line x1="400" y1="130" x2="560" y2="110" stroke-dasharray="2 3"/>
+            <line x1="400" y1="130" x2="500" y2="60"/>
+            <line x1="500" y1="60" x2="620" y2="90"/>
+            <line x1="400" y1="130" x2="480" y2="260" stroke-dasharray="2 3"/>
+            <line x1="480" y1="260" x2="560" y2="315"/>
+            <line x1="560" y1="315" x2="650" y2="278"/>
+            <line x1="560" y1="315" x2="640" y2="358"/>
+          </g>
+          <line x1="230" y1="150" x2="300" y2="90" stroke="var(--active)" stroke-width="2"/>
+          <line x1="300" y1="90" x2="400" y2="130" stroke="#30363D" stroke-width="1"/>
+
+          <g font-size="10.5" fill="var(--text-mid)">
+            <circle cx="150" cy="200" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="150" y="222" text-anchor="middle">Dr. Watson</text>
+
+            <circle cx="180" cy="90" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="180" y="72" text-anchor="middle">221B Baker St</text>
+
+            <circle cx="400" cy="130" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="400" y="152" text-anchor="middle">King of Bohemia</text>
+
+            <circle cx="560" cy="110" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="560" y="132" text-anchor="middle">Mrs. Hudson</text>
+
+            <circle cx="500" cy="60" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="500" y="42" text-anchor="middle">Insp. Lestrade</text>
+
+            <circle cx="620" cy="90" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="640" y="112" text-anchor="middle">Scotland Yard</text>
+
+            <circle cx="480" cy="260" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="480" y="282" text-anchor="middle">Godfrey Norton</text>
+
+            <circle cx="650" cy="278" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="650" y="260" text-anchor="middle">Prof. Moriarty</text>
+
+            <circle cx="640" cy="358" r="7" fill="var(--panel-2)" stroke="var(--entity)" stroke-width="1.5"/>
+            <text x="640" y="380" text-anchor="middle">Col. Moran</text>
+          </g>
+
+          <circle cx="230" cy="150" r="11" fill="var(--local-tint)" stroke="var(--local)" stroke-width="2"/>
+          <text x="230" y="177" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text-hi)">Irene Adler</text>
+
+          <circle cx="300" cy="90" r="14" fill="rgba(240,136,62,0.18)" stroke="var(--active)" stroke-width="2.5"/>
+          <text x="300" y="69" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text-hi)">Sherlock Holmes</text>
+        </svg>
+      </div>
+
+      <div class="scrubber">
+        <div class="scrub-row">
+          <div class="transport">
+            <div class="tbtn"><svg width="9" height="9" viewBox="0 0 10 10"><path d="M8 1 L2 5 L8 9 Z M2 1 L2 9" stroke="#8B949E" stroke-width="1.3" fill="none"/></svg></div>
+            <div class="tbtn play"><svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 1 L2 9 M6 1 L6 9" stroke="#05070A" stroke-width="1.6"/></svg></div>
+            <div class="tbtn"><svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 1 L8 5 L2 9 Z M8 1 L8 9" stroke="#8B949E" stroke-width="1.3" fill="none"/></svg></div>
+          </div>
+          <div class="track">
+            <div class="rail"></div>
+            <div class="fill"></div>
+            <div class="tick done" style="left:8%"></div>
+            <div class="tick done" style="left:30%"></div>
+            <div class="tick now" style="left:52%"></div>
+            <div class="tick" style="left:74%"></div>
+            <div class="tick" style="left:96%"></div>
+          </div>
+          <div class="step-label">03/05</div>
+        </div>
+        <div class="scrub-caption">match(<span class="ent">Irene Adler</span>) → traverse(<span class="rel">outwitted</span>) → <span class="ent">Sherlock Holmes</span> → <b>next:</b> traverse(<span class="rel">employed</span>) → King of Bohemia</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="secondary">
+  <h3>state variant — idle canvas, no active trace</h3>
+  <div class="idle-frame">
+    <div class="idle-canvas">
+      <div class="idle-copy">
+        <div class="eyebrow">graph.state === "idle"</div>
+        <p>Corpus ingested, communities detected, no trace loaded. Submit a query on the left; matched nodes and traversed edges highlight here step by step.</p>
+      </div>
+      <svg width="340" height="200" viewBox="0 0 340 200">
+        <ellipse cx="100" cy="100" rx="85" ry="65" fill="var(--community-1)" stroke="var(--community-1-line)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>
+        <ellipse cx="240" cy="65" rx="75" ry="50" fill="var(--community-2)" stroke="var(--community-2-line)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>
+        <ellipse cx="250" cy="145" rx="70" ry="45" fill="var(--community-3)" stroke="var(--community-3-line)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>
+        <g stroke="#30363D" stroke-width="1">
+          <line x1="100" y1="100" x2="65" y2="135"/>
+          <line x1="100" y1="100" x2="140" y2="55"/>
+          <line x1="140" y1="55" x2="205" y2="72"/>
+          <line x1="205" y1="72" x2="260" y2="50"/>
+          <line x1="205" y1="72" x2="230" y2="135"/>
+          <line x1="230" y1="135" x2="275" y2="158"/>
+        </g>
+        <g fill="var(--panel-2)" stroke="#4B535C" stroke-width="1.3">
+          <circle cx="100" cy="100" r="6"/><circle cx="65" cy="135" r="6"/><circle cx="140" cy="55" r="6"/>
+          <circle cx="205" cy="72" r="6"/><circle cx="260" cy="50" r="6"/><circle cx="230" cy="135" r="6"/><circle cx="275" cy="158" r="6"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
