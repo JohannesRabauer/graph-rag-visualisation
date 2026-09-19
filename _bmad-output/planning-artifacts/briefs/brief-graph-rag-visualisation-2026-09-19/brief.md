@@ -11,7 +11,7 @@ updated: 2026-09-19
 
 GraphRAG Lens is a Java web application that makes GraphRAG visible. It takes a small public-domain fiction corpus (the Sherlock Holmes stories), builds a knowledge graph of it in Neo4j through live LLM calls, clusters that graph into communities, and lets someone type a real question and watch how the answer actually gets assembled — via entity-level local search or community-level global search. Nothing is scripted or cached: every run is a genuine LLM call against a genuine graph.
 
-It exists because GraphRAG is one of the most talked-about evolutions of RAG right now, but almost impossible to actually *see* working, and because the tooling that does exist for it barely touches Java. This is a passion project for its creator first — a way to understand GraphRAG deeply enough to explain it live, correctly, on a coding stream — built with enough care that it could later become the seed of a Java-native GraphRAG library, in a space that turns out to have real, confirmed whitespace.
+It exists because GraphRAG is one of the most talked-about evolutions of RAG right now, but almost impossible to actually *see* working, and because existing tooling barely touches Java. This is, first, a passion project for its creator — a way to understand GraphRAG deeply enough to explain it live, correctly, on a coding stream — built with enough care that it could later become the seed of a Java-native GraphRAG library, in a space that turns out to have confirmed whitespace.
 
 ## The Problem
 
@@ -25,7 +25,7 @@ The practical cost: a Java developer curious about GraphRAG has to either learn 
 
 ## The Solution
 
-A locally run Java + web UI application that:
+A locally run Java application with a web UI that:
 
 1. Ingests the Sherlock Holmes corpus and extracts entities/relationships into a Neo4j graph via live LLM calls.
 2. Runs community detection (Leiden-style clustering) on that graph and visualizes the clustering itself as a distinct, watchable step — not just its output.
