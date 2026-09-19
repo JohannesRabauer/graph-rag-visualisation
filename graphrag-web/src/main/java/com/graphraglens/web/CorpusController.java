@@ -76,7 +76,7 @@ public class CorpusController {
     }
 
     @GetMapping(path = "/api/corpora/{corpusId}/progress", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter progress(@PathVariable String corpusId) {
+    public SseEmitter progress(@PathVariable("corpusId") String corpusId) {
         SseEmitter emitter = progressBroker.subscribe(corpusId);
         progressBroker.publish(corpusId, new IngestionProgressEvent(
                 "progress-subscribed",
