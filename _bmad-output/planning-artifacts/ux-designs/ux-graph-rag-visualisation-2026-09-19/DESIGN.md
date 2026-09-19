@@ -186,6 +186,14 @@ components:
     border: '1px solid {colors.active}'
     foreground: '{colors.ink-900}'
     emphasis-foreground: '{colors.active}'
+  node-detail-panel:
+    background: '{colors.panel}'
+    border-left: '1px solid {colors.line}'
+    width: '300px'
+    heading-typography: '{typography.eyebrow}'
+    body-typography: '{typography.body}'
+    tag-chip-background: '{colors.chrome}'
+    tag-chip-typography: '{typography.data-mono}'
 ---
 
 ## Brand & Style
@@ -252,6 +260,8 @@ Corners are consistently soft-but-tight: `{rounded.sm}` (6px) for small controls
 - **Corpus chip** (`{components.corpus-chip}`) — small pill in the app bar naming the active Corpus and document count (e.g. "Sherlock Holmes — Demo Dataset · 12 documents"), monospace, with a small neutral status dot.
 - **Community-detection toggle** (`{components.community-detection-toggle}`, main screen only) — default OFF; when ON, adopts the accent tint (reuses `{colors.accent-soft}`/`{colors.accent}` rather than introducing a third color, since this toggle is orthogonal to the Local/Global mode toggle and doesn't need its own hue).
 - **Error banner** (`{components.error-banner}`) — appears inline in the chat thread or canvas header on an LLM-call or extraction failure (FR-5); Active-soft fill, Active border, plain-language message, no icon glyphs beyond the existing warm-color cue.
+- **Explore page canvas** — reuses the graph canvas, node/edge, and community-hull tokens above wholesale (`{components.graph-canvas}`, `{components.node-default}`, `{components.community-hull}`); Communities render with their hulls always visible here (no toggle, unlike the main screen). No chat panel occupies the left rail, so the canvas has the full frame width to itself.
+- **Node detail panel** (`{components.node-detail-panel}`) — Explore page only, slides in from the right on node click. Eyebrow heading names the Entity; body text lists its Relationships and any details; tags render as small `{colors.chrome}`-filled monospace chips in a wrapping row. Closes on clicking elsewhere on the canvas or clicking the same node again.
 
 ## Do's and Don'ts
 
