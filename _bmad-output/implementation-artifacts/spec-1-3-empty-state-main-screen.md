@@ -2,7 +2,7 @@
 title: 'Empty-State Main Screen'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -37,9 +37,9 @@ baseline_commit: 'efbbab960cffaa5256c48c701104bd148c8d3b5c'
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `graphrag-web/src/main/resources/static/css/instrument.css` -- CSS custom properties for every color/typography/spacing token in `DESIGN.md`'s frontmatter, plus the app-frame, app-bar, and canvas (grid background, eyebrow, subtitle) styles -- the one stylesheet the page shell and all future epics' components build on
-- [ ] `graphrag-web/src/main/resources/templates/index.html` -- Thymeleaf template: app bar (brand mark + "GraphRAG Lens" wordmark only, no corpus chip yet), full-width canvas region with the 24px grid background, eyebrow "Knowledge Graph — Resting", and the verbatim differentiation subtitle -- the actual page shell
-- [ ] `graphrag-web/src/main/java/com/graphraglens/web/MainController.java` -- `@Controller` with `@GetMapping("/")` returning view name `"index"` -- serves the page
+- [x] `graphrag-web/src/main/resources/static/css/instrument.css` -- CSS custom properties for every color/typography/spacing token in `DESIGN.md`'s frontmatter, plus the app-frame, app-bar, and canvas (grid background, eyebrow, subtitle) styles -- the one stylesheet the page shell and all future epics' components build on
+- [x] `graphrag-web/src/main/resources/templates/index.html` -- Thymeleaf template: app bar (brand mark + "GraphRAG Lens" wordmark only, no corpus chip yet), full-width canvas region with the 24px grid background, eyebrow "Knowledge Graph — Resting", and the verbatim differentiation subtitle -- the actual page shell
+- [x] `graphrag-web/src/main/java/com/graphraglens/web/MainController.java` -- `@Controller` with `@GetMapping("/")` returning view name `"index"` -- serves the page
 
 **Acceptance Criteria:**
 - Given the app running (any means — a plain `mvn spring-boot:run` is enough to check this without Docker), when `GET /` is requested, then the response is HTML containing the eyebrow text "Knowledge Graph — Resting" and the exact subtitle sentence
@@ -49,16 +49,26 @@ baseline_commit: 'efbbab960cffaa5256c48c701104bd148c8d3b5c'
 
 ## Implementation Notes
 
+- Created `graphrag-web/src/main/resources/templates/` (did not previously exist) and `.../static/css/` directories.
+- `instrument.css` defines every `colors`/`typography`/`rounded`/`spacing` token from `DESIGN.md`'s frontmatter as a CSS custom property (typography tokens split into per-property vars, e.g. `--font-eyebrow-size`, since a single shorthand var can't hold a multi-field token), plus `.app-frame`, `.app-bar`, `.brand`, and `.canvas`/`.canvas-idle` rules. No component-level styles (chat, toggle, scrubber, nodes) were added — those components don't exist until later epics per `epic-1-context.md`.
+- `index.html` renders the app bar (brand mark + "GraphRAG Lens" wordmark, no corpus chip) and a full-width canvas with the 24px grid background, the eyebrow, and the verbatim subtitle. The em dash is written as the literal `—` character (not an HTML entity) so a raw-HTML substring check for the exact copy succeeds.
+- `MainController` is a plain `@Controller` with `@GetMapping("/")` returning view name `"index"`; `GraphRagLensApplication.java`, `application.yml`, and `pom.xml` were left untouched (Thymeleaf/web starters were already present from Story 1.1).
+- Confirmed computationally: ink-600 (`#4B5563`) on paper (`#FAFAF9`) = 7.24:1 (subtitle, passes ≥4.5:1); ink-400 (`#8B94A0`) on paper = 2.94:1 (eyebrow) — matches the Code Map's pre-documented, accepted gap exactly; not touched, per the spec's own instruction not to "fix" it.
+
 ## Spec Change Log
 
 ## Review Triage Log
 
 ## Verification
 
-**Commands:**
-- `mvn -q package` -- expected: `BUILD SUCCESS`
-- `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn -q -pl graphrag-web spring-boot:run &` then `curl -s http://localhost:8080/` -- expected: HTML containing `Knowledge Graph — Resting` and the exact subtitle sentence; then stop the process
-- `curl -s http://localhost:8080/css/instrument.css` -- expected: 200, contains `--paper`, `--ink-900`, `--accent` custom properties
+**Commands run:**
+- `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn -q install -DskipTests` then `mvn -q package` -- `BUILD SUCCESS`
+- `JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 mvn -q -pl graphrag-web spring-boot:run &` then `curl -s http://localhost:8080/` -- 200 OK; body contains the literal `Knowledge Graph — Resting` eyebrow and the exact differentiation subtitle sentence
+- `curl -s http://localhost:8080/css/instrument.css` -- 200 OK; contains `--paper: #FAFAF9`, `--ink-900: #14181C`, `--accent: #2563EB` custom properties
+- Checked the rendered `index.html` body for `chat`, `composer`, `upload`, `cytoscape`, `<script` (case-insensitive) -- no matches
+- Process stopped cleanly after verification; confirmed no lingering `java`/`spring-boot` processes and the port no longer answers
+
+**Result:** All four Acceptance Criteria pass.
 
 **Manual checks (if no CLI):**
 - Open `http://localhost:8080/` in a browser at normal size and confirm the eyebrow and subtitle are legible against the canvas background, matching the "Instrument" light-mode palette (no dark mode).

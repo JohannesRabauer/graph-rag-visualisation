@@ -38,7 +38,7 @@ development_status:
   epic-1: in-progress
   1-1-project-skeleton-module-boundaries: review
   1-2-one-command-local-environment: review
-  1-3-empty-state-main-screen: in-progress
+  1-3-empty-state-main-screen: review
   epic-1-retrospective: optional
 
   epic-2: backlog
