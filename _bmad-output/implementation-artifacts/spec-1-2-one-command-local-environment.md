@@ -42,7 +42,7 @@ baseline_commit: 'a95a8e7cb88e97740d91120f852fcfa9102ef5f5'
 - Given the repository root, when `docker compose config` runs, then it resolves cleanly to exactly two services, `app` and `neo4j`
 - Given `docker-compose.yml`, when inspected, then `neo4j`'s image tag and `NEO4J_PLUGINS` declare the GDS plugin, and no third service is defined
 - Given `docker-compose.yml`, when inspected, then `app`'s `OPENAI_API_KEY` is sourced from the host environment only — no hardcoded key, no config file, no in-app settings UI
-- Given a machine with normal internet access, when `OPENAI_API_KEY` is set and `docker compose up` runs, then both `app` and `neo4j` start and `app` serves on port 8080 (this exact check cannot run inside this sandbox — see Code Map environment constraint; to be confirmed manually)
+- Given a machine with normal internet access, when `OPENAI_API_KEY` is set and `docker compose up` runs, then both `app` and `neo4j` start and `app` serves on port 8080 — **CONFIRMED** during the Epic 1 walkthrough (2026-09-19): Neo4j pulled, installed the GDS plugin, became healthy; `app` built and started on port 8080 gated on that health check
 
 ## Implementation Notes
 
