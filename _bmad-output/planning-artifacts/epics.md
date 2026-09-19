@@ -158,6 +158,7 @@ So that all future work has a consistent home and `graphrag-core` stays framewor
 **And** `graphrag-core`'s `pom.xml` declares no dependency on Spring, the Neo4j Java Driver, or LangChain4j
 **And** `graphrag-core` defines the empty `GraphStorePort`, `LlmPort`, and `DocumentParserPort` interfaces
 **And** the project builds successfully with Maven on Java 25
+**And** `graphrag-web`'s `pom.xml` and directory layout contain no `package.json`, Node/npm tooling, or JS bundler configuration anywhere in the project — the frontend is Java-native from day one: a `spring-boot-starter-thymeleaf` dependency and a `src/main/resources/static/js/` directory for plain, unbundled JavaScript (AD-15)
 
 ### Story 1.2: One-Command Local Environment
 
