@@ -4,3 +4,199 @@ status: draft
 created: 2026-09-19
 updated: 2026-09-19
 ---
+
+# PRD: GraphRAG Lens
+*Working title — confirm alongside the brief's title.*
+
+## 0. Document Purpose
+
+This PRD turns the finalized product brief (`_bmad-output/planning-artifacts/briefs/brief-graph-rag-visualisation-2026-09-19/brief.md`, plus its addendum) into concrete, testable requirements. It's written for the creator as both product owner and sole implementer, structured around the journeys the app enables, with functional requirements (FR-1 through FR-N) nested under the features that realize them. Implementation-level tech choices (language, frameworks, provider abstraction mechanics) are intentionally kept out of this document and live in the brief's addendum and in architecture work that follows.
+
+## 1. Vision
+
+GraphRAG Lens makes GraphRAG's mechanics visible instead of theoretical. It takes documents you provide — plain text or PDF, with the public-domain Sherlock Holmes stories as a built-in demo set — and builds a real knowledge graph of them in Neo4j through live LLM calls. It shows the graph folding into communities, and when you ask it a question through a chat interface, it captures exactly which nodes and communities the answer drew on, then lets you scrub back and forth through that retrieval trace before the answer lands in chat.
+
+It exists first to build its creator's own understanding deep enough to explain GraphRAG confidently, live, on a coding stream — and it's built cleanly enough that it could later seed a Java-native GraphRAG library, in a space research confirmed is genuinely underserved.
+
+## 2. Target User
+
+### 2.1 Jobs To Be Done
+
+- As the creator, I need to understand GraphRAG's mechanics deeply enough to explain them correctly and confidently, live and unscripted.
+- As a live-coding streamer, I need a visually engaging demo that makes graph-based retrieval legible to viewers who don't already know graph theory or GraphRAG.
+- As a prospective future open-source maintainer, I need the codebase structured cleanly enough that extracting a reusable Java GraphRAG library later isn't a rewrite.
+
+### 2.2 Non-Users (v1)
+
+- Teams needing hosted, multi-user, or authenticated access.
+- Users needing graph backends other than Neo4j.
+- Users needing file types beyond plain text and PDF (Word docs, audio, video, images, scanned/OCR-only PDFs).
+
+### 2.3 Key User Journeys
+
+- **UJ-1. Explaining GraphRAG live.**
+  - **Persona + context:** the creator, mid coding-stream, demonstrating GraphRAG to an audience.
+  - **Entry state:** the app is already running (see UJ-2); no prior session state needed.
+  - **Path:** Uploads a document set (plain text/PDF) or picks the built-in Sherlock Holmes demo → watches ingestion build the knowledge graph in Neo4j via live LLM calls → watches community detection visibly cluster the graph → types a question into the chat interface → the system answers via local or global search and captures a step-by-step retrieval trace → scrubs back and forth through the replay, showing which nodes and communities were touched → the final answer appears in chat.
+  - **Climax:** the audience (and the creator) can see exactly which part of the graph produced the answer, not just that an answer arrived.
+  - **Resolution:** the creator can explain, with the running trace as evidence, why GraphRAG produced that specific answer.
+  - **Edge case:** a live LLM call fails mid-run (rate limit, API error). No retry or cached fallback is attempted — by design — but the failure must surface as a clear, visible error state, not a crash or silent hang.
+
+- **UJ-2. Setting up before a stream.**
+  - The creator clones the repo and runs a single Docker Compose command, which provisions Neo4j (and any other required infra) automatically. The only manual step is setting the `OPENAI_API_KEY` environment variable. No other configuration is needed before UJ-1 can run.
+
+## 3. Glossary
+
+- **Corpus / Document Set** — the documents provided for ingestion in a given run (uploaded plain text/PDF files, or the built-in demo set).
+- **Demo Dataset** — the built-in, pre-selected public-domain Sherlock Holmes corpus, offered as a one-click alternative to uploading files.
+- **Knowledge Graph** — the Neo4j graph of Entities and Relationships extracted from a Corpus.
+- **Entity** — a node in the Knowledge Graph representing a person, place, or concept extracted from the Corpus.
+- **Relationship** — an edge in the Knowledge Graph connecting two Entities.
+- **Community** — a cluster of related Entities produced by community detection (Leiden-style clustering) over the Knowledge Graph.
+- **Local Search** — a retrieval mode that answers entity-specific questions via neighborhood traversal around relevant Entities.
+- **Global Search** — a retrieval mode that answers corpus-wide, thematic questions by aggregating over Community summaries.
+- **Retrieval Trace** — the captured, ordered record of which Entities, Relationships, and Communities were touched while answering a query.
+- **Replay** — the scrubbable, step-by-step visualization of a Retrieval Trace, shown after retrieval completes.
+
+## 4. Features
+
+### 4.1 Document Ingestion
+
+**Description:** Users provide the source material for a run, either by uploading files or selecting the built-in Demo Dataset. Realizes UJ-1, UJ-2.
+
+#### FR-1: Upload plain text files
+User can upload one or more plain text (`.txt`) files as a Corpus. Realizes UJ-1.
+
+**Consequences (testable):**
+- Uploaded files are queued for Knowledge Graph construction (FR-4).
+- A file with an unsupported extension is rejected with a clear, visible message rather than silently ignored.
+
+#### FR-2: Upload PDF files
+User can upload one or more PDF files as a Corpus; the system extracts text content from each PDF prior to Knowledge Graph construction. Realizes UJ-1.
+
+**Consequences (testable):**
+- Text extracted from a PDF feeds the same construction pipeline as plain text (FR-4).
+- A PDF that yields no extractable text (e.g., scanned/image-only) produces a clear, visible error rather than a silent no-op.
+
+**Out of Scope:** OCR of scanned/image-only PDFs.
+
+#### FR-3: Use the built-in Demo Dataset
+User can select the built-in Sherlock Holmes Demo Dataset as a one-click alternative to uploading files. Realizes UJ-1, UJ-2.
+
+### 4.2 Knowledge Graph Construction
+
+**Description:** Ingested documents are processed via live LLM calls into Entities and Relationships persisted in Neo4j. Every run is a genuine, non-deterministic LLM call — never cached or canned output. Realizes UJ-1.
+
+#### FR-4: Extract entities and relationships
+System extracts Entities and Relationships from an ingested Corpus via live LLM calls and persists them as nodes and relationships in Neo4j.
+
+**Consequences (testable):**
+- Each ingestion run produces graph output derived from a real LLM call for that run; no pre-computed or cached extraction is substituted for a live call.
+
+#### FR-5: Surface extraction failures visibly
+If an LLM call fails during Knowledge Graph construction, the system displays an explicit, visible error state rather than retrying automatically, silently hiding the failure, or hanging/crashing. Realizes UJ-1 edge case.
+
+**Out of Scope:** Automatic retry; fallback to cached or canned output (deliberately excluded — see brief's accepted-risk decision).
+
+### 4.3 Community Detection & Visualization
+
+**Description:** The constructed Knowledge Graph is clustered into Communities, and the clustering process itself is shown as a distinct, watchable step. Realizes UJ-1.
+
+#### FR-6: Detect communities
+System runs community detection (Leiden-style clustering) over the constructed Knowledge Graph.
+
+#### FR-7: Visualize community formation
+System visualizes the community-detection process itself (e.g., nodes visibly folding into clusters) — not just a static rendering of the final grouping.
+
+### 4.4 Query Interface
+
+**Description:** Users ask questions through a chat-style interface, answered via Local Search or Global Search. Realizes UJ-1.
+
+[ASSUMPTION: the user explicitly chooses Local vs. Global Search per query via a UI control (e.g., a toggle), rather than the system auto-routing based on query type — chosen to support the brief's goal of showcasing GraphRAG's methods side by side rather than hiding the choice. Needs confirmation.]
+
+#### FR-8: Submit a query
+User can submit a natural-language question via a chat-style interface.
+
+#### FR-9: Answer via Local Search
+System can answer a query using Local Search (Entity-neighborhood traversal).
+
+#### FR-10: Answer via Global Search
+System can answer a query using Global Search (Community-summary aggregation).
+
+#### FR-11: Render the final answer in chat
+The generated answer is displayed in the chat interface once retrieval and generation complete.
+
+### 4.5 Retrieval Trace & Playback
+
+**Description:** Retrieval is captured as a structured trace and replayed as a scrubbable, step-by-step visualization — a deliberate choice over live-streaming, since replay supports rewinding and revisiting steps. Realizes UJ-1.
+
+#### FR-12: Capture the retrieval trace
+System captures a structured, ordered Retrieval Trace (Entities, Relationships, and Communities touched, in order) during query execution (FR-9, FR-10).
+
+#### FR-13: Replay the retrieval trace
+User can play back a captured Retrieval Trace as a step-by-step visualization after the answer is generated, with controls to move forward and backward through the steps.
+
+**Out of Scope:** Live/real-time streaming of retrieval steps as they happen — replay-after-completion only for v1.
+
+### 4.6 Setup & Deployment
+
+**Description:** The application and its Neo4j dependency are provisioned with a single command; the only manual step is supplying the LLM API key. Realizes UJ-2.
+
+#### FR-14: One-command infrastructure setup
+The application and Neo4j can be started via a single Docker Compose command.
+
+#### FR-15: API key via environment variable
+The OpenAI API key is supplied via an environment variable at startup; no in-app configuration UI is required for v1.
+
+## 5. Cross-Cutting NFRs
+
+- **Reliability (deliberately bounded):** the system does not implement retries or cached fallback for LLM call failures (accepted risk, per the brief) — but a failure must always surface as a clear, visible error state, never a crash or an indefinite hang.
+- **Single-user, local-only:** no authentication, hosting, or multi-tenancy for v1; the app runs on a single developer machine.
+- **Provider flexibility:** the LLM integration must not hardcode assumptions that would block swapping the LLM provider later (mechanism detailed in the brief's addendum).
+
+## 6. Non-Goals (Explicit)
+
+- Multi-user, hosted, or SaaS deployment.
+- Graph databases other than Neo4j.
+- File types beyond plain text and PDF (Word docs, audio, video, images); OCR of scanned PDFs.
+- Formal retrieval-quality benchmarking or evaluation dashboards.
+- Automatic retry/fallback/caching safety net for LLM failures.
+- Live/real-time streaming visualization of retrieval (replay only).
+- Packaging or publishing this as a standalone library (future — see brief's Vision).
+- A marketing/showcase website, polished README, and app icon — explicitly parked for later (see addendum).
+
+## 7. MVP Scope
+
+### 7.1 In Scope
+- Document ingestion: plain text and PDF upload, plus the built-in Sherlock Holmes Demo Dataset (FR-1–FR-3).
+- Live LLM-driven Knowledge Graph construction in Neo4j, with visible failure states (FR-4–FR-5).
+- Community detection, visualized as it happens (FR-6–FR-7).
+- Chat-based query interface answering via Local Search and Global Search (FR-8–FR-11).
+- Captured, replayable Retrieval Trace with scrub controls (FR-12–FR-13).
+- One-command (Docker Compose) setup with API key via environment variable (FR-14–FR-15).
+
+### 7.2 Out of Scope for MVP
+- Everything listed under Non-Goals above.
+- Library extraction/publishing — deferred to a future version, once the demo itself works. `[NOTE FOR PM]` — revisit once v1 is stable and used on-stream a few times.
+- Marketing website, README polish, and app icon — deferred; parked in the brief's addendum as future roadmap items.
+
+## 8. Success Metrics
+
+**Primary**
+- **SM-1**: The creator can confidently and correctly explain GraphRAG live using the app. Qualitative; validates all FRs.
+
+**Secondary**
+- **SM-2**: The demo is genuinely engaging to watch on stream. Validates FR-6, FR-7, FR-12, FR-13.
+
+**Counter-metrics (do not optimize)**
+- **SM-C1**: Do not add retries, caching, or fallback behavior to make failures "disappear" for the sake of a smoother-looking stream — that would undermine the real, non-scripted ethos the whole project is built on. Counterbalances SM-2.
+
+## 9. Open Questions
+
+1. Local vs. Global Search selection: explicit user toggle, or automatic routing by the system based on query shape? (See §4.4 assumption — needs confirmation.)
+2. Exact Replay UI controls (play/pause/step granularity/speed) — likely detailed during the UX pass (`bmad-ux`) rather than here.
+3. Minimum Java and Neo4j version targets — deferred to architecture (`bmad-architecture`).
+
+## 10. Assumptions Index
+
+- [ASSUMPTION] §4.4 (FR-9, FR-10) — assumed the user explicitly selects Local vs. Global Search via a UI control, rather than automatic system routing, to support showcasing both methods side by side. Needs confirmation.

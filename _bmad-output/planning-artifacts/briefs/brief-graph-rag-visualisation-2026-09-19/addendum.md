@@ -48,3 +48,13 @@ Three options were considered.
 - File ingestion (plain text and PDF for v1) needs a real parsing/extraction boundary, not a hardcoded loader — PDF text extraction in particular should be isolated behind an interface so it doesn't leak into the graph-construction logic.
 - Provider abstraction (LangChain4j, OpenAI initially) exists specifically to make swapping LLM providers cheap later — this should be reflected as an explicit architectural boundary, not an incidental library choice.
 - The "library-in-mind" ambition affects module boundaries (e.g., separating core GraphRAG/graph logic from the demo web app) more than it affects any v1 feature — no v1 scope item should exist purely to serve the future-library goal.
+
+## Parked for Later
+
+Raised during PRD discovery as future work, explicitly not v1:
+
+- A marketing/showcase website (screenshots, feature tour) published via GitHub Pages.
+- A polished, slightly marketing-leaned README with images.
+- A dedicated app icon.
+
+These make the most sense once the demo itself is working and there's something real to show off — revisit alongside the library-extraction goal.
