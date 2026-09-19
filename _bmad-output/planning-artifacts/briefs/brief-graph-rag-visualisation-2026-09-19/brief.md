@@ -35,7 +35,7 @@ Built in Java with LangChain4j as the LLM orchestration layer, OpenAI as the ini
 
 ## What Makes This Different
 
-- **Nobody visualizes GraphRAG's live retrieval mechanics.** Existing prior art is either post-hoc (parquet viewers) or scoped to plain vector RAG. Watching a query actually traverse a graph and pull from specific communities, in real time, appears to be genuinely unclaimed territory.
+- **Nobody visualizes GraphRAG's retrieval mechanics this way.** Existing prior art is either post-hoc (parquet viewers) or scoped to plain vector RAG. Watching a query actually traverse a graph and pull from specific communities — captured from a genuinely live, non-scripted run and replayed step by step, scrubbable rather than one-shot — appears to be genuinely unclaimed territory.
 - **It's Java-native in a Python-dominated space.** A GitHub search on GraphRAG-related topics turns up almost nothing Java; Neo4j's own tooling doesn't reach Java developers at all today.
 - **Honest framing of the moat**: this is not a technical moat, it's a timing-and-effort one — being an early, real, working example in an underserved niche. No fabricated defensibility beyond that.
 

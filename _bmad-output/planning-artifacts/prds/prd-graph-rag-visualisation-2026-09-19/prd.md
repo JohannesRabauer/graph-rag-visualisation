@@ -14,9 +14,9 @@ This PRD turns the finalized product brief (`_bmad-output/planning-artifacts/bri
 
 ## 1. Vision
 
-GraphRAG Lens makes GraphRAG's mechanics visible instead of theoretical. It takes documents you provide — plain text or PDF, with the public-domain Sherlock Holmes stories as a built-in demo set — and builds a real knowledge graph of them in Neo4j through live LLM calls. It shows the graph folding into communities, and when you ask it a question through a chat interface, it captures exactly which nodes and communities the answer drew on, then lets you scrub back and forth through that retrieval trace before the answer lands in chat.
+GraphRAG Lens makes GraphRAG's mechanics visible instead of theoretical. It takes documents you provide — plain text or PDF, with the public-domain Sherlock Holmes stories as a built-in demo set — and builds a real knowledge graph of them in Neo4j through live LLM calls. It shows the graph folding into communities, and when you ask it a question through a chat interface, it captures exactly which nodes and communities the answer drew on. Everything shown is real, non-scripted computation — the LLM calls are genuinely live and non-deterministic — but the *visualization* of that computation is a captured, scrubbable replay rather than a live stream, chosen deliberately because it lets you rewind and revisit a step rather than watching it fly by once.
 
-It exists first to build its creator's own understanding deep enough to explain GraphRAG confidently, live, on a coding stream — and it's built cleanly enough that it could later seed a Java-native GraphRAG library, in a space research confirmed is genuinely underserved.
+Nothing today visualizes GraphRAG's retrieval mechanics this way — existing tools are either post-hoc artifact viewers or vector-RAG-only pipeline explainers, and Neo4j's own GraphRAG tooling doesn't reach Java developers at all. It exists first to build its creator's own understanding deep enough to explain GraphRAG confidently, live, on a coding stream — and it's built cleanly enough that it could later seed a Java-native GraphRAG library, filling a gap research confirmed is real, not assumed.
 
 ## 2. Target User
 
@@ -105,6 +105,9 @@ If an LLM call fails during Knowledge Graph construction, the system displays an
 #### FR-6: Detect communities
 System runs community detection (Leiden-style clustering) over the constructed Knowledge Graph.
 
+**Consequences (testable):**
+- Detected Communities are persisted so they can be used by Global Search (FR-10) and by the community-formation visualization (FR-7).
+
 #### FR-7: Visualize community formation
 System visualizes the community-detection process itself (e.g., nodes visibly folding into clusters) — not just a static rendering of the final grouping.
 
@@ -118,8 +121,16 @@ User can submit a natural-language question via a chat-style interface.
 #### FR-9: Answer via Local Search
 User can explicitly select Local Search via a UI toggle; system answers the query using Local Search (Entity-neighborhood traversal).
 
+**Consequences (testable):**
+- The captured Retrieval Trace (FR-12) records that Local Search was the mode used for this query.
+- If neighborhood traversal from the query's matched Entities yields no relevant results, the system returns a visible "no answer found" state rather than an empty or misleading response.
+
 #### FR-10: Answer via Global Search
 User can explicitly select Global Search via a UI toggle; system answers the query using Global Search (Community-summary aggregation).
+
+**Consequences (testable):**
+- The captured Retrieval Trace (FR-12) records that Global Search was the mode used for this query.
+- If no Communities exist yet (e.g., detection hasn't run), the system returns a visible "no answer found" state rather than an empty or misleading response.
 
 #### FR-11: Render the final answer in chat
 The generated answer is displayed in the chat interface once retrieval and generation complete.
@@ -148,6 +159,7 @@ The OpenAI API key is supplied via an environment variable at startup; no in-app
 
 ## 5. Cross-Cutting NFRs
 
+- **UI tone:** the interface should read as modern and minimalist, running entirely in the browser with minimal setup friction (per the brief). Full visual/interaction direction is deferred to the `bmad-ux` pass — this is a pointer forward, not a spec.
 - **Reliability (deliberately bounded):** the system does not implement retries or cached fallback for LLM call failures (accepted risk, per the brief) — but a failure must always surface as a clear, visible error state, never a crash or an indefinite hang.
 - **Single-user, local-only:** no authentication, hosting, or multi-tenancy for v1; the app runs on a single developer machine.
 - **Provider flexibility:** the LLM integration must not hardcode assumptions that would block swapping the LLM provider later (mechanism detailed in the brief's addendum).
