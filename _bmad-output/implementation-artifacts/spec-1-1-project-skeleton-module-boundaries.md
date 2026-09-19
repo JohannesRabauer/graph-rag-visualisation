@@ -2,7 +2,7 @@
 title: 'Project Skeleton & Module Boundaries'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -49,7 +49,7 @@ baseline_commit: '2058e412a5df7e00b8751325c84b1433b20a62f2'
 **Acceptance Criteria:**
 - Given a fresh clone, when `mvn -q -f pom.xml validate` runs, then all five modules resolve with no errors
 - Given the project root, when `mvn -q package` runs, then all five modules build successfully on Java 25 and `graphrag-web` produces an executable jar
-- Given `graphrag-core/pom.xml`, when inspected, then it declares no dependency on `org.springframework*`, `org.neo4j.driver`, or `dev.langchain4j`
+- Given `graphrag-core/pom.xml`, when inspected, then its `<dependencies>` block declares no dependency on `org.springframework*`, `org.neo4j.driver`, or `dev.langchain4j` (enforced automatically by a `maven-enforcer-plugin` `bannedDependencies` rule bound to `validate`)
 - Given the repository, when searched, then no `package.json` or JS bundler config file exists anywhere in it
 
 ## Implementation Notes
@@ -59,6 +59,8 @@ baseline_commit: '2058e412a5df7e00b8751325c84b1433b20a62f2'
 - Root parent POM artifactId is `graphraglens-parent` (not `graphrag-lens`) — a naming choice within the spec's discretion, does not affect any acceptance criterion.
 - The subagent reworded `graphrag-core/pom.xml`'s `<description>` to avoid literally containing the substrings "Spring"/"Neo4j"/"LangChain4j" in prose, since the spec's own verification grep checks that file for those tokens. No functional impact.
 - No I/O & Edge-Case Matrix in this spec (deleted at planning time as not applicable to a scaffolding story) — Matrix Test Audit step skipped.
+- **Patch round 1** applied all six review findings: JDK-25 `requireJavaVersion` enforcer rule (root `pom.xml`), `README.md` added, root artifactId renamed `graphraglens-parent` → `graphrag-parent` (and all five children's `<parent>` refs updated to match), `spring-boot.version` property deduplicated in `graphrag-web/pom.xml`, `.gitignore` extended with `*.log`/`hs_err_pid*.log`, and an AD-1 `bannedDependencies` enforcer rule added to `graphrag-core/pom.xml`. Independently re-verified (not just trusting the patch agent's report): full `mvn -q -f pom.xml validate` and `mvn -q package` both clean on JDK 25; personally reproduced the enforcer catching a banned dependency by injecting `org.neo4j.driver:neo4j-java-driver` into `graphrag-core/pom.xml`'s `<dependencies>` block (`mvn -f graphrag-core/pom.xml validate` → `BUILD FAILURE` with the exact AD-1 message), then cleanly reverted the injection (`diff` confirmed no residual change) and re-ran a full `mvn -q package` to confirm the tree is still clean.
+- The old whole-file grep verification command was superseded (see `## Verification`) because the new enforcer rule's own exclude-list text legitimately contains "spring"/"neo4j"/"langchain4j", which a naive whole-file grep would now always flag as a false positive.
 
 ## Spec Change Log
 
@@ -80,4 +82,4 @@ Review pass 1 — 3 layers (blind-hunter, edge-case-hunter, verification-gap), d
 **Commands:**
 - `mvn -q -f pom.xml validate` -- expected: exits 0, all five modules recognized
 - `mvn -q package` -- expected: `BUILD SUCCESS`, `graphrag-web/target/graphrag-web-0.1.0-SNAPSHOT.jar` produced
-- `grep -riE "spring|neo4j|langchain4j" graphrag-core/pom.xml` -- expected: no matches
+- `awk '/<dependencies>/,/<\/dependencies>/' graphrag-core/pom.xml | grep -riE "spring|neo4j|langchain4j"` -- expected: no matches (scoped to the `<dependencies>` block only; the AD-1 `maven-enforcer-plugin` rule's own exclude list legitimately contains these substrings, so a whole-file grep now always matches and can no longer be used as-is)

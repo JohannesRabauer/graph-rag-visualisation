@@ -1,6 +1,8 @@
 # Maven
 target/
 *.class
+*.log
+hs_err_pid*.log
 
 # IDE
 .idea/
