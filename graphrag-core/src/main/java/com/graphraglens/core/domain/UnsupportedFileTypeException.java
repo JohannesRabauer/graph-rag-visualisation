@@ -12,7 +12,7 @@ public class UnsupportedFileTypeException extends RuntimeException {
     private final String filename;
 
     public UnsupportedFileTypeException(String filename) {
-        super("Unsupported file type: \"" + filename + "\". Only .txt files are supported.");
+        super("Unsupported file type: \"" + filename + "\". Only .txt and .pdf files are supported.");
         this.filename = filename;
     }
 

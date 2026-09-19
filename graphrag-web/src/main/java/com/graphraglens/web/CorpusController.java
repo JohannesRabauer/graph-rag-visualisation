@@ -1,8 +1,9 @@
 package com.graphraglens.web;
 
 import com.graphraglens.core.domain.Corpus;
+import com.graphraglens.core.domain.PdfExtractionException;
 import com.graphraglens.core.domain.UnsupportedFileTypeException;
-import com.graphraglens.core.domain.UploadedDocument;
+import com.graphraglens.core.domain.UploadedFile;
 import com.graphraglens.core.usecase.IngestCorpus;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,7 +15,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -43,7 +43,7 @@ public class CorpusController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "No files were provided."));
         }
 
-        List<UploadedDocument> documents = files.stream()
+        List<UploadedFile> documents = files.stream()
                 .map(this::toUploadedDocument)
                 .toList();
 
@@ -62,20 +62,24 @@ public class CorpusController {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", ex.getMessage()));
     }
 
+    @ExceptionHandler(PdfExtractionException.class)
+    public ResponseEntity<Map<String, String>> handlePdfExtractionError(PdfExtractionException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", ex.getMessage()));
+    }
+
     @ExceptionHandler(UncheckedIOException.class)
     public ResponseEntity<Map<String, String>> handleUncheckedIOException(UncheckedIOException ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Failed to read an uploaded file. Please try again."));
     }
 
-    private UploadedDocument toUploadedDocument(MultipartFile file) {
+    private UploadedFile toUploadedDocument(MultipartFile file) {
         String filename = file.getOriginalFilename();
         if (filename == null || filename.isBlank()) {
             filename = "(unnamed file)";
         }
         try {
-            String content = new String(file.getBytes(), StandardCharsets.UTF_8);
-            return new UploadedDocument(filename, content);
+            return new UploadedFile(filename, file.getBytes());
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read uploaded file: " + filename, e);
         }

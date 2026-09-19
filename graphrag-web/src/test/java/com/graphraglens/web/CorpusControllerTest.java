@@ -2,6 +2,11 @@ package com.graphraglens.web;
 
 import com.graphraglens.core.domain.Corpus;
 import com.jayway.jsonpath.JsonPath;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -69,12 +75,13 @@ class CorpusControllerTest {
     @Test
     void uploadingAnUnsupportedFileTypeReturns400WithAPlainLanguageErrorNamingTheFile() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
-                "files", "test.pdf", "application/pdf", "not really a pdf".getBytes(StandardCharsets.UTF_8));
+                "files", "test.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "not supported".getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/corpora").file(file))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
-                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("test.pdf")));
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("test.docx")));
     }
 
     @Test
@@ -90,11 +97,44 @@ class CorpusControllerTest {
         MockMultipartFile valid = new MockMultipartFile(
                 "files", "ok.txt", "text/plain", "hello".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile invalid = new MockMultipartFile(
-                "files", "bad.pdf", "application/pdf", "nope".getBytes(StandardCharsets.UTF_8));
+                "files", "bad.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "nope".getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/corpora").file(valid).file(invalid))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("bad.pdf")));
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("bad.docx")));
+
+        assertThat(corpusStore.size()).isEqualTo(sizeBefore);
+    }
+
+    @Test
+    void uploadingAPdfFileReturns201AndRegistersCorpus() throws Exception {
+        MockMultipartFile pdf = new MockMultipartFile(
+                "files", "test.pdf", "application/pdf", createPdfWithText("hello from pdf"));
+
+        String responseBody = mockMvc.perform(multipart("/api/corpora").file(pdf))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.documentNames[0]").value("test.pdf"))
+                .andExpect(jsonPath("$.documentCount").value(1))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+        Optional<Corpus> stored = corpusStore.get(corpusId);
+        assertThat(stored).isPresent();
+        assertThat(stored.get().documents().get(0).content()).contains("hello from pdf");
+    }
+
+    @Test
+    void uploadingAPdfWithNoExtractableTextReturns400AndRegistersNoCorpus() throws Exception {
+        int sizeBefore = corpusStore.size();
+        MockMultipartFile pdf = new MockMultipartFile(
+                "files", "empty.pdf", "application/pdf", createPdfWithoutText());
+
+        mockMvc.perform(multipart("/api/corpora").file(pdf))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("empty.pdf")));
 
         assertThat(corpusStore.size()).isEqualTo(sizeBefore);
     }
@@ -124,6 +164,32 @@ class CorpusControllerTest {
         @Override
         public byte[] getBytes() throws IOException {
             throw new IOException("Simulated read failure");
+        }
+
+        private static byte[] createPdfWithText(String text) throws IOException {
+            try (PDDocument document = new PDDocument();
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                PDPage page = new PDPage();
+                document.addPage(page);
+                try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
+                    stream.beginText();
+                    stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                    stream.newLineAtOffset(100, 700);
+                    stream.showText(text);
+                    stream.endText();
+                }
+                document.save(out);
+                return out.toByteArray();
+            }
+        }
+
+        private static byte[] createPdfWithoutText() throws IOException {
+            try (PDDocument document = new PDDocument();
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                document.addPage(new PDPage());
+                document.save(out);
+                return out.toByteArray();
+            }
         }
     }
 }

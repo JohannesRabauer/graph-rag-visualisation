@@ -3,6 +3,7 @@ package com.graphraglens.core.usecase;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.UnsupportedFileTypeException;
 import com.graphraglens.core.domain.UploadedDocument;
+import com.graphraglens.core.domain.UploadedFile;
 import com.graphraglens.core.port.DocumentParserPort;
 
 import java.util.List;
@@ -26,13 +27,18 @@ public class IngestCorpus {
         this.parsers = parsers;
     }
 
-    public Corpus ingest(List<UploadedDocument> documents) {
-        for (UploadedDocument document : documents) {
-            boolean supported = parsers.stream().anyMatch(parser -> parser.supports(document.filename()));
-            if (!supported) {
-                throw new UnsupportedFileTypeException(document.filename());
-            }
-        }
+    public Corpus ingest(List<UploadedFile> files) {
+        List<UploadedDocument> documents = files.stream()
+                .map(this::parseDocument)
+                .toList();
         return new Corpus(UUID.randomUUID().toString(), documents);
+    }
+
+    private UploadedDocument parseDocument(UploadedFile file) {
+        return parsers.stream()
+                .filter(parser -> parser.supports(file.filename()))
+                .findFirst()
+                .orElseThrow(() -> new UnsupportedFileTypeException(file.filename()))
+                .parse(file);
     }
 }

@@ -2,7 +2,7 @@
 title: 'Upload a PDF Corpus'
 type: 'feature'
 created: '2026-09-19'
-status: 'draft'
+status: 'ready-for-dev'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []

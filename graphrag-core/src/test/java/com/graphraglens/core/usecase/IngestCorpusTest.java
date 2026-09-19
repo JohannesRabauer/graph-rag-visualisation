@@ -3,9 +3,11 @@ package com.graphraglens.core.usecase;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.UnsupportedFileTypeException;
 import com.graphraglens.core.domain.UploadedDocument;
+import com.graphraglens.core.domain.UploadedFile;
 import com.graphraglens.core.port.DocumentParserPort;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,26 +18,36 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IngestCorpusTest {
 
-    private final DocumentParserPort txtOnlyParser = filename -> filename != null && filename.endsWith(".txt");
+    private final DocumentParserPort txtOnlyParser = new DocumentParserPort() {
+        @Override
+        public boolean supports(String filename) {
+            return filename != null && filename.endsWith(".txt");
+        }
+
+        @Override
+        public UploadedDocument parse(UploadedFile file) {
+            return new UploadedDocument(file.filename(), new String(file.bytes(), StandardCharsets.UTF_8));
+        }
+    };
 
     @Test
     void ingestsAllDocumentsWhenEverySupportedByAParser() {
         IngestCorpus ingestCorpus = new IngestCorpus(List.of(txtOnlyParser));
-        UploadedDocument a = new UploadedDocument("a.txt", "hello");
-        UploadedDocument b = new UploadedDocument("b.txt", "world");
+        UploadedFile a = new UploadedFile("a.txt", "hello".getBytes(StandardCharsets.UTF_8));
+        UploadedFile b = new UploadedFile("b.txt", "world".getBytes(StandardCharsets.UTF_8));
 
         Corpus corpus = ingestCorpus.ingest(List.of(a, b));
 
         assertFalse(corpus.id().isBlank());
-        assertEquals(List.of(a, b), corpus.documents());
         assertEquals(List.of("a.txt", "b.txt"), corpus.documentNames());
+        assertEquals(List.of("hello", "world"), corpus.documents().stream().map(UploadedDocument::content).toList());
         assertEquals(2, corpus.documentCount());
     }
 
     @Test
     void generatesADifferentIdForEachCorpus() {
         IngestCorpus ingestCorpus = new IngestCorpus(List.of(txtOnlyParser));
-        UploadedDocument doc = new UploadedDocument("a.txt", "hello");
+        UploadedFile doc = new UploadedFile("a.txt", "hello".getBytes(StandardCharsets.UTF_8));
 
         Corpus first = ingestCorpus.ingest(List.of(doc));
         Corpus second = ingestCorpus.ingest(List.of(doc));
@@ -46,8 +58,8 @@ class IngestCorpusTest {
     @Test
     void throwsUnsupportedFileTypeExceptionForTheFirstUnsupportedFile() {
         IngestCorpus ingestCorpus = new IngestCorpus(List.of(txtOnlyParser));
-        UploadedDocument supported = new UploadedDocument("a.txt", "hello");
-        UploadedDocument unsupported = new UploadedDocument("b.pdf", "world");
+        UploadedFile supported = new UploadedFile("a.txt", "hello".getBytes(StandardCharsets.UTF_8));
+        UploadedFile unsupported = new UploadedFile("b.pdf", "world".getBytes(StandardCharsets.UTF_8));
 
         UnsupportedFileTypeException exception = assertThrows(UnsupportedFileTypeException.class,
                 () -> ingestCorpus.ingest(List.of(supported, unsupported)));
@@ -58,9 +70,19 @@ class IngestCorpusTest {
 
     @Test
     void supportedIffAnyRegisteredParserSupportsIt() {
-        DocumentParserPort neverSupports = filename -> false;
+        DocumentParserPort neverSupports = new DocumentParserPort() {
+            @Override
+            public boolean supports(String filename) {
+                return false;
+            }
+
+            @Override
+            public UploadedDocument parse(UploadedFile file) {
+                throw new AssertionError("parse should not be called");
+            }
+        };
         IngestCorpus ingestCorpus = new IngestCorpus(List.of(neverSupports, txtOnlyParser));
-        UploadedDocument doc = new UploadedDocument("a.txt", "hello");
+        UploadedFile doc = new UploadedFile("a.txt", "hello".getBytes(StandardCharsets.UTF_8));
 
         Corpus corpus = ingestCorpus.ingest(List.of(doc));
 

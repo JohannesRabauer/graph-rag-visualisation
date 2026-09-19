@@ -1,5 +1,6 @@
 package com.graphraglens.web.config;
 
+import com.graphraglens.adapter.parsing.PdfDocumentParserAdapter;
 import com.graphraglens.adapter.parsing.PlainTextDocumentParserAdapter;
 import com.graphraglens.core.port.DocumentParserPort;
 import com.graphraglens.core.usecase.IngestCorpus;
@@ -25,6 +26,11 @@ public class ParserConfig {
     @Bean
     public DocumentParserPort plainTextDocumentParserAdapter() {
         return new PlainTextDocumentParserAdapter();
+    }
+
+    @Bean
+    public DocumentParserPort pdfDocumentParserAdapter() {
+        return new PdfDocumentParserAdapter();
     }
 
     @Bean
