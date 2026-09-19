@@ -1,6 +1,6 @@
 ---
 title: GraphRAG Lens — PRD
-status: draft
+status: final
 created: 2026-09-19
 updated: 2026-09-19
 ---
@@ -14,9 +14,9 @@ This PRD turns the finalized product brief (`_bmad-output/planning-artifacts/bri
 
 ## 1. Vision
 
-GraphRAG Lens makes GraphRAG's mechanics visible instead of theoretical. It takes documents you provide — plain text or PDF, with the public-domain Sherlock Holmes stories as a built-in demo set — and builds a real knowledge graph of them in Neo4j through live LLM calls. It shows the graph folding into communities, and when you ask it a question through a chat interface, it captures exactly which nodes and communities the answer drew on. Everything shown is real, non-scripted computation — the LLM calls are genuinely live and non-deterministic — but the *visualization* of that computation is a captured, scrubbable replay rather than a live stream, chosen deliberately because it lets you rewind and revisit a step rather than watching it fly by once.
+GraphRAG Lens makes GraphRAG's mechanics visible instead of theoretical. It takes documents you provide — plain text or PDF, with the public-domain Sherlock Holmes stories as a built-in demo set — and builds a real Knowledge Graph of them in Neo4j through live LLM calls. It shows the graph folding into Communities, and when you ask it a question through a chat interface, it captures exactly which nodes and Communities the answer drew on. Everything shown is real, non-scripted computation — the LLM calls are genuinely live and non-deterministic — but the *visualization* of that computation is a captured, scrubbable replay rather than a live stream, chosen deliberately because it lets you rewind and revisit a step rather than watching it fly by once.
 
-Nothing today visualizes GraphRAG's retrieval mechanics this way — existing tools are either post-hoc artifact viewers or vector-RAG-only pipeline explainers, and Neo4j's own GraphRAG tooling doesn't reach Java developers at all. It exists first to build its creator's own understanding deep enough to explain GraphRAG confidently, live, on a coding stream — and it's built cleanly enough that it could later seed a Java-native GraphRAG library, filling a gap research confirmed is real, not assumed.
+Nothing today visualizes GraphRAG's retrieval mechanics this way — existing tools are either post-hoc artifact viewers or vector-RAG-only pipeline explainers, and Neo4j's own GraphRAG tooling doesn't reach Java developers at all. It exists first to build its creator's own understanding deep enough to explain GraphRAG confidently, live, on a coding stream — and it's built cleanly enough that it could later seed a Java-native GraphRAG library, filling a gap that research confirmed is real, not assumed.
 
 ## 2. Target User
 
@@ -37,9 +37,9 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **UJ-1. Explaining GraphRAG live.**
   - **Persona + context:** the creator, mid coding-stream, demonstrating GraphRAG to an audience.
   - **Entry state:** the app is already running (see UJ-2); no prior session state needed.
-  - **Path:** Uploads a document set (plain text/PDF) or picks the built-in Sherlock Holmes demo → watches ingestion build the knowledge graph in Neo4j via live LLM calls → watches community detection visibly cluster the graph → types a question into the chat interface → the system answers via local or global search and captures a step-by-step retrieval trace → scrubs back and forth through the replay, showing which nodes and communities were touched → the final answer appears in chat.
+  - **Path:** Uploads a document set (plain text/PDF) or picks the built-in Sherlock Holmes demo → watches ingestion build the Knowledge Graph in Neo4j via live LLM calls → watches community detection visibly cluster the graph → types a question into the chat interface → the system answers via Local Search or Global Search and captures a step-by-step Retrieval Trace → scrubs back and forth through the Replay, showing which nodes and Communities were touched → the final answer appears in chat.
   - **Climax:** the audience (and the creator) can see exactly which part of the graph produced the answer, not just that an answer arrived.
-  - **Resolution:** the creator can explain, with the running trace as evidence, why GraphRAG produced that specific answer.
+  - **Resolution:** the creator can explain, with the Retrieval Trace as evidence, why GraphRAG produced that specific answer.
   - **Edge case:** a live LLM call fails mid-run (rate limit, API error). No retry or cached fallback is attempted — by design — but the failure must surface as a clear, visible error state, not a crash or silent hang.
 
 - **UJ-2. Setting up before a stream.**
@@ -85,7 +85,7 @@ User can select the built-in Sherlock Holmes Demo Dataset as a one-click alterna
 
 ### 4.2 Knowledge Graph Construction
 
-**Description:** Ingested documents are processed via live LLM calls into Entities and Relationships persisted in Neo4j. Every run is a genuine, non-deterministic LLM call — never cached or canned output. Realizes UJ-1.
+**Description:** Ingested documents are processed via live LLM calls into Entities and Relationships persisted in Neo4j. Every run involves a genuine, non-deterministic LLM call — never cached or canned output. Realizes UJ-1.
 
 #### FR-4: Extract entities and relationships
 System extracts Entities and Relationships from an ingested Corpus via live LLM calls and persists them as nodes and relationships in Neo4j.
@@ -187,7 +187,7 @@ The OpenAI API key is supplied via an environment variable at startup; no in-app
 
 ### 7.2 Out of Scope for MVP
 - Everything listed under Non-Goals above.
-- Library extraction/publishing — deferred to a future version, once the demo itself works. `[NOTE FOR PM]` — revisit once v1 is stable and used on-stream a few times.
+- Library extraction/publishing — deferred to a future version, once the demo itself works. *(Revisit once v1 is stable and used on-stream a few times.)*
 - Marketing website, README polish, and app icon — deferred; parked in the brief's addendum as future roadmap items.
 
 ## 8. Success Metrics
