@@ -12,62 +12,71 @@ context: []
 
 ## Intent
 
-**Problem:** The current main-screen demo flow is hard to present live because it lacks a reliable “ready to query” moment and a graceful recovery path when ingestion fails, which breaks confidence during a showcase.
+**Problem:** The current demo is difficult to present credibly because workflow readiness is unclear and the retrieval behavior behind “Local” and “Global” search does not consistently reflect an actual graph-scoped GraphRAG story for the chosen corpus.
 
-**Approach:** Harden the existing corpus-ingestion UX into a clear showcase workflow: explicit ready state after graph build completion, guided next action to ask a question, and actionable recovery controls on ingestion failure without page reload.
+**Approach:** Deliver a full showcase-credibility slice: make ingestion/query readiness explicit and recoverable in the UI, shift Local Search to graph-grounded retrieval behavior, and ensure Global Search answers are scoped to the currently selected corpus so the presenter can narrate one coherent end-to-end flow.
 
 ## Boundaries & Constraints
 
 **Always:**
-- Keep the existing upload/demo endpoints and SSE event contract unchanged (`/api/corpora`, `/api/corpora/demo`, `/api/corpora/{id}/progress` with `{type,data}`).
-- Reuse current frontend architecture (`index.html` + `upload.js` + `graph-canvas.js`) without introducing npm tooling or framework migration.
-- Preserve current local/global query behavior and retrieval trace behavior; this story improves workflow clarity, not retrieval logic.
-- Keep changes backward-compatible with existing tests and current deterministic fallback mode when no `OPENAI_API_KEY` is set.
+- Keep existing endpoint paths and SSE envelope shape intact (`/api/corpora`, `/api/corpora/demo`, `/api/corpora/{id}/progress` with `{type,data}`).
+- Preserve retrieval trace capture and replay for both Local and Global responses.
+- Keep fallback behavior operational when no `OPENAI_API_KEY` is present.
+- Keep implementation inside existing module boundaries (`graphrag-core` use cases/ports, adapters, `graphrag-web` orchestration/UI).
+- Apply the chosen scope decision for this story: **FULL SHOWCASE CREDIBILITY** (workflow hardening plus retrieval credibility improvements).
 
 **Never:**
-- Do not redesign GraphRAG retrieval algorithms (no conversion of Local Search to graph traversal in this story).
-- Do not add persistence/session isolation/per-corpus graph scoping in backend stores.
-- Do not add new transports or replace SSE with WebSocket/polling.
-- Do not introduce a multi-page onboarding wizard; keep improvements on the current main screen.
+- Do not introduce a new frontend build system or framework migration.
+- Do not add cross-session persistence requirements beyond current app constraints.
+- Do not replace SSE with another transport.
+- Do not implement unrelated product redesign work outside the main showcase flow.
 
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
-| Ingestion completes normally | User uploads files or chooses demo dataset; backend emits `ingestion-complete` | UI leaves “Building…” state, shows explicit “ready” state, and prompts user to ask a first question | N/A |
-| Ingestion fails | Backend emits SSE `error` with payload | UI shows clear failure message and provides immediate retry/restart path without full page reload | Preserve current error text and keep UI interactive |
-| User asks query before graph is ready | Chat submit attempted while ingestion still running | UI blocks/guards submit with clear explanation that graph build is still in progress | No backend error flood; user can retry once ready |
-| SSE stream disconnects after start | EventSource closes unexpectedly | UI surfaces non-blocking warning and keeps available controls usable | Allow user to re-trigger ingestion path via existing upload/demo controls |
+| Ingestion completes | User uploads corpus or chooses demo dataset; backend emits `ingestion-complete` | Main screen transitions from building to explicit ready state and prompts query action | N/A |
+| Ingestion fails | Backend emits SSE `error` payload | Main screen presents clear failure state and retry/restart path without reload | Existing user-facing error content remains visible |
+| Local query on selected corpus | User submits LOCAL question after readiness | Response and trace are grounded in graph entities/relationships tied to selected corpus | If no graph-grounded match, return explicit no-match guidance without pretending a match |
+| Global query on selected corpus | User submits GLOBAL question | Answer is derived from communities belonging to selected corpus only | If selected corpus has no communities yet, return existing no-answer shape with clear reason |
+| Query attempted before readiness | User submits while build still running | Submission is blocked with clear “graph still building” guidance | No backend query call is made |
 
 </frozen-after-approval>
 
-## Open Questions
-
-- SCOPE DEPTH FOR THIS STORY — options: WORKFLOW-ONLY (implement ready-state + recovery UX now, keep retrieval semantics unchanged; fastest path to a stable demo) / FULL SHOWCASE CREDIBILITY (also include deeper GraphRAG behavior fixes like corpus-scoped global search or graph-native local retrieval; higher effort and larger risk).
-
 ## Code Map
 
-- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/templates/index.html` -- Main-screen affordances (ready/recovery messaging and controls).
-- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/static/js/upload.js` -- Core ingestion/query workflow state machine; SSE listeners; busy/ready/error transitions.
-- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- Emits ingestion lifecycle events and error payloads; server-side contract source.
-- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/java/com/graphraglens/web/CorpusProgressService.java` -- SSE buffering/replay behavior and terminal event lifecycle.
-- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java` -- Backend endpoint and ingestion-flow expectations to extend/regress-check.
-- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java` -- Rendered main-screen content checks.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/templates/index.html` -- Main-screen UX hooks for ready/failure/recovery guidance.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/static/js/upload.js` -- UI workflow state transitions (building/ready/error) and pre-ready query guard.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- Ingestion and query orchestration; LOCAL/GLOBAL response contract and trace handling.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/usecase/AnswerGlobalSearch.java` -- Global-search logic currently reading process-global communities; needs corpus scoping behavior.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/usecase/ExtractEntitiesAndRelationships.java` -- Graph extraction persistence path used by ingestion.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/port/GraphStorePort.java` -- Graph read/write contract likely requiring corpus-aware retrieval hooks.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-adapter-neo4j/src/main/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapter.java` -- Concrete store semantics to update for corpus-scoped reads.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/java/com/graphraglens/web/CorpusStore.java` -- Corpus lifecycle and active-corpus context in web layer.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java` -- API contract and ingestion/query lifecycle expectations.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerGlobalSearchTest.java` -- Global-search no-answer and response-shape behavior.
+- `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java` -- Main-screen rendering assertions for new workflow affordances.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/static/js/upload.js` -- Add explicit `ingestion-complete` handling and ready-state transition logic; guard pre-ready query submissions with user-facing guidance -- establishes deterministic showcase flow.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/templates/index.html` -- Add minimal UX hooks for ready and retry/restart guidance on the main screen -- makes state transitions visible to presenters.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/static/js/upload.js` -- Add recovery path for SSE `error` state (re-enable relevant controls and provide retry affordance) -- removes page-reload requirement during demos.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java` -- Extend UI rendering assertions for new readiness/recovery elements -- protects showcase UX from regressions.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java` -- Ensure lifecycle events needed by frontend flow are still emitted as expected -- keeps backend/frontend contract pinned.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/static/js/upload.js` -- Implement explicit ingestion-complete ready transition, pre-ready query guard, and recoverable error-state UX wiring -- ensures presenters always know next step.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/templates/index.html` -- Add minimal markup for ready and retry/restart guidance states used by `upload.js` -- keeps workflow cues visible without redesign.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/port/GraphStorePort.java` -- Extend contract for corpus-aware graph/community reads needed by query use cases -- enables credible corpus scoping.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-adapter-neo4j/src/main/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapter.java` -- Implement corpus-aware storage/read behavior required by the new port methods -- aligns runtime behavior with selected corpus.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/usecase/AnswerGlobalSearch.java` -- Update global retrieval to only use communities of the selected corpus context -- avoids cross-corpus leakage during demos.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- Replace current sentence-first LOCAL answer path with graph-grounded retrieval orchestration and pass corpus context into LOCAL/GLOBAL query flows while preserving response shapes and trace capture -- improves GraphRAG credibility.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java` -- Add/adjust tests for readiness-guarded querying, graph-grounded local behavior, and corpus-scoped global behavior.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerGlobalSearchTest.java` -- Extend tests to verify selected-corpus scoping and no-answer semantics remain explicit.
+- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java` -- Update static-page assertions for new ready/recovery cues.
 
 **Acceptance Criteria:**
-- Given a corpus ingestion run reaches completion, when `ingestion-complete` is emitted, then the main UI exits building state and clearly indicates that querying can begin.
-- Given ingestion emits an error event, when the user remains on the main screen, then they can recover through visible retry/restart controls without reloading the page.
-- Given ingestion is still in progress, when the user attempts to submit a question, then the UI prevents submission and explains that the graph is not ready yet.
-- Given the new showcase workflow UI is rendered, when backend tests and web module tests run, then they pass without changing existing API endpoint shapes.
+- Given corpus ingestion reaches completion, when `ingestion-complete` is emitted, then the main UI exits building mode and clearly indicates query readiness.
+- Given ingestion emits `error`, when the user remains on the main screen, then they can retry/restart corpus flow without page reload.
+- Given a LOCAL query on a ready corpus, when a result is returned, then it is grounded in graph entities/relationships for that corpus and accompanied by a retrieval trace.
+- Given a GLOBAL query on a ready corpus, when communities exist, then the answer is derived only from that corpus’s communities and never from another corpus.
+- Given a query attempt before readiness, when submit is pressed, then the UI blocks submission and explains that graph construction is still in progress.
+- Given the feature changes are complete, when test suites run, then existing endpoint shapes and trace payload contracts remain compatible.
 
 ## Implementation Notes
 
@@ -77,19 +86,16 @@ context: []
 
 ## Design Notes
 
-The workflow should behave as a small explicit state machine driven by existing lifecycle events:
-- `ingestion-started` → Building state
-- `ingestion-complete` → Ready state
-- `error` → Recoverable error state
-
-Keep this state machine concentrated in `upload.js` and reflected by minimal DOM hooks in `index.html`, so behavior remains easy to reason about and future stories can extend it without duplicating state logic.
+Use a consistent corpus context key from ingestion through query-time use cases so Local and Global behavior both map to the same selected corpus identity. Keep retrieval trace semantics stable: behavior can improve, but every successful LOCAL/GLOBAL response still returns trace metadata and a retrievable trace resource.
 
 ## Verification
 
 **Commands:**
 - `cd /home/runner/work/graph-rag-visualisation/graph-rag-visualisation && mvn test` -- expected: all module tests pass.
-- `cd /home/runner/work/graph-rag-visualisation/graph-rag-visualisation && mvn -pl graphrag-web test` -- expected: web module tests pass with new readiness/recovery assertions.
+- `cd /home/runner/work/graph-rag-visualisation/graph-rag-visualisation && mvn -pl graphrag-web test` -- expected: web module tests pass with updated workflow and query semantics.
+- `cd /home/runner/work/graph-rag-visualisation/graph-rag-visualisation && mvn -pl graphrag-core test` -- expected: core retrieval/use-case tests pass for corpus-aware logic.
 
 **Manual checks (if no CLI):**
-- Start app, load demo dataset, and verify UI transitions from Building to Ready after ingestion completion.
-- Trigger/observe ingestion error path and verify recovery controls are visible and usable without page reload.
+- Load demo dataset and verify transition from Building to Ready before allowing query submit.
+- Ask a LOCAL question and verify returned trace reflects graph-grounded steps.
+- Load a second corpus and verify GLOBAL answers are scoped to the currently selected corpus.
