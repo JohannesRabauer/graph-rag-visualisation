@@ -38,7 +38,7 @@ public class ExtractEntitiesAndRelationships {
      */
     public void run(Corpus corpus, Consumer<Entity> onEntityPersisted, Consumer<Relationship> onRelationshipPersisted) {
         GraphExtraction extraction = extract(corpus);
-        graphStorePort.persist(extraction);
+        graphStorePort.persist(corpus.id(), extraction);
 
         if (onEntityPersisted != null && extraction != null && extraction.entities() != null) {
             for (Entity entity : extraction.entities()) {

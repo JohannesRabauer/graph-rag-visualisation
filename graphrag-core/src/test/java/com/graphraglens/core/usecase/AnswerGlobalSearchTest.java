@@ -9,7 +9,9 @@ import com.graphraglens.core.port.GraphStorePort;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -99,7 +101,20 @@ class AnswerGlobalSearchTest {
         assertFalse(result.answer().isBlank());
     }
 
-    private static final class StubGraphStore implements GraphStorePort {
+    @Test
+    void corpusScopedAnswerReadsOnlyTheRequestedCorpusCommunities() {
+        ScopedStubGraphStore graphStore = new ScopedStubGraphStore(Map.of(
+                "corpus-a", List.of(new Community("community-a", "This community centers on Irene Adler.")),
+                "corpus-b", List.of(new Community("community-b", "This community centers on Moriarty."))));
+
+        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStore).answer("Tell me about Moriarty", "corpus-a");
+
+        assertFalse(result.noAnswer());
+        assertNotNull(result.answer());
+        assertFalse(result.answer().contains("Moriarty"));
+    }
+
+    private static class StubGraphStore implements GraphStorePort {
         private final List<Community> storedCommunities;
 
         private StubGraphStore(List<Community> storedCommunities) {
@@ -129,6 +144,20 @@ class AnswerGlobalSearchTest {
         @Override
         public void persistCommunityMemberships(Collection<CommunityMembership> memberships) {
             // not exercised by this use case
+        }
+    }
+
+    private static final class ScopedStubGraphStore extends StubGraphStore {
+        private final Map<String, List<Community>> communitiesByCorpus;
+
+        private ScopedStubGraphStore(Map<String, List<Community>> communitiesByCorpus) {
+            super(List.of());
+            this.communitiesByCorpus = new LinkedHashMap<>(communitiesByCorpus);
+        }
+
+        @Override
+        public Collection<Community> communities(String corpusId) {
+            return communitiesByCorpus.getOrDefault(corpusId, List.of());
         }
     }
 }

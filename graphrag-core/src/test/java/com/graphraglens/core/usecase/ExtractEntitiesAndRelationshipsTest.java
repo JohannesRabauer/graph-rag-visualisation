@@ -30,6 +30,7 @@ class ExtractEntitiesAndRelationshipsTest {
         useCase.run(corpus);
 
         assertNotNull(graphStorePort.persistedExtraction);
+        assertEquals("c1", graphStorePort.persistedCorpusId);
         assertEquals(2, graphStorePort.persistedExtraction.entities().size());
         assertEquals(1, graphStorePort.persistedExtraction.relationships().size());
     }
@@ -70,6 +71,7 @@ class ExtractEntitiesAndRelationshipsTest {
 
     private static final class RecordingGraphStorePort implements GraphStorePort {
         private GraphExtraction persistedExtraction;
+        private String persistedCorpusId;
 
         @Override
         public void persistEntities(java.util.Collection<Entity> entities) {
@@ -83,6 +85,12 @@ class ExtractEntitiesAndRelationshipsTest {
 
         @Override
         public void persist(GraphExtraction extraction) {
+            this.persistedExtraction = extraction;
+        }
+
+        @Override
+        public void persist(String corpusId, GraphExtraction extraction) {
+            this.persistedCorpusId = corpusId;
             this.persistedExtraction = extraction;
         }
     }

@@ -17,10 +17,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class CorpusStore {
 
+    public enum CorpusWorkflowStatus {
+        BUILDING,
+        READY,
+        FAILED
+    }
+
     private final ConcurrentHashMap<String, Corpus> corpora = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CorpusWorkflowStatus> statuses = new ConcurrentHashMap<>();
 
     public void put(Corpus corpus) {
         corpora.put(corpus.id(), corpus);
+        statuses.put(corpus.id(), CorpusWorkflowStatus.BUILDING);
     }
 
     public Optional<Corpus> get(String id) {
@@ -29,5 +37,17 @@ public class CorpusStore {
 
     public int size() {
         return corpora.size();
+    }
+
+    public CorpusWorkflowStatus status(String corpusId) {
+        return statuses.getOrDefault(corpusId, CorpusWorkflowStatus.BUILDING);
+    }
+
+    public void markReady(String corpusId) {
+        statuses.put(corpusId, CorpusWorkflowStatus.READY);
+    }
+
+    public void markFailed(String corpusId) {
+        statuses.put(corpusId, CorpusWorkflowStatus.FAILED);
     }
 }

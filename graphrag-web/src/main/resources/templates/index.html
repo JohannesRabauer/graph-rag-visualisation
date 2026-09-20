@@ -52,6 +52,13 @@
         <div id="graph-canvas" hidden aria-hidden="true"></div>
 
         <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Resting</p>
+        <div class="workflow-status" id="workflow-status" role="status" aria-live="polite" hidden>
+          <p id="workflow-status-text">Knowledge Graph — Building. Questions stay disabled until ingestion completes.</p>
+          <div id="workflow-recovery-actions" hidden>
+            <button type="button" id="workflow-retry-button">Retry progress stream</button>
+            <button type="button" id="workflow-restart-button">Start over with a new corpus</button>
+          </div>
+        </div>
 
         <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
           <label class="community-toggle" for="community-visualization-toggle">

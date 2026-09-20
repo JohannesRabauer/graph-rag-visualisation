@@ -52,7 +52,7 @@ public class DetectCommunities {
      * lose already-detected Communities.
      */
     public List<Community> detect(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
-        Collection<Entity> entities = graphStorePort.entities();
+        Collection<Entity> entities = graphStorePort.entities(corpus.id());
         if (entities == null || entities.isEmpty()) {
             return List.of();
         }
@@ -62,7 +62,7 @@ public class DetectCommunities {
             adjacency.computeIfAbsent(normalizedIdentity(entity), ignored -> new LinkedHashSet<>());
         }
 
-        for (Relationship relationship : graphStorePort.relationships()) {
+        for (Relationship relationship : graphStorePort.relationships(corpus.id())) {
             String source = normalizedIdentity(relationship.source(), relationship.sourceType());
             String target = normalizedIdentity(relationship.target(), relationship.targetType());
             adjacency.computeIfAbsent(source, ignored -> new LinkedHashSet<>()).add(target);
@@ -113,8 +113,8 @@ public class DetectCommunities {
             }
         }
 
-        graphStorePort.persistCommunities(communities);
-        graphStorePort.persistCommunityMemberships(memberships);
+        graphStorePort.persistCommunities(corpus.id(), communities);
+        graphStorePort.persistCommunityMemberships(corpus.id(), memberships);
 
         if (onCommunityDetected != null) {
             Map<String, List<String>> memberIdentitiesByCommunityId = new LinkedHashMap<>();

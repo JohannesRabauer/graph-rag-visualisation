@@ -32,6 +32,7 @@ class CorpusControllerGlobalSearchTest {
         CorpusStore corpusStore = new CorpusStore();
         Corpus corpus = new Corpus("corpus-1", List.of(new UploadedDocument("doc.txt", "Some content.")));
         corpusStore.put(corpus);
+        corpusStore.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
 
         CorpusController controller = new CorpusController(
@@ -72,5 +73,34 @@ class CorpusControllerGlobalSearchTest {
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                         () -> controller.trace("unknown-trace-id")))
                 .hasMessageContaining("unknown-trace-id");
+    }
+
+    @Test
+    void globalSearchUsesOnlyCommunitiesForTheSelectedCorpus() {
+        CorpusStore corpusStore = new CorpusStore();
+        Corpus firstCorpus = new Corpus("corpus-1", List.of(new UploadedDocument("a.txt", "A")));
+        Corpus secondCorpus = new Corpus("corpus-2", List.of(new UploadedDocument("b.txt", "B")));
+        corpusStore.put(firstCorpus);
+        corpusStore.put(secondCorpus);
+        corpusStore.markReady(firstCorpus.id());
+        corpusStore.markReady(secondCorpus.id());
+
+        InMemoryGraphStoreAdapter graphStore = new InMemoryGraphStoreAdapter();
+        graphStore.persistCommunities(firstCorpus.id(), List.of(
+                new com.graphraglens.core.domain.Community("community-1",
+                        "This community centers on Irene Adler and disguises.")));
+        graphStore.persistCommunities(secondCorpus.id(), List.of(
+                new com.graphraglens.core.domain.Community("community-2",
+                        "This community centers on Professor Moriarty and networks.")));
+
+        CorpusController controller = new CorpusController(
+                null, corpusStore, List.of(), null, null, null, graphStore, new RetrievalTraceStore());
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                firstCorpus.id(), Map.of("question", "Tell me about Moriarty", "mode", "GLOBAL"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).containsKey("answer");
+        assertThat((String) response.getBody().get("answer")).doesNotContain("Moriarty");
     }
 }
