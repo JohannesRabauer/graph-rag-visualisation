@@ -32,6 +32,8 @@
   var currentIndex = 0;
   var playTimer = null;
   var dragging = false;
+  var requestSeq = 0;
+  var loadError = false;
 
   // Delegated so it keeps working for every Replay CTA `upload.js` appends
   // later, without either file needing to know about the other's timing.
@@ -40,7 +42,7 @@
     if (!cta) {
       return;
     }
-    openReplay(cta.dataset.traceId, parseInt(cta.dataset.stepCount, 10) || 0);
+    openReplay(cta.dataset.traceId);
   });
 
   if (closeButton) {
@@ -56,25 +58,41 @@
         return;
       }
       dragging = true;
+      if (tickTrack.setPointerCapture) {
+        tickTrack.setPointerCapture(event.pointerId);
+      }
       stopPlayback();
       goToStep(nearestStepIndexForPointer(event));
     });
+    // Bound on the track itself (not window): with setPointerCapture above,
+    // the track keeps receiving pointermove even once the pointer leaves its
+    // bounding box, so a fast drag past either edge still clamps to the
+    // first/last step instead of freezing.
     tickTrack.addEventListener('pointermove', function (event) {
       if (!dragging) {
         return;
       }
       goToStep(nearestStepIndexForPointer(event));
     });
-    window.addEventListener('pointerup', function () {
+    tickTrack.addEventListener('pointerup', function () {
+      dragging = false;
+    });
+    tickTrack.addEventListener('pointercancel', function () {
       dragging = false;
     });
   }
 
-  function openReplay(traceId, stepCountHint) {
+  function openReplay(traceId) {
     if (!traceId) {
       return;
     }
     stopPlayback();
+    hideFetchError();
+
+    // Guards against an out-of-order response: if a second Replay CTA is
+    // clicked before this fetch resolves, only the most recently requested
+    // trace's response is allowed to populate the scrubber.
+    var thisRequest = ++requestSeq;
 
     fetch('/api/traces/' + traceId)
       .then(function (response) {
@@ -83,9 +101,14 @@
         });
       })
       .then(function (result) {
-        if (!result.ok) {
+        if (thisRequest !== requestSeq) {
           return;
         }
+        if (!result.ok) {
+          showFetchError();
+          return;
+        }
+        loadError = false;
         steps = (result.body && result.body.steps) || [];
         currentIndex = 0;
         open();
@@ -93,12 +116,26 @@
         renderStep();
       })
       .catch(function () {
-        // Replay is a best-effort, post-hoc view; a failed fetch just means
-        // Replay doesn't open this time — the chat answer itself is
-        // unaffected, so nothing more surfaces here (mirrors stepCountHint
-        // only ever being a fallback display value, never load-bearing).
-        void stepCountHint;
+        if (thisRequest !== requestSeq) {
+          return;
+        }
+        showFetchError();
       });
+  }
+
+  function showFetchError() {
+    loadError = true;
+    steps = [];
+    currentIndex = 0;
+    open();
+    buildTicks();
+    updateCounterAndCaption();
+    updateTicks();
+    updateTransportState();
+  }
+
+  function hideFetchError() {
+    loadError = false;
   }
 
   function open() {
@@ -119,6 +156,15 @@
       window.GraphCanvas.clearStepHighlights();
     }
   }
+
+  // Exposed so upload.js can close an open Replay before it reinitializes
+  // the Cytoscape canvas for a newly-loaded Corpus (Story 4.3's
+  // GraphCanvas.init()) — otherwise a still-running autoplay interval would
+  // keep calling highlightStep with a stale trace's node ids against a
+  // rebuilt, unrelated graph.
+  window.Replay = {
+    close: closeReplay
+  };
 
   function buildTicks() {
     if (!tickTrack) {
@@ -234,9 +280,11 @@
       stepCounterEl.textContent = pad(total === 0 ? 0 : currentIndex + 1) + ' / ' + pad(total);
     }
     if (captionEl) {
-      captionEl.textContent = total === 0
-          ? 'Nothing was touched for this answer.'
-          : captionFor(steps[currentIndex], currentIndex, total);
+      captionEl.textContent = loadError
+          ? 'This Retrieval Trace could not be loaded. Please try again.'
+          : total === 0
+              ? 'Nothing was touched for this answer.'
+              : captionFor(steps[currentIndex], currentIndex, total);
     }
   }
 

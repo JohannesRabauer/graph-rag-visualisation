@@ -124,8 +124,11 @@
           // Replay's "current step" node (DESIGN.md `components.node-active`):
           // the larger warm-active ring. Wins over `.step-previous` when a
           // node somehow carries both (shouldn't happen — `clearStepHighlights`
-          // strips both before every `highlightStep` call).
-          selector: 'node.step-active',
+          // strips both before every `highlightStep` call). Excludes
+          // `.community-hull`: a compound parent's size is driven by its
+          // children, so forcing a fixed width/height on it here would break
+          // that auto-sizing (it gets its own border-only treatment below).
+          selector: 'node.step-active:not(.community-hull)',
           style: {
             'background-color': readCssVar('--active-soft', '#FFE9DE'),
             'border-color': readCssVar('--active', '#E85D2B'),
@@ -138,8 +141,8 @@
         {
           // Replay's "previous step" node (`components.node-previous-step`):
           // a distinct, smaller accent ring so it reads as "just visited",
-          // not "current".
-          selector: 'node.step-previous',
+          // not "current". Same compound-node exclusion as `.step-active`.
+          selector: 'node.step-previous:not(.community-hull)',
           style: {
             'background-color': readCssVar('--accent-soft', '#DCE7FD'),
             'border-color': readCssVar('--accent', '#2563EB'),
@@ -147,6 +150,23 @@
             width: 22,
             height: 22,
             'z-index': 9
+          }
+        },
+        {
+          // Compound (community-hull) version of the same two states: only
+          // the border changes, since a compound node's width/height must
+          // stay driven by its children's layout, not a fixed size.
+          selector: 'node.step-active.community-hull',
+          style: {
+            'border-color': readCssVar('--active', '#E85D2B'),
+            'border-width': 3
+          }
+        },
+        {
+          selector: 'node.step-previous.community-hull',
+          style: {
+            'border-color': readCssVar('--accent', '#2563EB'),
+            'border-width': 2.5
           }
         },
         {
@@ -331,24 +351,22 @@
     return step.kind === 'COMMUNITY' ? 'community::' + step.identifier : step.identifier;
   }
 
-  // Looks for an edge connecting the two given node ids in either direction.
-  // Deliberately matches on the edge's `source`/`target` data rather than
-  // reconstructing `addRelationship`'s exact `id` string (which also encodes
-  // the relationship type, unknown to a RetrievalStep) — same underlying
-  // convention, direction-agnostic lookup.
-  function findEdgeBetween(idA, idB) {
+  // Looks for every edge connecting the two given node ids in either
+  // direction (there can be more than one parallel Relationship between the
+  // same two Entities). Deliberately matches on the edge's `source`/`target`
+  // data rather than reconstructing `addRelationship`'s exact `id` string
+  // (which also encodes the relationship type, unknown to a RetrievalStep)
+  // — same underlying convention, direction-agnostic lookup.
+  function findEdgesBetween(idA, idB) {
     if (!cy || !idA || !idB) {
-      return null;
+      return [];
     }
-    var found = null;
+    var found = [];
     cy.edges().forEach(function (edge) {
-      if (found) {
-        return;
-      }
       var source = edge.data('source');
       var target = edge.data('target');
       if ((source === idA && target === idB) || (source === idB && target === idA)) {
-        found = edge;
+        found.push(edge);
       }
     });
     return found;
@@ -379,11 +397,13 @@
     var current = steps[currentIndex];
     var previous = currentIndex > 0 ? steps[currentIndex - 1] : null;
 
-    for (var i = 0; i < steps.length - 1; i += 1) {
-      var edge = findEdgeBetween(stepNodeId(steps[i]), stepNodeId(steps[i + 1]));
-      if (edge) {
+    // Only pairs from the current step onward are "not yet reached" — a
+    // pair entirely behind currentIndex was already passed and should not
+    // read as an upcoming/dashed preview.
+    for (var i = currentIndex; i < steps.length - 1; i += 1) {
+      findEdgesBetween(stepNodeId(steps[i]), stepNodeId(steps[i + 1])).forEach(function (edge) {
         edge.addClass('edge-upcoming');
-      }
+      });
     }
 
     if (current) {
@@ -401,11 +421,10 @@
     }
 
     if (previous && current) {
-      var traversedEdge = findEdgeBetween(stepNodeId(previous), stepNodeId(current));
-      if (traversedEdge) {
-        traversedEdge.removeClass('edge-upcoming');
-        traversedEdge.addClass('edge-traversed');
-      }
+      findEdgesBetween(stepNodeId(previous), stepNodeId(current)).forEach(function (edge) {
+        edge.removeClass('edge-upcoming');
+        edge.addClass('edge-traversed');
+      });
     }
   }
 

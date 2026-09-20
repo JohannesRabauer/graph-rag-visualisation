@@ -48,6 +48,7 @@ class MainControllerTest {
 
         assertThat(body).contains("id=\"graph-eyebrow\"");
         assertThat(body).contains("id=\"replay-scrubber\"");
+        assertThat(body).contains("id=\"replay-close\"");
         assertThat(body).contains("id=\"replay-step-back\"");
         assertThat(body).contains("id=\"replay-play-pause\"");
         assertThat(body).contains("id=\"replay-step-forward\"");

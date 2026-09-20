@@ -2,7 +2,7 @@
 title: 'Replay the Retrieval Trace'
 type: 'feature'
 created: '2026-09-20'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -77,9 +77,31 @@ baseline_commit: '75375ecf4048fcde6181dc6349cfb58b2b356cc9'
 - Manual browser verification (transport buttons/keyboard/drag against a running app) was not performed in this sandbox — no browser is available here. This is the one Verification-section manual check left undone; the automated `mvn test` check specified by this story's own Verification section was run and passes.
 - Nothing in this spec's Tasks & Acceptance or Boundaries & Constraints was left incomplete. The only judgment call beyond the Code Map's literal text is `highlightStep`'s signature (see above), made to honor the frozen Intent's "upcoming" edge-preview behavior without duplicating trace-order state across two files.
 
+### Review round (build session)
+
+Applied all 10 `patch`-routed findings from the 3-layer review directly: fixed the edge-highlighting ordering bug (all three reviewers found it independently), scoped step-highlight CSS to exclude compound hull nodes, made edge lookup return all parallel matches instead of the first, added `setPointerCapture` to the tick-track drag, surfaced a visible caption on a failed trace fetch instead of silently doing nothing, guarded against an out-of-order response when two Replay CTAs are clicked in quick succession, exported `window.Replay.close()` and call it before `GraphCanvas.init()` so switching corpora mid-Replay can't leave a stale autoplay running, removed the dead `stepCountHint` parameter, added the missing `#replay-close` test assertion and a GLOBAL-mode call-out in the manual-checks text, and added an `aria-live` region to the step counter/caption. Re-ran `mvn test` (JDK 25) and `node --check` on all three touched JS files after each fix — final state: `BUILD SUCCESS`, 24 `graphrag-web` tests (3 new/updated), no syntax errors.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Three-layer review (blind-hunter, edge-case-hunter, verification-gap) ran in parallel against the full diff. All three independently found the same root-cause edge-highlighting bug.
+
+- **patch** — `highlightStep` marked *every* consecutive step-pair edge as `edge-upcoming` regardless of whether that pair was before or after `currentIndex`, so already-passed edges stayed dashed instead of reflecting they'd been reached (blind-hunter + edge-case-hunter + verification-gap, same root cause, found independently three times). Fixed the loop to only mark pairs from `currentIndex` onward.
+- **patch** — `node.step-active`/`node.step-previous` set a fixed `width`/`height`, which would apply to a `.community-hull` compound node too if a COMMUNITY step were highlighted, breaking its auto-sizing around member nodes (edge-case-hunter). Scoped both selectors to `:not(.community-hull)` and added compound-safe border-only variants.
+- **patch** — `findEdgeBetween` stopped at the first matching edge; two entities connected by more than one Relationship would only get one of them styled (edge-case-hunter). Renamed to `findEdgesBetween`, returns all matches, both the upcoming-preview loop and the traversed-edge assignment now iterate all of them.
+- **patch** — The tick-track drag never called `setPointerCapture`, so a fast drag past the track's left/right edge stopped updating instead of clamping to the first/last step (blind-hunter + edge-case-hunter, same root cause). Added `setPointerCapture` on `pointerdown`; the track now keeps receiving `pointermove`/`pointerup` outside its bounds.
+- **patch** — A failed/non-OK `GET /api/traces/{traceId}` fetch was swallowed silently — clicking Replay appeared to do nothing (blind-hunter, matching verification-gap's coverage-gap framing). Added a `loadError` state: Replay now opens showing a plain-language "could not be loaded" caption instead of staying silent.
+- **patch** — Rapid clicks on two different Replay CTAs before the first fetch resolved could let a stale response overwrite the newer one (edge-case-hunter). Added a request-sequence token; only the most recently requested trace's response is applied.
+- **patch** — Loading a new Corpus while Replay was open left its `setInterval` autoplay running against the canvas `GraphCanvas.init()` was about to destroy/rebuild, calling `highlightStep` with a stale trace's node ids (edge-case-hunter). Exported `window.Replay.close()` (matching the established `window.GraphCanvas` pattern) and call it from `showCorpusChip()` before `GraphCanvas.init()`.
+- **patch** — `openReplay`'s `stepCountHint` parameter was accepted but never used, with a comment claiming otherwise (blind-hunter). Removed the dead parameter.
+- **patch** — `#replay-close` existed in the new markup but wasn't asserted by `MainControllerTest`, and the spec's own manual-checks text never called out testing GLOBAL mode explicitly, despite AC1/Boundaries requiring both modes to work and GLOBAL exercising a materially different code path (blind-hunter, two small findings, same "documentation/test completeness" theme). Added the missing test assertion and updated the manual-checks wording.
+- **patch** — The step counter/caption had no `aria-live` region, so a screen-reader user driving the transport controls by keyboard (the exact AC5 scenario) got no announcement that the step changed (blind-hunter). Added `aria-live="polite"` to the meta row.
+- **defer** — No automated coverage exists for the Replay CTA's rendering, canvas highlighting, or transport boundary logic (blind-hunter + all three of verification-gap's findings, same root cause: no JS test framework in this repo, matching the same AD-15 constraint already accepted for Stories 4.3/5.1). Logged in `deferred-work.md`.
+- **defer** — A trace step whose node isn't currently rendered/visible (e.g. hidden by the community toggle) advances the counter/caption with no visible highlight (blind-hunter). Narrow interaction between two independently-toggleable features; fix is more than a simple correction. Logged in `deferred-work.md`.
+- **false** — Claimed risk of a frontend/backend trace JSON field-name mismatch (blind-hunter). Disproof: manually cross-checked `CorpusController.stepPayload()` (Story 5.1) against `replay.js`'s field usage — `kind`/`identifier`/`label` match exactly, including the Java enum's `.name()` string values (`ENTITY`/`RELATIONSHIP`/`COMMUNITY`) against `replay.js`'s string comparisons.
+- **false** — Claimed two consecutive steps could resolve to the same node id, causing a `step-active`/`step-previous` class conflict (edge-case-hunter). Disproof: `AnswerGlobalSearch` iterates each distinct Community exactly once per trace (no repeats possible), and `entityStepsNamedIn`'s match list contains at most one entry per distinct Entity identity — no code path in either search mode can produce a duplicate-identifier step today.
+- **false** — Claimed the Code Map's "Replay CTA container" wording implied a static markup element in `index.html` that wasn't added (edge-case-hunter). Disproof: the Approach text explicitly says "Add the missing Replay CTA to each chat answer" — the CTA is correctly built per-message in `upload.js`, matching the actual approved intent; the Code Map phrase was just loose wording, not a missed requirement.
 
 ## Design Notes
 
@@ -93,4 +115,4 @@ baseline_commit: '75375ecf4048fcde6181dc6349cfb58b2b356cc9'
 - `mvn test` -- expected: `MainControllerTest`'s new markup assertions pass; no other test should need to change (this story is almost entirely frontend, Story 5.1's backend is untouched)
 
 **Manual checks (if no CLI):**
-- Run the app, load the demo dataset, ask a question, confirm the Replay CTA appears with the right step count, click it, and step through with both the transport buttons and keyboard (Tab + Space/Enter) — confirm the canvas highlights update and the caption/counter track correctly, including at the first/last step boundaries.
+- Run the app, load the demo dataset, ask a question in **both LOCAL and GLOBAL mode** (they exercise different code paths — ENTITY vs. COMMUNITY steps, different node-id prefixes, different caption wording), confirm the Replay CTA appears with the right step count for each, click it, and step through with both the transport buttons and keyboard (Tab + Space/Enter) — confirm the canvas highlights update and the caption/counter track correctly, including at the first/last step boundaries.

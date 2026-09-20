@@ -205,6 +205,13 @@
       activeProgressSource.close();
       activeProgressSource = null;
     }
+    // Close any open Replay first too — otherwise a still-running autoplay
+    // interval would keep calling GraphCanvas.highlightStep with a stale
+    // trace's node ids against the canvas GraphCanvas.init() is about to
+    // destroy and rebuild for this new corpus.
+    if (window.Replay) {
+      window.Replay.close();
+    }
 
     var names = body && body.name ? body.name : (body.documentNames || []).join(', ');
     var count = body.documentCount || 0;
