@@ -49,9 +49,21 @@
     currentSearchMode = mode;
     if (mode === 'GLOBAL') {
       modeHint.textContent = 'Global Search aggregates information across Communities to answer broader, corpus-level questions.';
+    } else if (mode === 'DRIFT') {
+      modeHint.textContent = 'DRIFT runs a community pass, spawns targeted sub-questions, then re-ranks and synthesizes.';
     } else {
       modeHint.textContent = 'Local Search traverses specific Entities and Relationships around your question.';
     }
+  }
+
+  function answerTagLabel(mode) {
+    if (mode === 'GLOBAL') {
+      return 'Global Search · Answer';
+    }
+    if (mode === 'DRIFT') {
+      return 'Drift Search · Answer';
+    }
+    return 'Local Search · Answer';
   }
 
   modeInputs.forEach(function (input) {
@@ -514,7 +526,7 @@
 
     var tag = document.createElement('div');
     tag.className = 'answer-tag';
-    tag.textContent = (activeMode === 'GLOBAL' ? 'Global Search' : 'Local Search') + ' · Answer';
+    tag.textContent = answerTagLabel(activeMode);
     message.appendChild(tag);
 
     var content = document.createElement('span');

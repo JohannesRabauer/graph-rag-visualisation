@@ -28,6 +28,8 @@
   --accent-soft: #DCE7FD;
   --global: #0E7C86;
   --global-soft: #DCF2F1;
+  --drift: #C0225F;
+  --drift-soft: #FBDCE7;
   --active: #E85D2B;
   --active-soft: #FFE9DE;
   --node-fill: #FFFFFF;
@@ -670,6 +672,18 @@ body {
   background: var(--global);
 }
 
+.mode-choice-option:has(input[value="DRIFT"]:checked) {
+  color: var(--drift);
+}
+
+.mode-choice-option:has(input[value="DRIFT"]:checked) .mode-choice-dot {
+  border-color: var(--drift);
+}
+
+.mode-choice-option:has(input[value="DRIFT"]:checked) .mode-choice-dot::after {
+  background: var(--drift);
+}
+
 .mode-hint {
   margin-top: var(--space-2);
   font-size: 11px;
@@ -723,6 +737,10 @@ body {
 
 .message.answer[data-mode="GLOBAL"] .answer-tag {
   color: var(--global);
+}
+
+.message.answer[data-mode="DRIFT"] .answer-tag {
+  color: var(--drift);
 }
 
 .message.answer .answer-tag::before {

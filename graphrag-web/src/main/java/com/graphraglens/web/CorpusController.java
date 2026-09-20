@@ -125,8 +125,11 @@ public class CorpusController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Please enter a question first."));
         }
 
-        if (!"LOCAL".equalsIgnoreCase(mode) && !"GLOBAL".equalsIgnoreCase(mode)) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Search mode must be LOCAL or GLOBAL."));
+        if (!"LOCAL".equalsIgnoreCase(mode)
+                && !"GLOBAL".equalsIgnoreCase(mode)
+                && !"DRIFT".equalsIgnoreCase(mode)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Search mode must be LOCAL, GLOBAL, or DRIFT."));
         }
 
         Corpus corpus = corpusStore.get(corpusId)
@@ -141,6 +144,15 @@ public class CorpusController {
 
         if ("GLOBAL".equalsIgnoreCase(mode)) {
             return globalSearchResponse(question, corpus.id());
+        }
+        if ("DRIFT".equalsIgnoreCase(mode)) {
+            String traceId = captureTrace(List.of());
+            return ResponseEntity.ok(Map.of(
+                    "answerId", UUID.randomUUID().toString(),
+                    "traceId", traceId,
+                    "traceStepCount", 0,
+                    "noAnswer", true,
+                    "reason", "DRIFT Search isn't implemented yet."));
         }
 
         LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort).answer(question, corpus.id());

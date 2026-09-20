@@ -351,6 +351,22 @@ class CorpusControllerTest {
     }
 
     @Test
+    void driftQueryWhileGraphIsStillBuildingReturnsTheExistingConflictResponse() {
+        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        isolatedCorpusStore.put(corpus);
+        CorpusController controller = new CorpusController(
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                corpus.id(), Map.of("question", "Is it ready?", "mode", "DRIFT"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody()).containsEntry("error",
+                "The graph is still building for this corpus. Wait for “Knowledge Graph — Ready”, then ask your question.");
+    }
+
+    @Test
     void queryingAfterFailedIngestionReturnsConflictWithFailureGuidance() {
         CorpusStore isolatedCorpusStore = new CorpusStore();
         Corpus corpus = new Corpus("failed-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
@@ -505,6 +521,47 @@ class CorpusControllerTest {
                 .andExpect(jsonPath("$.mode").value("GLOBAL"))
                 .andExpect(jsonPath("$.answer").exists())
                 .andExpect(jsonPath("$.noAnswer").doesNotExist());
+    }
+
+    @Test
+    void driftSearchReturnsTheNoAnswerShapeUntilTheImplementationExists() {
+        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Corpus corpus = new Corpus("ready-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        isolatedCorpusStore.put(corpus);
+        isolatedCorpusStore.markReady(corpus.id());
+        RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
+        CorpusController controller = new CorpusController(
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, retrievalTraceStore);
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                corpus.id(), Map.of("question", "Try DRIFT", "mode", "DRIFT"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).containsKeys("answerId", "traceId", "traceStepCount", "noAnswer", "reason");
+        assertThat(response.getBody()).containsEntry("traceStepCount", 0);
+        assertThat(response.getBody()).containsEntry("noAnswer", true);
+        assertThat(response.getBody()).containsEntry("reason", "DRIFT Search isn't implemented yet.");
+        assertThat(response.getBody()).doesNotContainKeys("answer", "mode");
+
+        String traceId = String.valueOf(response.getBody().get("traceId"));
+        assertThat(retrievalTraceStore.get(traceId)).isPresent();
+        assertThat(retrievalTraceStore.get(traceId).orElseThrow().steps()).isEmpty();
+    }
+
+    @Test
+    void unrecognizedModesListDriftInTheValidationError() {
+        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Corpus corpus = new Corpus("ready-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        isolatedCorpusStore.put(corpus);
+        isolatedCorpusStore.markReady(corpus.id());
+        CorpusController controller = new CorpusController(
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                corpus.id(), Map.of("question", "Try something else", "mode", "FOO"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody()).containsEntry("error", "Search mode must be LOCAL, GLOBAL, or DRIFT.");
     }
 
     @Test
