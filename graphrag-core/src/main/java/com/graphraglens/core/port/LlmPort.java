@@ -1,5 +1,6 @@
 package com.graphraglens.core.port;
 
+import com.graphraglens.core.domain.Chunk;
 import com.graphraglens.core.domain.Community;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.Entity;
@@ -47,6 +48,28 @@ public interface LlmPort {
                     return normalizedQuestion + " Community summary: " + summary;
                 })
                 .toList();
+    }
+
+    /**
+     * Synthesizes a plain-language answer from retrieved text chunks.
+     *
+     * <p>The default implementation concatenates chunk texts with a separator
+     * and wraps them with a lead-in sentence. Real LLM implementations may
+     * override this to call the model directly.
+     *
+     * @param question the original question
+     * @param chunks   the retrieved chunks to synthesize from, in retrieval order
+     * @return a synthesized answer string; never null
+     */
+    default String synthesizeFromChunks(String question, List<Chunk> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return "No relevant chunks were found for this question.";
+        }
+        String combined = chunks.stream()
+                .map(Chunk::text)
+                .reduce((a, b) -> a + "\n---\n" + b)
+                .orElse("");
+        return "Based on the retrieved text passages: " + combined;
     }
 
     default GraphExtraction extractEntitiesAndRelationships(Corpus corpus) {

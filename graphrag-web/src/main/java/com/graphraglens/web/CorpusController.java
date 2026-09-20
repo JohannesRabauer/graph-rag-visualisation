@@ -12,12 +12,14 @@ import com.graphraglens.core.domain.UploadedDocument;
 import com.graphraglens.core.port.DocumentParserPort;
 import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
+import com.graphraglens.core.usecase.AnswerVectorBaseline;
 import com.graphraglens.core.usecase.AnswerGlobalSearch;
 import com.graphraglens.core.usecase.AnswerLocalSearch;
 import com.graphraglens.core.usecase.AnswerDriftSearch;
 import com.graphraglens.core.usecase.BuildKnowledgeGraph;
 import com.graphraglens.core.usecase.ConstructVectorIndex;
 import com.graphraglens.core.usecase.DetectCommunities;
+import com.graphraglens.core.usecase.VectorBaselineAnswer;
 import com.graphraglens.core.usecase.DriftSearchAnswer;
 import com.graphraglens.core.usecase.GlobalSearchAnswer;
 import com.graphraglens.core.usecase.IngestCorpus;
@@ -70,11 +72,13 @@ public class CorpusController {
     private final GraphStorePort graphStorePort;
     private final RetrievalTraceStore retrievalTraceStore;
     private final ConstructVectorIndex constructVectorIndex;
+    private final AnswerVectorBaseline answerVectorBaseline;
 
     public CorpusController(IngestCorpus ingestCorpus, CorpusStore corpusStore,
                            List<DocumentParserPort> documentParsers, DemoDatasetService demoDatasetService,
                            CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort,
-                           RetrievalTraceStore retrievalTraceStore, ConstructVectorIndex constructVectorIndex) {
+                           RetrievalTraceStore retrievalTraceStore, ConstructVectorIndex constructVectorIndex,
+                           AnswerVectorBaseline answerVectorBaseline) {
         this.ingestCorpus = ingestCorpus;
         this.corpusStore = corpusStore;
         this.documentParsers = documentParsers;
@@ -84,6 +88,7 @@ public class CorpusController {
         this.graphStorePort = graphStorePort;
         this.retrievalTraceStore = retrievalTraceStore;
         this.constructVectorIndex = constructVectorIndex;
+        this.answerVectorBaseline = answerVectorBaseline;
     }
 
     @GetMapping(value = "/api/corpora/{corpusId}/progress", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -137,9 +142,10 @@ public class CorpusController {
 
         if (!"LOCAL".equalsIgnoreCase(mode)
                 && !"GLOBAL".equalsIgnoreCase(mode)
-                && !"DRIFT".equalsIgnoreCase(mode)) {
+                && !"DRIFT".equalsIgnoreCase(mode)
+                && !"VECTOR".equalsIgnoreCase(mode)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", "Search mode must be LOCAL, GLOBAL, or DRIFT."));
+                    .body(Map.of("error", "Search mode must be LOCAL, GLOBAL, DRIFT, or VECTOR."));
         }
 
         Corpus corpus = corpusStore.get(corpusId)
@@ -157,6 +163,9 @@ public class CorpusController {
         }
         if ("DRIFT".equalsIgnoreCase(mode)) {
             return driftSearchResponse(question, corpus.id());
+        }
+        if ("VECTOR".equalsIgnoreCase(mode)) {
+            return vectorBaselineResponse(question, corpus.id());
         }
 
         LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort).answer(question, corpus.id());
@@ -211,6 +220,27 @@ public class CorpusController {
                 "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
                 "mode", "DRIFT"));
+    }
+
+    private ResponseEntity<Map<String, Object>> vectorBaselineResponse(String question, String corpusId) {
+        VectorBaselineAnswer result = answerVectorBaseline.answer(question, corpusId);
+        String traceId = captureTrace(result.steps());
+
+        if (result.noChunks()) {
+            return ResponseEntity.ok(Map.of(
+                    "answerId", UUID.randomUUID().toString(),
+                    "traceId", traceId,
+                    "traceStepCount", result.steps().size(),
+                    "noAnswer", true,
+                    "reason", result.reason()));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "answerId", UUID.randomUUID().toString(),
+                "traceId", traceId,
+                "traceStepCount", result.steps().size(),
+                "answer", result.answer(),
+                "mode", "VECTOR"));
     }
 
     /**

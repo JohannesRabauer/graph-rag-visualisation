@@ -28,6 +28,17 @@ public record RetrievalStep(Kind kind, String identifier, String label) {
         RELATIONSHIP,
         COMMUNITY,
         SUB_QUESTION_SPAWNED,
-        SYNTHESIS
+        SYNTHESIS,
+        /**
+         * Records that the query was embedded at the start of a vector-baseline answer run.
+         * Identifier is {@code "query"}; label is the question text.
+         */
+        VECTOR_QUERY_EMBEDDED,
+        /**
+         * Records a single chunk retrieved by cosine similarity during a vector-baseline answer run.
+         * Identifier is the chunk's {@link com.graphraglens.core.domain.Chunk#id()};
+         * label is the similarity score formatted as {@code "score=0.XXX"}.
+         */
+        VECTOR_CHUNK
     }
 }

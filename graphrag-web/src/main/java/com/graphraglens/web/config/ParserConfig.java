@@ -13,6 +13,7 @@ import com.graphraglens.core.port.EmbeddingPort;
 import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
 import com.graphraglens.core.port.VectorStorePort;
+import com.graphraglens.core.usecase.AnswerVectorBaseline;
 import com.graphraglens.core.usecase.ConstructVectorIndex;
 import com.graphraglens.core.usecase.IngestCorpus;
 import org.slf4j.Logger;
@@ -89,6 +90,12 @@ public class ParserConfig {
     @Bean
     public ConstructVectorIndex constructVectorIndex(EmbeddingPort embeddingPort, VectorStorePort vectorStorePort) {
         return new ConstructVectorIndex(embeddingPort, vectorStorePort);
+    }
+
+    @Bean
+    public AnswerVectorBaseline answerVectorBaseline(EmbeddingPort embeddingPort, VectorStorePort vectorStorePort,
+                                                     LlmPort llmPort) {
+        return new AnswerVectorBaseline(embeddingPort, vectorStorePort, llmPort);
     }
 
     @Bean

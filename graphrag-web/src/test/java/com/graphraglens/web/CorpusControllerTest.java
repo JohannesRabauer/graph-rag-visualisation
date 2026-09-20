@@ -369,7 +369,7 @@ class CorpusControllerTest {
         Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
@@ -384,7 +384,7 @@ class CorpusControllerTest {
         Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "DRIFT"));
@@ -401,7 +401,7 @@ class CorpusControllerTest {
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markFailed(corpus.id());
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
@@ -426,7 +426,7 @@ class CorpusControllerTest {
         scopedGraphStore.persistEntities(corpusB.id(), List.of(new com.graphraglens.core.domain.Entity("Professor Moriarty", "Person")));
 
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore(), null);
+                null, isolatedCorpusStore, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore(), null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpusA.id(), Map.of("question", "Who is Moriarty?", "mode", "LOCAL"));
@@ -559,7 +559,7 @@ class CorpusControllerTest {
         isolatedCorpusStore.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore, null);
+                null, isolatedCorpusStore, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Try DRIFT", "mode", "DRIFT"));
@@ -589,13 +589,13 @@ class CorpusControllerTest {
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markReady(corpus.id());
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Try something else", "mode", "FOO"));
 
         assertThat(response.getStatusCode().value()).isEqualTo(400);
-        assertThat(response.getBody()).containsEntry("error", "Search mode must be LOCAL, GLOBAL, or DRIFT.");
+        assertThat(response.getBody()).containsEntry("error", "Search mode must be LOCAL, GLOBAL, DRIFT, or VECTOR.");
     }
 
     @Test
