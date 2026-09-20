@@ -3,7 +3,8 @@ package com.graphraglens.core.domain;
 /**
  * A single, ordered touch recorded while answering a query — one Entity,
  * Relationship, or Community the retrieval process examined on its way to
- * an answer.
+ * an answer, including DRIFT Search's spawned sub-questions and final
+ * synthesis output.
  *
  * <p>{@code identifier} matches the identity strings already used elsewhere
  * (an Entity's {@link Entity#normalizedIdentity()} or a Community's
@@ -20,11 +21,13 @@ public record RetrievalStep(Kind kind, String identifier, String label) {
     }
 
     /**
-     * The kind of graph element a step touched.
+     * The kind of retrieval event a step records.
      */
     public enum Kind {
         ENTITY,
         RELATIONSHIP,
-        COMMUNITY
+        COMMUNITY,
+        SUB_QUESTION_SPAWNED,
+        SYNTHESIS
     }
 }

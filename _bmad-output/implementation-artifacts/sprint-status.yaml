@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-19-2026 13:59
-last_updated: 09-20-2026 15:40
+last_updated: 09-20-2026 17:35
 project: graph-rag-visualisation
 project_key: NOKEY
 tracking_system: file-system
@@ -77,7 +77,7 @@ development_status:
   epic-7: in-progress
   7-1-add-drift-to-the-mode-toggle-and-query-contract: done
   7-2-implement-answerdriftsearch: done
-  7-3-capture-the-drift-trace: backlog
+  7-3-capture-the-drift-trace: review
   7-4-replay-the-drift-trace-as-a-branching-tree: backlog
   epic-7-retrospective: optional
 

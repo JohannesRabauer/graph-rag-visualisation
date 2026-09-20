@@ -50,14 +50,15 @@ class CorpusControllerDriftSearchTest {
         assertThat(body).containsEntry("mode", "DRIFT");
         assertThat((String) body.get("answer")).contains("Sherlock Holmes investigates Irene Adler.");
         assertThat(body).doesNotContainKey("noAnswer");
-        assertThat(body.get("traceStepCount")).isEqualTo(4);
+        assertThat(body.get("traceStepCount")).isEqualTo(6);
 
         String traceId = (String) body.get("traceId");
         Optional<RetrievalTrace> storedTrace = retrievalTraceStore.get(traceId);
         assertThat(storedTrace).isPresent();
         assertThat(storedTrace.get().steps())
                 .extracting(step -> step.kind().name())
-                .containsExactly("COMMUNITY", "ENTITY", "RELATIONSHIP", "ENTITY");
+                .containsExactly("COMMUNITY", "SUB_QUESTION_SPAWNED", "ENTITY", "RELATIONSHIP", "ENTITY",
+                        "SYNTHESIS");
     }
 
     @Test

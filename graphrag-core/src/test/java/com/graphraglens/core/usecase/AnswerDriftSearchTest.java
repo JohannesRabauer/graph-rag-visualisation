@@ -72,11 +72,13 @@ class AnswerDriftSearchTest {
         assertTrue(result.answer().contains("DRIFT matched a relevant Community"));
         assertTrue(result.answer().contains("Sherlock Holmes investigates Irene Adler."));
         assertNull(result.reason());
-        assertEquals(4, result.steps().size());
+        assertEquals(6, result.steps().size());
         assertEquals(RetrievalStep.Kind.COMMUNITY, result.steps().get(0).kind());
-        assertEquals(RetrievalStep.Kind.ENTITY, result.steps().get(1).kind());
-        assertEquals(RetrievalStep.Kind.RELATIONSHIP, result.steps().get(2).kind());
-        assertEquals(RetrievalStep.Kind.ENTITY, result.steps().get(3).kind());
+        assertEquals(RetrievalStep.Kind.SUB_QUESTION_SPAWNED, result.steps().get(1).kind());
+        assertEquals(RetrievalStep.Kind.ENTITY, result.steps().get(2).kind());
+        assertEquals(RetrievalStep.Kind.RELATIONSHIP, result.steps().get(3).kind());
+        assertEquals(RetrievalStep.Kind.ENTITY, result.steps().get(4).kind());
+        assertEquals(RetrievalStep.Kind.SYNTHESIS, result.steps().get(5).kind());
     }
 
     @Test
@@ -93,8 +95,12 @@ class AnswerDriftSearchTest {
         assertNotNull(result.answer());
         assertTrue(result.answer().contains("did not find a graph-grounded local match yet"));
         assertNull(result.reason());
-        assertEquals(1, result.steps().size());
-        assertEquals(RetrievalStep.Kind.COMMUNITY, result.steps().getFirst().kind());
+        assertEquals(List.of(
+                        RetrievalStep.Kind.COMMUNITY,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
+                        RetrievalStep.Kind.SYNTHESIS),
+                result.steps().stream().map(RetrievalStep::kind).toList());
+        assertEquals(result.answer(), result.steps().getLast().label());
     }
 
     @Test
@@ -110,7 +116,11 @@ class AnswerDriftSearchTest {
         assertFalse(result.noAnswer());
         assertNotNull(result.answer());
         assertTrue(result.answer().contains("did not find a graph-grounded local match yet"));
-        assertEquals(List.of(RetrievalStep.Kind.COMMUNITY, RetrievalStep.Kind.ENTITY),
+        assertEquals(List.of(
+                        RetrievalStep.Kind.COMMUNITY,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
+                        RetrievalStep.Kind.ENTITY,
+                        RetrievalStep.Kind.SYNTHESIS),
                 result.steps().stream().map(RetrievalStep::kind).toList());
     }
 
@@ -144,14 +154,17 @@ class AnswerDriftSearchTest {
         assertEquals(List.of(
                         RetrievalStep.Kind.COMMUNITY,
                         RetrievalStep.Kind.COMMUNITY,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
                         RetrievalStep.Kind.ENTITY,
                         RetrievalStep.Kind.RELATIONSHIP,
-                        RetrievalStep.Kind.ENTITY),
+                        RetrievalStep.Kind.ENTITY,
+                        RetrievalStep.Kind.SYNTHESIS),
                 result.steps().stream().map(RetrievalStep::kind).toList());
     }
 
     @Test
-    void stopsAfterTheFirstGraphGroundedSubQuestionSoTraceMatchesTheAnswer() {
+    void tracesEveryBranchButSynthesizesFromTheFirstGroundedHop() {
         StubGraphStore graphStore = new StubGraphStore(
                 List.of(
                         new Community("community-b", "This community centers on Sherlock Holmes and Irene Adler."),
@@ -164,6 +177,7 @@ class AnswerDriftSearchTest {
                 List.of(
                         new Relationship("Dr Watson", "Person", "MARRIED", "Mary Morstan", "Person"),
                         new Relationship("Sherlock Holmes", "Person", "INVESTIGATES", "Irene Adler", "Person")));
+        String[] firstSpawnedCandidateId = new String[1];
         LlmPort llmPort = new LlmPort() {
             @Override
             public GraphExtraction extract(com.graphraglens.core.domain.Corpus corpus) {
@@ -172,9 +186,10 @@ class AnswerDriftSearchTest {
 
             @Override
             public List<String> deriveDriftSubQuestions(String question, Collection<Community> communities) {
+                firstSpawnedCandidateId[0] = communities.iterator().next().id();
                 return List.of(
                         "What did Dr Watson do with Mary Morstan?",
-                        "What connects Sherlock Holmes to Irene Adler?");
+                        "Unmatched sub-question about Moriarty");
             }
         };
 
@@ -185,10 +200,36 @@ class AnswerDriftSearchTest {
         assertEquals(List.of(
                         RetrievalStep.Kind.COMMUNITY,
                         RetrievalStep.Kind.COMMUNITY,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
                         RetrievalStep.Kind.ENTITY,
                         RetrievalStep.Kind.RELATIONSHIP,
-                        RetrievalStep.Kind.ENTITY),
+                        RetrievalStep.Kind.ENTITY,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
+                        RetrievalStep.Kind.SYNTHESIS),
                 result.steps().stream().map(RetrievalStep::kind).toList());
+        assertEquals(firstSpawnedCandidateId[0], result.steps().getLast().identifier());
+        assertEquals(result.answer(), result.steps().getLast().label());
+    }
+
+    @Test
+    void recordsSpawnedSubQuestionWithItsParentCommunityIdAndExactLabel() {
+        StubGraphStore graphStore = new StubGraphStore(
+                List.of(new Community("community-1", "This community centers on Sherlock Holmes and Irene Adler.")),
+                List.of(
+                        new Entity("Sherlock Holmes", "Person"),
+                        new Entity("Irene Adler", "Person")),
+                List.of(new Relationship("Sherlock Holmes", "Person", "INVESTIGATES", "Irene Adler", "Person")));
+        String subQuestion = "What connects Sherlock Holmes to Irene Adler? Community summary: This community centers on Sherlock Holmes and Irene Adler.";
+
+        DriftSearchAnswer result = new AnswerDriftSearch(graphStore, stubLlmPort())
+                .answer("What connects Sherlock Holmes to Irene Adler?");
+
+        RetrievalStep spawnedStep = result.steps().get(1);
+        assertEquals(RetrievalStep.Kind.SUB_QUESTION_SPAWNED, spawnedStep.kind());
+        assertEquals("community-1", spawnedStep.identifier());
+        assertEquals(subQuestion, spawnedStep.label());
+        assertEquals("community-1", result.steps().getLast().identifier());
+        assertEquals(result.answer(), result.steps().getLast().label());
     }
 
     @Test

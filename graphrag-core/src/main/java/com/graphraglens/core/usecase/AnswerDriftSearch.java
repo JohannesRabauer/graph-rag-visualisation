@@ -68,29 +68,38 @@ public class AnswerDriftSearch {
 
         List<String> subQuestions = llmPort.deriveDriftSubQuestions(question, candidates);
         AnswerLocalSearch answerLocalSearch = new AnswerLocalSearch(graphStorePort);
-        String synthesizedAnswer = null;
+        List<BranchAnswer> branchAnswers = new ArrayList<>();
 
-        for (String subQuestion : subQuestions) {
+        for (int i = 0; i < subQuestions.size(); i++) {
+            String subQuestion = subQuestions.get(i);
+            String parentId = i < candidates.size() ? candidates.get(i).id() : "";
+            steps.add(new RetrievalStep(RetrievalStep.Kind.SUB_QUESTION_SPAWNED, parentId, subQuestion));
             LocalSearchAnswer subAnswer = answerLocalSearch.answer(subQuestion, corpusId);
+            branchAnswers.add(new BranchAnswer(parentId, subAnswer));
             steps.addAll(subAnswer.steps());
-            if (synthesizedAnswer == null && hasRelationshipHop(subAnswer)) {
-                synthesizedAnswer = "DRIFT matched a relevant Community and then grounded the answer locally: "
-                        + subAnswer.answer();
-                break;
+        }
+
+        for (BranchAnswer branchAnswer : branchAnswers) {
+            if (hasRelationshipHop(branchAnswer.answer())) {
+                String synthesizedAnswer = "DRIFT matched a relevant Community and then grounded the answer locally: "
+                        + branchAnswer.answer().answer();
+                steps.add(new RetrievalStep(RetrievalStep.Kind.SYNTHESIS, branchAnswer.parentId(), synthesizedAnswer));
+                return DriftSearchAnswer.matched(synthesizedAnswer, steps);
             }
         }
 
-        if (synthesizedAnswer != null) {
-            return DriftSearchAnswer.matched(synthesizedAnswer, steps);
-        }
-
+        String synthesizedAnswer = "DRIFT matched a relevant Community, but its spawned sub-question did not find a "
+                + "graph-grounded local match yet.";
+        steps.add(new RetrievalStep(RetrievalStep.Kind.SYNTHESIS, "", synthesizedAnswer));
         return DriftSearchAnswer.matched(
-                "DRIFT matched a relevant Community, but its spawned sub-question did not find a graph-grounded "
-                        + "local match yet.",
+                synthesizedAnswer,
                 steps);
     }
 
     private record ScoredCommunity(Community community, int score) {
+    }
+
+    private record BranchAnswer(String parentId, LocalSearchAnswer answer) {
     }
 
     private static boolean hasRelationshipHop(LocalSearchAnswer answer) {
