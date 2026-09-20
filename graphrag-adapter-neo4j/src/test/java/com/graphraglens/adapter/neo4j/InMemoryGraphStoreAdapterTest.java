@@ -18,4 +18,19 @@ class InMemoryGraphStoreAdapterTest {
         assertEquals(2, adapter.entities().size());
         assertEquals(1, adapter.relationships().size());
     }
+
+    @Test
+    void readsScopedEntitiesAndRelationshipsByCorpusId() {
+        InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
+
+        adapter.persistEntities("corpus-a", java.util.List.of(new Entity("Sherlock Holmes", "Person")));
+        adapter.persistEntities("corpus-b", java.util.List.of(new Entity("Professor Moriarty", "Person")));
+        adapter.persistRelationships("corpus-a", java.util.List.of(
+                new Relationship("Sherlock Holmes", "Person", "met", "Dr. Watson", "Person")));
+
+        assertEquals(1, adapter.entities("corpus-a").size());
+        assertEquals(1, adapter.entities("corpus-b").size());
+        assertEquals(1, adapter.relationships("corpus-a").size());
+        assertEquals(0, adapter.relationships("corpus-b").size());
+    }
 }

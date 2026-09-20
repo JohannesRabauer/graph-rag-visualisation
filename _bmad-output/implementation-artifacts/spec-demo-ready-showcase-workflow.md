@@ -2,10 +2,11 @@
 title: 'Demo-ready end-to-end showcase workflow'
 type: 'feature'
 created: '2026-09-20'
-status: 'draft'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
+baseline_commit: '39bd7917812bc2a0d4e994f6458c3c2a171dd2fd'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -60,15 +61,15 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/static/js/upload.js` -- Implement explicit ingestion-complete ready transition, pre-ready query guard, and recoverable error-state UX wiring -- ensures presenters always know next step.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/templates/index.html` -- Add minimal markup for ready and retry/restart guidance states used by `upload.js` -- keeps workflow cues visible without redesign.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/port/GraphStorePort.java` -- Extend contract for corpus-aware graph/community reads needed by query use cases -- enables credible corpus scoping.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-adapter-neo4j/src/main/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapter.java` -- Implement corpus-aware storage/read behavior required by the new port methods -- aligns runtime behavior with selected corpus.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/usecase/AnswerGlobalSearch.java` -- Update global retrieval to only use communities of the selected corpus context -- avoids cross-corpus leakage during demos.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- Replace current sentence-first LOCAL answer path with graph-grounded retrieval orchestration and pass corpus context into LOCAL/GLOBAL query flows while preserving response shapes and trace capture -- improves GraphRAG credibility.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java` -- Add/adjust tests for readiness-guarded querying, graph-grounded local behavior, and corpus-scoped global behavior.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerGlobalSearchTest.java` -- Extend tests to verify selected-corpus scoping and no-answer semantics remain explicit.
-- [ ] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java` -- Update static-page assertions for new ready/recovery cues.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/static/js/upload.js` -- Implement explicit ingestion-complete ready transition, pre-ready query guard, and recoverable error-state UX wiring -- ensures presenters always know next step.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/resources/templates/index.html` -- Add minimal markup for ready and retry/restart guidance states used by `upload.js` -- keeps workflow cues visible without redesign.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/port/GraphStorePort.java` -- Extend contract for corpus-aware graph/community reads needed by query use cases -- enables credible corpus scoping.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-adapter-neo4j/src/main/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapter.java` -- Implement corpus-aware storage/read behavior required by the new port methods -- aligns runtime behavior with selected corpus.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-core/src/main/java/com/graphraglens/core/usecase/AnswerGlobalSearch.java` -- Update global retrieval to only use communities of the selected corpus context -- avoids cross-corpus leakage during demos.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- Replace current sentence-first LOCAL answer path with graph-grounded retrieval orchestration and pass corpus context into LOCAL/GLOBAL query flows while preserving response shapes and trace capture -- improves GraphRAG credibility.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java` -- Add/adjust tests for readiness-guarded querying, graph-grounded local behavior, and corpus-scoped global behavior.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerGlobalSearchTest.java` -- Extend tests to verify selected-corpus scoping and no-answer semantics remain explicit.
+- [x] `/home/runner/work/graph-rag-visualisation/graph-rag-visualisation/graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java` -- Update static-page assertions for new ready/recovery cues.
 
 **Acceptance Criteria:**
 - Given corpus ingestion reaches completion, when `ingestion-complete` is emitted, then the main UI exits building mode and clearly indicates query readiness.
@@ -79,6 +80,24 @@ context: []
 - Given the feature changes are complete, when test suites run, then existing endpoint shapes and trace payload contracts remain compatible.
 
 ## Implementation Notes
+
+- Implemented corpus workflow lifecycle states (`BUILDING`/`READY`/`FAILED`) in `graphrag-web/src/main/java/com/graphraglens/web/CorpusStore.java` and wired query-time `409` readiness guards in `graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java`.
+- Added corpus-scoped graph storage/retrieval methods in `graphrag-core/src/main/java/com/graphraglens/core/port/GraphStorePort.java` and implemented them in `graphrag-adapter-neo4j/src/main/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapter.java`.
+- Updated retrieval use cases for corpus scoping: `graphrag-core/src/main/java/com/graphraglens/core/usecase/ExtractEntitiesAndRelationships.java`, `graphrag-core/src/main/java/com/graphraglens/core/usecase/DetectCommunities.java`, and `graphrag-core/src/main/java/com/graphraglens/core/usecase/AnswerGlobalSearch.java`.
+- Replaced LOCAL query path with graph-grounded matching in `graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` while preserving trace capture/shape.
+- Added workflow readiness/recovery UI in `graphrag-web/src/main/resources/templates/index.html` and `graphrag-web/src/main/resources/static/js/upload.js` (includes `ingestion-complete` transition and retry/restart affordances).
+- Updated tests in:
+  - `graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java`
+  - `graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerGlobalSearchTest.java`
+  - `graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java`
+  - `graphrag-core/src/test/java/com/graphraglens/core/usecase/AnswerGlobalSearchTest.java`
+  - `graphrag-core/src/test/java/com/graphraglens/core/usecase/DetectCommunitiesTest.java`
+  - `graphrag-core/src/test/java/com/graphraglens/core/usecase/ExtractEntitiesAndRelationshipsTest.java`
+  - `graphrag-adapter-neo4j/src/test/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapterTest.java`
+- Verification is blocked in this environment because JDK 25 is unavailable:
+  - `mvn test` fails at enforcer (`GraphRAG Lens requires JDK 25 or newer`)
+  - `mvn -Denforcer.skip=true test` fails during compile (`release version 25 not supported`)
+  - `mvn -pl graphrag-web test` fails standalone dependency resolution without prior reactor install.
 
 ## Spec Change Log
 

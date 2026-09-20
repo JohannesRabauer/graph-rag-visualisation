@@ -17,8 +17,14 @@
   var communityVisualizationToggle = document.getElementById('community-visualization-toggle');
   var graphCanvasEl = document.getElementById('graph-canvas');
   var graphEyebrow = document.getElementById('graph-eyebrow');
+  var workflowStatus = document.getElementById('workflow-status');
+  var workflowStatusText = document.getElementById('workflow-status-text');
+  var workflowRecoveryActions = document.getElementById('workflow-recovery-actions');
+  var workflowRetryButton = document.getElementById('workflow-retry-button');
+  var workflowRestartButton = document.getElementById('workflow-restart-button');
   var activeProgressSource = null;
   var activeCorpusId = null;
+  var activeCorpusReady = false;
   var currentSearchMode = 'LOCAL';
 
   if (!fileInput || !corpusChip || !errorBanner) {
@@ -63,6 +69,11 @@
       event.preventDefault();
       if (!activeCorpusId) {
         showErrorBanner('Choose a corpus before asking a question.');
+        return;
+      }
+      if (!activeCorpusReady) {
+        showErrorBanner('The graph is still building. Wait for “Knowledge Graph — Ready” before submitting.');
+        renderWorkflowStatus('BUILDING');
         return;
       }
 
@@ -204,6 +215,26 @@
     return body && body.error ? body.error : 'Upload failed.';
   }
 
+  if (workflowRetryButton) {
+    workflowRetryButton.addEventListener('click', function () {
+      if (!activeCorpusId) {
+        return;
+      }
+      hideErrorBanner();
+      renderWorkflowStatus('BUILDING');
+      connectProgressStream(activeCorpusId);
+    });
+  }
+
+  if (workflowRestartButton) {
+    workflowRestartButton.addEventListener('click', function () {
+      hideErrorBanner();
+      if (fileInput) {
+        fileInput.focus();
+      }
+    });
+  }
+
   function showCorpusChip(body) {
     // Close any still-open previous EventSource before touching GraphCanvas,
     // so a late event from a just-replaced corpus can't render into the
@@ -237,6 +268,8 @@
 
     corpusChip.hidden = false;
     activeCorpusId = body && body.corpusId ? body.corpusId : activeCorpusId;
+    activeCorpusReady = false;
+    renderWorkflowStatus('BUILDING');
     if (canvasIdle) {
       canvasIdle.hidden = true;
     }
@@ -387,6 +420,10 @@
     if (!corpusId || typeof EventSource === 'undefined') {
       return;
     }
+    if (activeProgressSource) {
+      activeProgressSource.close();
+      activeProgressSource = null;
+    }
 
     activeProgressSource = new EventSource('/api/corpora/' + corpusId + '/progress');
     activeProgressSource.addEventListener('heartbeat', function (event) {
@@ -450,14 +487,19 @@
 
     activeProgressSource.addEventListener('ingestion-complete', function () {
       setIngestionBusy(false);
+      activeCorpusReady = true;
+      renderWorkflowStatus('READY');
     });
 
     activeProgressSource.addEventListener('error', function (event) {
       setIngestionBusy(false);
+      activeCorpusReady = false;
+      renderWorkflowStatus('FAILED');
       try {
         var payload = JSON.parse(event.data);
         if (payload && payload.data && payload.data.error) {
           showErrorBanner(payload.data.error);
+          renderWorkflowStatus('FAILED', payload.data.error);
         }
       } catch (e) {
         console.warn('Invalid SSE error payload', e);
@@ -478,5 +520,32 @@
   function hideErrorBanner() {
     errorBanner.hidden = true;
     errorBanner.textContent = '';
+  }
+
+  function renderWorkflowStatus(state, failureMessage) {
+    if (!workflowStatus || !workflowStatusText) {
+      return;
+    }
+    if (state === 'READY') {
+      workflowStatus.hidden = false;
+      workflowStatusText.textContent = 'Knowledge Graph — Ready. Ask a LOCAL or GLOBAL question now.';
+      if (workflowRecoveryActions) {
+        workflowRecoveryActions.hidden = true;
+      }
+      return;
+    }
+    if (state === 'FAILED') {
+      workflowStatus.hidden = false;
+      workflowStatusText.textContent = failureMessage || 'Knowledge Graph build failed. Retry stream or restart with a new corpus.';
+      if (workflowRecoveryActions) {
+        workflowRecoveryActions.hidden = false;
+      }
+      return;
+    }
+    workflowStatus.hidden = false;
+    workflowStatusText.textContent = 'Knowledge Graph — Building. Questions stay disabled until ingestion completes.';
+    if (workflowRecoveryActions) {
+      workflowRecoveryActions.hidden = true;
+    }
   }
 })();

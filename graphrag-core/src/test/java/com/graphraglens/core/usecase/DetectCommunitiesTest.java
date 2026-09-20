@@ -102,7 +102,17 @@ class DetectCommunitiesTest {
         }
 
         @Override
+        public List<Entity> entities(String corpusId) {
+            return storedEntities;
+        }
+
+        @Override
         public List<Relationship> relationships() {
+            return storedRelationships;
+        }
+
+        @Override
+        public List<Relationship> relationships(String corpusId) {
             return storedRelationships;
         }
 
@@ -122,7 +132,17 @@ class DetectCommunitiesTest {
         }
 
         @Override
+        public void persistCommunities(String corpusId, java.util.Collection<Community> communities) {
+            persistedCommunities.addAll(communities);
+        }
+
+        @Override
         public void persistCommunityMemberships(java.util.Collection<CommunityMembership> memberships) {
+            persistedMemberships.addAll(memberships);
+        }
+
+        @Override
+        public void persistCommunityMemberships(String corpusId, java.util.Collection<CommunityMembership> memberships) {
             persistedMemberships.addAll(memberships);
         }
     }

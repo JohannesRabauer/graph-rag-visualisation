@@ -85,5 +85,10 @@ class ExtractEntitiesAndRelationshipsTest {
         public void persist(GraphExtraction extraction) {
             this.persistedExtraction = extraction;
         }
+
+        @Override
+        public void persist(String corpusId, GraphExtraction extraction) {
+            this.persistedExtraction = extraction;
+        }
     }
 }

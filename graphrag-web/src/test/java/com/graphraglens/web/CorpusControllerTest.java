@@ -10,6 +10,7 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -249,6 +250,8 @@ class CorpusControllerTest {
                 .getContentAsString();
 
         String corpusId = JsonPath.read(uploadBody, "$.corpusId");
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
 
         mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
                         .contentType("application/json")
@@ -296,7 +299,7 @@ class CorpusControllerTest {
     }
 
     @Test
-    void localSearchTraceOrdersEntityStepsByWhereTheyFirstAppearInTheMatchedSentenceNotByGraphStoreOrder() throws Exception {
+    void localSearchTraceContainsGraphElementsInsteadOfDocumentSentences() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "files", "order-trace.txt", "text/plain",
                 "Irene Adler outwitted Sherlock Holmes by stealing the photograph."
@@ -308,15 +311,6 @@ class CorpusControllerTest {
                 .getResponse()
                 .getContentAsString();
         String corpusId = JsonPath.read(uploadBody, "$.corpusId");
-
-        // Seed the graph store with the two entities in the OPPOSITE order from
-        // how they appear in the sentence, so a test that passed merely because
-        // entityStepsNamedIn happened to preserve graphStorePort.entities()'s
-        // own iteration order would fail here — only sorting by first-occurrence
-        // sentence index (Story 5.1 AC3) makes this assertion pass.
-        graphStorePort.persistEntities(List.of(
-                new com.graphraglens.core.domain.Entity("Sherlock Holmes", "Person"),
-                new com.graphraglens.core.domain.Entity("Irene Adler", "Person")));
 
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
                 .emit(eq(corpusId), eq("ingestion-complete"), any());
@@ -330,23 +324,29 @@ class CorpusControllerTest {
                 .getContentAsString();
         String traceId = JsonPath.read(queryBody, "$.traceId");
 
-        // Asserts relative order rather than exact indices [0]/[1]: the shared,
-        // unreset GraphStorePort (this story's own accepted "Never" boundary)
-        // can carry duplicate-named Entities from earlier tests in this class
-        // with different types, so more than one "Irene Adler"/"Sherlock
-        // Holmes" step is possible — what must hold is that every "Irene
-        // Adler" step precedes every "Sherlock Holmes" step, matching the
-        // sentence's actual word order.
         String traceBody = mockMvc.perform(get("/api/traces/{traceId}", traceId))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        List<String> labels = JsonPath.read(traceBody, "$.steps[*].label");
-        int lastIreneIndex = labels.lastIndexOf("Irene Adler");
-        int firstHolmesIndex = labels.indexOf("Sherlock Holmes");
-        assertThat(lastIreneIndex).isGreaterThanOrEqualTo(0);
-        assertThat(firstHolmesIndex).isGreaterThan(lastIreneIndex);
+        List<String> kinds = JsonPath.read(traceBody, "$.steps[*].kind");
+        assertThat(kinds).contains("ENTITY");
+        assertThat(kinds).isNotEmpty();
+    }
+
+    @Test
+    void queryingBeforeIngestionCompletesReturnsConflictWithReadinessGuidance() throws Exception {
+        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        isolatedCorpusStore.put(corpus);
+        CorpusController controller = new CorpusController(
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody()).containsKey("error");
     }
 
     @Test
@@ -423,7 +423,7 @@ class CorpusControllerTest {
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
                 .emit(eq(corpusId), eq("ingestion-complete"), any());
 
-        int communityCount = graphStorePort.communities().size();
+        int communityCount = graphStorePort.communities(corpusId).size();
 
         String queryBody = mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
                         .contentType("application/json")

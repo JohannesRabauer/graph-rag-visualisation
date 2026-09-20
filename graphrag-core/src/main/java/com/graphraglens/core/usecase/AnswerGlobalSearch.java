@@ -13,18 +13,13 @@ import java.util.Set;
  * Answers a Global Search question by aggregating already-persisted
  * Community summaries.
  *
- * <p>This use case only reads {@link GraphStorePort#communities()} — it
+ * <p>This use case only reads {@link GraphStorePort#communities(String)} — it
  * never triggers {@link DetectCommunities} or summary generation itself
  * (AD-6). Communities are scored against the question the same
  * keyword-overlap way Local Search already scores sentences, so the demo
  * stays deterministic and provider-agnostic.
  *
- * <p>{@link GraphStorePort#communities()} is a process-global, unscoped
- * store: it is not filtered by any particular corpus. A Global Search
- * answer can therefore be drawn from a Community that belongs to a
- * different corpus than the one named in the request. This is an
- * intentionally accepted, pre-existing limitation (same as Story 4.3), not
- * a bug in this class.
+ * <p>Global Search reads only Communities tied to the selected corpus.
  */
 public class AnswerGlobalSearch {
 
@@ -35,7 +30,11 @@ public class AnswerGlobalSearch {
     }
 
     public GlobalSearchAnswer answer(String question) {
-        Collection<Community> communities = graphStorePort.communities();
+        return answer(question, null);
+    }
+
+    public GlobalSearchAnswer answer(String question, String corpusId) {
+        Collection<Community> communities = graphStorePort.communities(corpusId);
         if (communities == null || communities.isEmpty()) {
             return GlobalSearchAnswer.noCommunitiesYet();
         }
