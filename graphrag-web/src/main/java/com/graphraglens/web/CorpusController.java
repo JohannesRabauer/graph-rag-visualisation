@@ -13,11 +13,12 @@ import com.graphraglens.core.port.DocumentParserPort;
 import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
 import com.graphraglens.core.usecase.AnswerGlobalSearch;
+import com.graphraglens.core.usecase.AnswerLocalSearch;
 import com.graphraglens.core.usecase.BuildKnowledgeGraph;
 import com.graphraglens.core.usecase.DetectCommunities;
 import com.graphraglens.core.usecase.GlobalSearchAnswer;
 import com.graphraglens.core.usecase.IngestCorpus;
-import com.graphraglens.core.usecase.KeywordMatcher;
+import com.graphraglens.core.usecase.LocalSearchAnswer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -32,14 +33,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -146,7 +143,7 @@ public class CorpusController {
             return globalSearchResponse(question, corpus.id());
         }
 
-        LocalSearchResult result = buildAnswer(corpus.id(), question);
+        LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort).answer(question, corpus.id());
         String traceId = captureTrace(result.steps());
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
@@ -272,81 +269,6 @@ public class CorpusController {
                 "communityId", community.id(),
                 "summary", community.summary(),
                 "memberEntityIdentities", memberEntityIdentities);
-    }
-
-    private LocalSearchResult buildAnswer(String corpusId, String question) {
-        Set<String> tokens = KeywordMatcher.tokenize(question);
-        Collection<Entity> entities = Optional.ofNullable(graphStorePort.entities(corpusId)).orElse(List.of());
-        Collection<Relationship> relationships = Optional.ofNullable(graphStorePort.relationships(corpusId)).orElse(List.of());
-        Map<String, Entity> entitiesByIdentity = new HashMap<>();
-        for (Entity entity : entities) {
-            if (entity != null) {
-                entitiesByIdentity.put(entity.normalizedIdentity(), entity);
-            }
-        }
-
-        Relationship bestRelationship = null;
-        int bestRelationshipScore = -1;
-        for (Relationship relationship : relationships) {
-            if (relationship == null) {
-                continue;
-            }
-            String relationText = (relationship.source() + " " + relationship.type() + " " + relationship.target())
-                    .replace('_', ' ');
-            int score = KeywordMatcher.score(relationText, tokens);
-            if (score > bestRelationshipScore) {
-                bestRelationshipScore = score;
-                bestRelationship = relationship;
-            }
-        }
-
-        if (bestRelationship != null && bestRelationshipScore > 0) {
-            String sourceIdentity = Entity.identityOf(bestRelationship.source(), bestRelationship.sourceType());
-            String targetIdentity = Entity.identityOf(bestRelationship.target(), bestRelationship.targetType());
-            String answer = "In this corpus graph, "
-                    + bestRelationship.source() + " " + bestRelationship.type().replace('_', ' ').toLowerCase(Locale.ROOT)
-                    + " " + bestRelationship.target() + ".";
-            List<RetrievalStep> steps = new ArrayList<>();
-            Entity source = entitiesByIdentity.get(sourceIdentity);
-            Entity target = entitiesByIdentity.get(targetIdentity);
-            if (source != null) {
-                steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, source.normalizedIdentity(), source.name()));
-            }
-            steps.add(new RetrievalStep(
-                    RetrievalStep.Kind.RELATIONSHIP,
-                    bestRelationship.source() + "::" + bestRelationship.type() + "::" + bestRelationship.target(),
-                    bestRelationship.source() + " —" + bestRelationship.type().replace('_', ' ') + "→ " + bestRelationship.target()));
-            if (target != null) {
-                steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, target.normalizedIdentity(), target.name()));
-            }
-            return new LocalSearchResult(answer, steps);
-        }
-
-        Entity bestEntity = null;
-        int bestEntityScore = -1;
-        for (Entity entity : entities) {
-            if (entity == null || entity.name() == null || entity.type() == null) {
-                continue;
-            }
-            int score = KeywordMatcher.score(entity.name() + " " + entity.type(), tokens);
-            if (score > bestEntityScore) {
-                bestEntityScore = score;
-                bestEntity = entity;
-            }
-        }
-        if (bestEntity != null && bestEntityScore > 0) {
-            return new LocalSearchResult(
-                    "In this corpus graph, the closest local match is "
-                            + bestEntity.name() + " (" + bestEntity.type() + ").",
-                    List.of(new RetrievalStep(RetrievalStep.Kind.ENTITY, bestEntity.normalizedIdentity(), bestEntity.name())));
-        }
-
-        return new LocalSearchResult(
-                "No graph-grounded local match was found for this corpus yet. Try asking about a named entity or relationship visible in the graph.",
-                List.of());
-    }
-
-    private record LocalSearchResult(String answer, List<RetrievalStep> steps) {
     }
 
     private Map<String, Object> corpusPayload(Corpus corpus) {

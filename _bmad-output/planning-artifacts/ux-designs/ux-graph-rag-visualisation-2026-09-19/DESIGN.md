@@ -82,13 +82,13 @@ components:
     background: '{colors.panel}'
     border-right: '1px solid {colors.line}'
     width: '340px'
-  mode-toggle:
-    border: '1px solid {colors.line-strong}'
-    radius: '{rounded.DEFAULT}'
-    active-local-background: '{colors.accent-soft}'
+  mode-choice:
+    dot-border: '{colors.line-strong}'
+    dot-size: '14px'
     active-local-foreground: '{colors.accent}'
-    active-global-background: '{colors.global-soft}'
+    active-local-dot: '{colors.accent}'
     active-global-foreground: '{colors.global}'
+    active-global-dot: '{colors.global}'
     inactive-foreground: '{colors.ink-400}'
     label-typography: '{typography.tag}'
   message-question:
@@ -251,7 +251,7 @@ Corners are consistently soft-but-tight: `{rounded.sm}` (6px) for small controls
 ## Components
 
 - **Chat panel** (`{components.chat-panel}`) — left rail, `{colors.panel}` background, right hairline border. Contains the mode toggle, message thread, and composer, top to bottom.
-- **Local/Global Search mode toggle** (`{components.mode-toggle}`) — two-segment control, uppercase tag-weight labels. Active segment fills with the matching mode's soft tint and text in its accent color (`{colors.accent-soft}`/`{colors.accent}` for Local, `{colors.global-soft}`/`{colors.global}` for Global); inactive segment is `{colors.ink-400}` text on `{colors.panel}`. A one-line explanatory hint below the toggle always states what the active mode does in plain language (tutorial-clarity mandate) — for example, "Local Search traverses specific Entities and Relationships around your question."
+- **Local/Global Search mode choice** (`{components.mode-choice}`) — **revised 2026-09-20:** a real two-way radio choice (not a segmented tab pair — tabs read as "different pages," which this isn't; both modes share one chat thread), sitting directly above the composer rather than the panel header. Each option is a small circular dot (`{components.mode-choice.dot-size}`, `{colors.line-strong}` border when inactive) plus an uppercase tag-weight label; the checked option's dot fills and its label recolors to the matching mode's accent (`{colors.accent}` for Local, `{colors.global}` for Global) — no background fill/tint needed, since a filled dot is already an unambiguous "this one is selected" signal. A one-line explanatory hint below the choice always states what the active mode does in plain language (tutorial-clarity mandate) — for example, "Local Search traverses specific Entities and Relationships around your question."
 - **Message bubbles** — question bubbles (`{components.message-question}`) are dark-filled, right-aligned, sharp-cornered on the tail side. Answer content (`{components.message-answer}`) is unbubbled body text tagged with a small colored mode label. Every answer that has a Retrieval Trace carries a **Replay CTA** (`{components.replay-cta}`): a dashed-border pill-ish row reading "Replay this answer's Retrieval Trace — N steps."
 - **Composer** (`{components.composer}`) — single-line text input plus a dark circular-ish send button with a play-style glyph. Placeholder copy stays plain ("Ask a question about the Corpus…").
 - **Graph canvas** (`{components.graph-canvas}`) — the hero surface. Faint 24px grid on `{colors.paper}`. An uppercase eyebrow title state-labels what's showing ("Knowledge Graph — Replaying Trace" / "Knowledge Graph — Resting"). A legend row lists visible Community names with color swatches when the community-visualization toggle (main screen) or the always-on Explore view is active.
@@ -260,7 +260,7 @@ Corners are consistently soft-but-tight: `{rounded.sm}` (6px) for small controls
 - **Step badge** (`{components.step-badge}`) — a small floating monospace chip overlaid on the canvas during Replay, reading, for example, "Step 3 / 5 — traversed outwitted," with the step number and traversed-relationship name in `{colors.active}`.
 - **Retrieval Trace scrubber** (`{components.scrubber}`) — bottom bar of the canvas region. Transport buttons (step-back / play-pause / step-forward, `{components.transport-button}`) sit left of a horizontal track: a thin rail (`{colors.line-strong}`) with an accent-colored fill up to the current position, and discrete circular ticks per trace step — done ticks ring in accent, the current tick is a larger filled Active dot, future ticks are hollow line-strong outlines. A monospace step counter ("03 / 05") sits at the right; a one-line monospace caption below states the trace in plain sequence ("matched X → traversed Y → Z → next: …").
 - **Corpus chip** (`{components.corpus-chip}`) — small pill in the app bar naming the active Corpus and document count (for example, "Sherlock Holmes — Demo Dataset · 12 documents"), monospace, with a small neutral status dot.
-- **Community-visualization toggle** (`{components.community-visualization-toggle}`, main screen only) — defaults ON for a fresh Corpus's first run, and can be toggled freely afterward; when ON, adopts the accent tint (reuses `{colors.accent-soft}`/`{colors.accent}` rather than introducing a third color, since this toggle is orthogonal to the Local/Global mode toggle and doesn't need its own hue). Named for what it actually controls — whether Community *formation is shown/animated* — never Community *detection* itself, which always runs regardless of this toggle's state (EXPERIENCE.md's Component Patterns).
+- **Community-visualization toggle** (`{components.community-visualization-toggle}`, main screen only) — **revised 2026-09-20:** a real, visible checkbox (`accent-color: {colors.accent}` tints the native check — no hand-drawn slider), not a switch styled to look like one; a switch reads as "this changes backend behavior," which invited the reasonable question of whether it gates Community *detection* — it never has (EXPERIENCE.md's Component Patterns), it only controls whether formation is *shown/animated*, and the label text now says so directly ("Visual only — ... Detection itself always runs, checked or not"). Defaults ON for a fresh Corpus's first run, and can be toggled freely afterward.
 - **Error banner** (`{components.error-banner}`) — appears inline in the chat thread or canvas header on an LLM-call or extraction failure (FR-5); Active-soft fill, Active border, plain-language message, no icon glyphs beyond the existing warm-color cue.
 - **Explore page canvas** — reuses the graph canvas, node/edge, and community-hull tokens above wholesale (`{components.graph-canvas}`, `{components.node-default}`, `{components.community-hull}`); Communities render with their hulls always visible here (no toggle, unlike the main screen). No chat panel occupies the left rail, so the canvas has the full frame width to itself.
 - **Node detail panel** (`{components.node-detail-panel}`) — Explore page only, slides in from the right on node click. Eyebrow heading names the Entity; body text lists its Relationships and any details; tags render as small `{colors.chrome}`-filled monospace chips in a wrapping row. Closes on clicking elsewhere on the canvas or clicking the same node again.

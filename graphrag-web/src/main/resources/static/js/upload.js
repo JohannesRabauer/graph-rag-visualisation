@@ -11,7 +11,7 @@
   var chatForm = document.getElementById('chat-form');
   var chatInput = document.getElementById('chat-input');
   var sendButton = chatForm ? chatForm.querySelector('.send-button') : null;
-  var modeButtons = document.querySelectorAll('.mode-button');
+  var modeInputs = document.querySelectorAll('input[name="search-mode"]');
   var modeHint = document.getElementById('mode-hint');
   var communityToggleWrap = document.getElementById('community-toggle-wrap');
   var communityVisualizationToggle = document.getElementById('community-visualization-toggle');
@@ -38,17 +38,13 @@
     } else {
       modeHint.textContent = 'Local Search traverses specific Entities and Relationships around your question.';
     }
-
-    modeButtons.forEach(function (button) {
-      var isActive = button.dataset.mode === mode;
-      button.classList.toggle('active', isActive);
-      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    });
   }
 
-  modeButtons.forEach(function (button) {
-    button.addEventListener('click', function () {
-      setModeHint(button.dataset.mode || 'LOCAL');
+  modeInputs.forEach(function (input) {
+    input.addEventListener('change', function () {
+      if (input.checked) {
+        setModeHint(input.value || 'LOCAL');
+      }
     });
   });
 

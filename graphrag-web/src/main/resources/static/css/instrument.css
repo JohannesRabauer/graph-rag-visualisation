@@ -566,21 +566,36 @@ body {
 .community-toggle {
   position: relative;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--line);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius);
   font-size: 11px;
   line-height: 1.4;
   color: var(--ink-600);
+  cursor: pointer;
 }
 
-.community-toggle input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+/* A real, visible checkbox (not a slider styled to look like a switch) —
+   `accent-color` tints the native check to match the app's accent without
+   hand-drawing a checkmark. This is deliberately just a display choice:
+   the control has always only ever affected client-side rendering (AD-6);
+   it never gates Community detection itself. */
+.community-toggle-input {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.community-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .community-toggle-label {
@@ -592,37 +607,6 @@ body {
 .community-toggle-meta {
   color: var(--ink-400);
   max-width: 220px;
-}
-
-.community-toggle-slider {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  background: var(--line-strong);
-  transition: background 0.2s ease;
-}
-
-.community-toggle-slider::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--panel);
-  box-shadow: 0 1px 2px rgba(20, 24, 28, 0.15);
-  transition: transform 0.2s ease;
-}
-
-.community-toggle input:checked + .community-toggle-slider {
-  background: var(--accent-soft);
-}
-
-.community-toggle input:checked + .community-toggle-slider::after {
-  transform: translateX(16px);
-  background: var(--accent);
 }
 
 /* DESIGN.md `components.chat-panel`: a 340px docked left rail (border-
@@ -644,40 +628,82 @@ body {
   display: none;
 }
 
-.chat-head {
-  padding: var(--space-4) var(--space-4) var(--space-2);
-  border-bottom: 1px solid var(--line);
+.composer-head {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-top: 1px solid var(--line);
 }
 
-.mode-toggle {
+/* A real two-way radio choice, not a segmented tab pair — the previous
+   tab-styled buttons implied "different pages/views" when this is a mode
+   for the next question only, sharing one chat thread either way. Placed
+   directly above the composer, not the panel header, so the choice sits
+   next to the thing it affects. */
+.mode-choice {
   display: flex;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  overflow: hidden;
+  gap: var(--space-4);
 }
 
-.mode-button {
-  flex: 1;
-  border: 0;
-  padding: var(--space-2) var(--space-3);
-  background: var(--panel);
-  color: var(--ink-400);
-  font: inherit;
+.mode-choice-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--ink-400);
   cursor: pointer;
 }
 
-.mode-button.active {
-  background: var(--accent-soft);
+.mode-choice-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode-choice-dot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.mode-choice-dot::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.mode-choice-option input:checked + .mode-choice-dot {
+  border-color: var(--accent);
+}
+
+.mode-choice-option input:checked + .mode-choice-dot::after {
+  background: var(--accent);
+}
+
+.mode-choice-option:has(input[value="LOCAL"]:checked) {
   color: var(--accent);
 }
 
-.mode-button[data-mode="GLOBAL"].active {
-  background: var(--global-soft);
+.mode-choice-option:has(input[value="GLOBAL"]:checked) {
   color: var(--global);
+}
+
+.mode-choice-option:has(input[value="GLOBAL"]:checked) .mode-choice-dot {
+  border-color: var(--global);
+}
+
+.mode-choice-option:has(input[value="GLOBAL"]:checked) .mode-choice-dot::after {
+  background: var(--global);
 }
 
 .mode-hint {
