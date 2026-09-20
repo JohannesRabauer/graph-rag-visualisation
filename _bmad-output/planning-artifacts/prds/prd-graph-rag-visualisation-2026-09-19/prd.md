@@ -2,7 +2,7 @@
 title: GraphRAG Lens — PRD
 status: final
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-20
 ---
 
 # PRD: GraphRAG Lens
@@ -64,6 +64,8 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **Retrieval Trace** — the captured, ordered record of which Entities, Relationships, and Communities were touched while answering a query.
 - **Replay** — the scrubbable, step-by-step visualization of a Retrieval Trace, shown after retrieval completes.
 - **Tag** — a small, user-facing label on an Entity, shown alongside that Entity's connections and details on the Explore page.
+- **DRIFT Search** *(v1.1)* — a third retrieval mode: a Community-summary pass first, which spawns targeted Local Search sub-questions from its results, then re-ranks and synthesizes a final answer.
+- **Vector Baseline** *(v1.1)* — a deliberately plain vector-similarity retrieval pipeline (chunk the Corpus → embed → top-k similarity search → synthesize), built to visualize how it differs from GraphRAG, not to be scored against it.
 
 ## 4. Features
 
@@ -183,6 +185,33 @@ User can click any Entity on the Explore page to see its connections (Relationsh
 
 **Out of Scope:** Editing an Entity, its Relationships, or its Tags — this is a read-only exploration view for v1.
 
+### 4.8 DRIFT Search *(v1.1)*
+
+**Description:** A third query mode alongside Local and Global Search, added post-MVP. Realizes UJ-1 more completely by showing a third, hybrid retrieval mechanism.
+
+#### FR-18: Answer via DRIFT Search
+User can explicitly select DRIFT via the mode toggle (now three-way); system runs a Community-summary pass, spawns targeted Local Search sub-questions from its results, re-ranks them, and synthesizes a final answer.
+
+**Consequences (testable):**
+- The captured Retrieval Trace records DRIFT as the mode, plus each spawned sub-question as its own ordered step (branching, not flattened — see DESIGN.md's `drift-tree` component).
+- If the Community pass yields no viable sub-questions, the system returns the same distinct "no answer found" shape used by FR-9/FR-10, naming DRIFT specifically.
+
+### 4.9 Vector-RAG Comparison Baseline *(v1.1)*
+
+**Description:** A deliberately plain vector-similarity baseline, triggered on demand from an already-answered question, so its mechanics can be watched step-by-step next to GraphRAG's for direct comparison. Not a benchmarking or scoring feature.
+
+#### FR-19: Build a vector index alongside the Knowledge Graph
+System chunks and embeds the ingested Corpus into a vector index, independent of Entity/Relationship extraction.
+
+#### FR-20: Answer via Vector Baseline, on demand
+User can trigger a Vector Baseline answer for a question already asked via GraphRAG, from a "Compare with Vector Search" action on that answer — never run automatically alongside every GraphRAG query. The Vector Baseline runs top-k similarity search over the vector index and synthesizes an answer, shown in a dedicated Vector Space tab alongside the Knowledge Graph tab.
+
+#### FR-21: Capture and replay the Vector Baseline's steps
+The Vector Baseline's pipeline — chunking, embedding each chunk, embedding the query, ranking/retrieving chunks by similarity, synthesizing the answer — is captured as its own Vector Trace and replayable step-by-step with the same transport controls as the existing Retrieval Trace.
+
+#### FR-22: Visualize the embedding space
+Corpus chunk embeddings are projected into 2D and shown as a scatter; this projection is computed once, at ingestion time, and stays stable across questions (never recomputed per query). When a Vector Baseline runs, the query's embedding is plotted live in that same space, and its top-k nearest chunks are highlighted with their similarity scores.
+
 ## 5. Cross-Cutting NFRs
 
 - **UI tone:** the interface should read as modern and minimalist, running entirely in the browser with minimal setup friction (per the brief). Full visual/interaction direction is deferred to the `bmad-ux` pass — this is a pointer forward, not a spec.
@@ -218,6 +247,18 @@ User can click any Entity on the Explore page to see its connections (Relationsh
 - Editing Entities, Relationships, or Tags on the Explore page — read-only for v1 (FR-17).
 - Library extraction/publishing — deferred to a future version, once the demo itself works. *(Revisit once v1 is stable and used on-stream a few times.)*
 - Marketing website, README polish, and app icon — deferred; parked in the brief's addendum as future roadmap items.
+
+### 7.3 v1.1 Scope *(added 2026-09-20, post-MVP)*
+
+Added via a sprint-change proposal after MVP scope (§7.1, FR-1–FR-17) was already locked — deliberately kept as its own scope tier rather than folded into §7.1, so the MVP boundary and its success metrics (§8) stay exactly what they were measuring.
+
+**In scope:** FR-18–FR-22 (DRIFT Search; the Vector-RAG Comparison Baseline and its step-by-step visualization).
+
+**Out of scope for v1.1:**
+- Swapping embedding models/providers.
+- Any scored or benchmarked "GraphRAG vs. vector" verdict — the comparison is illustrative only, consistent with the existing Non-Goal on formal retrieval-quality benchmarking (§6).
+- Automatic (non-demand) Vector Baseline computation on every query.
+- A branching-aware view for anything other than DRIFT's own Replay.
 
 ## 8. Success Metrics
 

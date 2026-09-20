@@ -73,3 +73,19 @@ development_status:
   6-1-explore-the-full-knowledge-graph: review
   6-2-inspect-an-entity-s-details: review
   epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-add-drift-to-the-mode-toggle-and-query-contract: backlog
+  7-2-implement-answerdriftsearch: backlog
+  7-3-capture-the-drift-trace: backlog
+  7-4-replay-the-drift-trace-as-a-branching-tree: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-build-the-vector-index-alongside-the-knowledge-graph: backlog
+  8-2-implement-answervectorbaseline: backlog
+  8-3-trigger-the-vector-baseline-on-demand-from-an-answer: backlog
+  8-4-capture-the-vector-trace: backlog
+  8-5-render-the-embedding-space-and-replay-the-vector-trace: backlog
+  epic-8-retrospective: optional
+  epic-6-retrospective: optional

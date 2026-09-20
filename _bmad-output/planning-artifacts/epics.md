@@ -34,6 +34,11 @@ FR14: The application and Neo4j can be started via a single Docker Compose comma
 FR15: The OpenAI API key is supplied via an environment variable at startup; no in-app configuration UI is required for v1.
 FR16: User can navigate to a dedicated Explore page showing the full Knowledge Graph, with pan and zoom, reached via a persistent link/tab from the main screen.
 FR17: User can click any Entity on the Explore page to see its connections (Relationships), details, and Tags.
+FR18 (v1.1): User can explicitly select DRIFT via the mode toggle; system runs a Community-summary pass, spawns targeted Local Search sub-questions, re-ranks, and synthesizes a final answer.
+FR19 (v1.1): System chunks and embeds the ingested Corpus into a vector index, independent of Entity/Relationship extraction.
+FR20 (v1.1): User can trigger a Vector Baseline answer for a question already asked via GraphRAG, on demand via a "Compare with Vector Search" action — never automatic.
+FR21 (v1.1): The Vector Baseline's pipeline (chunking, embedding, query embedding, similarity ranking, synthesis) is captured as its own Vector Trace, replayable step-by-step with the same transport controls as the existing Retrieval Trace.
+FR22 (v1.1): Corpus chunk embeddings are visualized as a 2D-projected scatter (settled once at ingestion, stable across questions); a query's embedding is plotted live with its top-k nearest chunks highlighted and scored.
 
 ### NonFunctional Requirements
 
@@ -104,6 +109,11 @@ FR14: Epic 1 - One-command infrastructure setup
 FR15: Epic 1 - API key via environment variable
 FR16: Epic 6 - Explore the full Knowledge Graph
 FR17: Epic 6 - Inspect an Entity's details
+FR18: Epic 7 - Answer via DRIFT Search
+FR19: Epic 8 - Build the vector index
+FR20: Epic 8 - Answer via Vector Baseline, on demand
+FR21: Epic 8 - Capture and replay the Vector Trace
+FR22: Epic 8 - Visualize the embedding space
 
 NFR1 (UI tone): Established in Epic 1 (design tokens/shell), enforced across all epics.
 NFR2 (Reliability, bounded): Enforced in Epic 2 (extraction failures) and Epic 3 (generation failures).
@@ -137,6 +147,14 @@ After an answer arrives, users can scrub back and forth through exactly how it w
 ### Epic 6: Graph Exploration
 Independent of any question, users can navigate to a dedicated page and freely pan, zoom, and click around the entire Knowledge Graph, with Communities always visible and a detail panel showing any Entity's connections, details, and Tags.
 **FRs covered:** FR16, FR17
+
+### Epic 7: DRIFT Search *(v1.1)*
+A third query mode: a Community-summary pass spawns targeted Local Search sub-questions, re-ranks them, and synthesizes an answer — replayed as a branching tree rather than a flattened linear sequence, so its multi-stage shape is visible, not hidden.
+**FRs covered:** FR18
+
+### Epic 8: Vector-RAG Comparison Baseline *(v1.1)*
+On demand, from an already-answered question, users can trigger a plain vector-similarity baseline and watch its mechanics step by step — chunking, embedding, query embedding, similarity ranking — in a dedicated Vector Space tab with a 2D embedding scatter, directly comparable to GraphRAG's own trace for the same question.
+**FRs covered:** FR19, FR20, FR21, FR22
 
 <!-- Repeat for each epic in epics_list (N = 1, 2, 3...) -->
 
@@ -451,3 +469,135 @@ So that I can understand any part of the graph on demand, without asking a quest
 **Then** a detail panel slides in from the right, showing that Entity's Relationships, details, and Tags as chips (UX-DR13)
 **And** clicking elsewhere on the canvas or the same node again closes the panel
 **And** editing an Entity, its Relationships, or its Tags is not possible — this is a read-only view for v1
+
+## Epic 7: DRIFT Search *(v1.1)*
+
+A third query mode alongside Local and Global Search, added post-MVP via a sprint-change proposal. A Community-summary pass spawns targeted Local Search sub-questions, re-ranks them, and synthesizes an answer — replayed as a branching tree, not flattened, so the multi-stage shape stays visible.
+
+### Story 7.1: Add DRIFT to the Mode Toggle & Query Contract
+
+As the creator,
+I want a third "Drift" position on the Local/Global mode toggle, with its own explanatory hint and color,
+So that DRIFT is selectable and demonstrable exactly like the other two modes (FR18, AD-18).
+
+**Acceptance Criteria:**
+
+**Given** the chat panel's mode toggle (Story 3.1)
+**When** I select Drift
+**Then** the toggle's active segment fills with the Drift tint/foreground (`{colors.drift-soft}`/`{colors.drift}` = Rose `#C0225F`, DESIGN.md `components.mode-toggle`)
+**And** the inline hint updates to "DRIFT runs a community pass, spawns targeted sub-questions, then re-ranks and synthesizes."
+**And** the query request extends to `{"question": "...", "mode": "LOCAL" | "GLOBAL" | "DRIFT"}` (AD-18)
+
+### Story 7.2: Implement AnswerDriftSearch
+
+As the creator,
+I want the system to answer a DRIFT-mode query by running a Community pass, spawning Local Search sub-questions, re-ranking, and synthesizing,
+So that I can demonstrate a third, hybrid retrieval mechanism (FR18).
+
+**Acceptance Criteria:**
+
+**Given** the Drift mode is selected and I submit a question
+**When** `AnswerDriftSearch` runs
+**Then** it reads existing Community summaries (Story 4.2) to select candidate communities, generates targeted sub-questions from them via `LlmPort`, answers each via the existing `AnswerLocalSearch` logic, re-ranks the results, and synthesizes one final answer
+**And** on success, the response uses the same `{"answerId", "traceId", "answer"}` shape as Local/Global (AD-13/AD-18)
+**And** if the Community pass yields no viable sub-questions, the response is the distinct `{"answerId", "traceId", "noAnswer": true, "reason"}` shape, naming DRIFT specifically (FR18 consequence)
+
+### Story 7.3: Capture the DRIFT Trace
+
+As the creator,
+I want the system to capture DRIFT's multi-stage retrieval as an ordered trace, including each spawned sub-question,
+So that its branching shape can later be replayed, not just its final answer (FR18, AD-18).
+
+**Acceptance Criteria:**
+
+**Given** `AnswerDriftSearch` (Story 7.2) is executing
+**When** the Community pass completes and sub-questions are spawned
+**Then** a "sub-question-spawned" step is appended to the trace for each one, carrying its question text and parent community (AD-18's new step kind)
+**And** each sub-question's own Local Search steps are appended in order beneath it, followed by a final re-rank/synthesize step
+**And** the whole sequence remains one ordered trace, addressed by a single `traceId` (AD-5, AD-18)
+
+### Story 7.4: Replay the DRIFT Trace as a Branching Tree
+
+As the creator,
+I want to replay a DRIFT answer as a branching tree — community pass, fanned sub-questions, convergence — rather than a flattened line,
+So that the audience sees DRIFT's actual multi-stage shape, not just a longer version of Local Search's replay (FR18, UX `components.drift-tree`).
+
+**Acceptance Criteria:**
+
+**Given** a DRIFT answer's Replay CTA is clicked
+**When** the trace (Story 7.3) is fetched
+**Then** the canvas renders the community-pass root, a fan of branch lines to each sub-question node, and a converging final node (DESIGN.md `components.drift-tree`)
+**And** the existing transport controls (step-forward/back, play/pause, scrubber-drag-to-nearest-tick) step through the tree in one fixed traversal order: community pass → each branch in spawn order → convergence
+**And** a branch not yet reached renders with the existing "upcoming" edge treatment; a resolved branch keeps a small "✓ resolved" caption once passed
+
+## Epic 8: Vector-RAG Comparison Baseline *(v1.1)*
+
+A deliberately plain vector-similarity baseline, triggered on demand from an already-answered question, so its mechanics — what gets vectorized, what the query looks like, what gets retrieved — are watchable step-by-step next to GraphRAG's own trace, for direct comparison. Illustrative only; not a scored benchmark.
+
+### Story 8.1: Build the Vector Index Alongside the Knowledge Graph
+
+As the creator,
+I want the ingested Corpus chunked and embedded into a vector index, independent of Entity/Relationship extraction,
+So that a plain vector-similarity baseline exists to compare against GraphRAG (FR19, AD-17).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus has been queued (Epic 2)
+**When** `ConstructVectorIndex` runs alongside `IngestCorpus`
+**Then** the Corpus is chunked, each chunk is embedded via `EmbeddingPort` (implemented by `graphrag-adapter-langchain4j`, AD-17), and persisted via `VectorStorePort` (implemented by `graphrag-adapter-neo4j`'s native vector index, AD-17 — no new container)
+**And** a 2D projection of the chunk embeddings is computed once during this step and persisted alongside them (AD-17) — never recomputed per query
+**And** this step does not block or gate Entity/Relationship extraction, and vice versa
+
+### Story 8.2: Implement AnswerVectorBaseline
+
+As the creator,
+I want a plain top-k similarity search and synthesis over the vector index,
+So that I have a genuine (not simulated) vector-RAG answer to compare against GraphRAG's (FR20).
+
+**Acceptance Criteria:**
+
+**Given** the vector index (Story 8.1) exists for a Corpus
+**When** `AnswerVectorBaseline` runs for a question
+**Then** it embeds the query via `EmbeddingPort`, retrieves the top-k most similar chunks via `VectorStorePort`, and synthesizes an answer via `LlmPort` from those chunks alone — no graph traversal, no Community summaries
+**And** the response is a separate, independent result from any GraphRAG answer — its own `answerId`/`traceId` (AD-18), never merged into the GraphRAG trace it's being compared against
+
+### Story 8.3: Trigger the Vector Baseline On Demand from an Answer
+
+As the creator,
+I want a "Compare with Vector Search" action on any already-answered question,
+So that the comparison is a deliberate, narrated moment rather than doubling the cost of every query (FR20).
+
+**Acceptance Criteria:**
+
+**Given** an answer with a Replay CTA is showing in chat (any mode: Local, Global, or Drift)
+**When** I click the Compare CTA (DESIGN.md `components.compare-cta`)
+**Then** `AnswerVectorBaseline` (Story 8.2) runs for that exact question
+**And** the Vector Baseline is never triggered automatically alongside the original GraphRAG query — only via this explicit action
+**And** on completion, the Vector Space tab (Story 8.5) becomes available next to Knowledge Graph
+
+### Story 8.4: Capture the Vector Trace
+
+As the creator,
+I want the Vector Baseline's steps captured as an ordered trace — chunking, each chunk embedded, query embedded, chunks ranked/retrieved, answer synthesized,
+So that it can be replayed step-by-step like the Retrieval Trace (FR21, AD-18).
+
+**Acceptance Criteria:**
+
+**Given** `AnswerVectorBaseline` (Story 8.2) is executing
+**When** each pipeline stage completes
+**Then** a "chunk-retrieved-via-similarity" step is appended for each ranked chunk, carrying its chunk id and similarity score (AD-18's new step kind), alongside steps for query embedding and answer synthesis
+**And** the trace is addressed by its own `traceId`, fetchable the same way as any other trace (AD-5)
+
+### Story 8.5: Render the Embedding Space and Replay the Vector Trace
+
+As the creator,
+I want a Vector Space tab showing corpus chunks as a 2D scatter, with the query's embedding landing live and its top-k neighbors highlighted and scored,
+So that "what got vectorized" and "what was retrieved" are literally visible, not abstract (FR21, FR22, UX `components.embedding-scatter`).
+
+**Acceptance Criteria:**
+
+**Given** a Vector Baseline has been triggered (Story 8.3) and its trace captured (Story 8.4)
+**When** I switch to the Vector Space tab (DESIGN.md `components.vector-space-tab`)
+**Then** corpus chunk dots render at their settled, ingestion-time 2D positions (Story 8.1) — switching tabs or asking another question never reshuffles this layout
+**And** Replay steps the query dot into the scatter, then highlights its top-k nearest chunks with connecting lines and similarity-score labels, using the same transport controls as the Retrieval Trace scrubber
+**And** the query dot reuses `{colors.active}` and hit-chunk highlights reuse `{colors.accent}` — no new color vocabulary is introduced for this view (DESIGN.md)

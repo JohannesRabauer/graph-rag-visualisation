@@ -1,0 +1,269 @@
+<title>Instrument Extensions</title>
+<style>
+  :root{
+    --paper:#FAFAF9; --panel:#FFFFFF; --chrome:#F1F2F4; --surround:#DCE0E5;
+    --ink-900:#14181C; --ink-600:#4B5563; --ink-400:#8B94A0;
+    --line:#E4E7EB; --line-strong:#CBD1D8;
+    --accent:#2563EB; --accent-soft:#DCE7FD;
+    --global:#0E7C86; --global-soft:#DCF2F1;
+    --active:#E85D2B; --active-soft:#FFE9DE;
+    --comm1:#FDE7D8; --comm1-lbl:#C77F4F;
+    --comm2:#DCE9FD; --comm2-lbl:#5C82C4;
+    --comm3:#E4F5DE; --comm3-lbl:#6FA363;
+    --comm4:#F4E3F7; --comm4-lbl:#9B6BA8;
+    --comm5:#FBF3D0; --comm5-lbl:#B99A2E;
+    --drift-a:#7C3AED; --drift-a-soft:#ECE3FC;
+    --drift-b:#C0225F; --drift-b-soft:#FBDCE7;
+    --drift-c:#92660B; --drift-c-soft:#F5E9D0;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--surround);color:var(--ink-900);font-family:var(--sans);}
+  body{padding:32px 16px 64px;}
+  .wrap{max-width:920px;margin:0 auto;}
+  .masthead{padding:8px 4px 28px;}
+  .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-400);}
+  h1{font-size:22px;margin:6px 0 8px;letter-spacing:-.01em;}
+  .lede{font-size:13.5px;line-height:1.6;color:var(--ink-600);max-width:62ch;}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(20,24,28,.06),0 12px 32px rgba(20,24,28,.08);padding:28px;margin-bottom:24px;}
+  .sec-head{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;}
+  .sec-num{font-family:var(--mono);font-size:11px;color:var(--ink-400);border:1px solid var(--line-strong);border-radius:6px;padding:2px 6px;}
+  h2{font-size:15.5px;margin:0;}
+  .sec-note{font-size:12.5px;color:var(--ink-600);line-height:1.6;margin:10px 0 20px;max-width:68ch;}
+  .sec-note code{font-family:var(--mono);font-size:11px;background:var(--chrome);padding:1px 5px;border-radius:4px;}
+
+  /* ---- shared component: mode toggle ---- */
+  .toggle-row{display:flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;width:fit-content;}
+  .seg{font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:8px 14px;color:var(--ink-400);background:var(--panel);border-right:1px solid var(--line-strong);}
+  .seg:last-child{border-right:none;}
+  .seg.local{background:var(--accent-soft);color:var(--accent);}
+  .seg.global{background:var(--global-soft);color:var(--global);}
+  .hint{font-size:12px;color:var(--ink-600);margin-top:8px;}
+
+  /* ---- Section 1: color candidates ---- */
+  .candidates{display:flex;flex-wrap:wrap;gap:20px;}
+  .cand{flex:1 1 250px;border:1px solid var(--line);border-radius:8px;padding:18px;background:var(--paper);}
+  .cand input{position:absolute;opacity:0;}
+  .cand label{display:block;cursor:pointer;}
+  .cand-title{font-family:var(--mono);font-size:11px;color:var(--ink-600);display:flex;justify-content:space-between;margin-bottom:12px;}
+  .swatch{width:14px;height:14px;border-radius:3px;display:inline-block;vertical-align:-2px;margin-right:6px;border:1px solid rgba(0,0,0,.08);}
+  .cand:has(input:checked){border-color:var(--ink-900);box-shadow:0 0 0 1px var(--ink-900);}
+  .picked-tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--panel);background:var(--ink-900);border-radius:4px;padding:2px 6px;display:none;}
+  .cand:has(input:checked) .picked-tag{display:inline-block;}
+
+  /* candidate A: violet */
+  #a:checked ~ label .seg.drift{background:var(--drift-a-soft);color:var(--drift-a);}
+  /* candidate B: rose */
+  #b:checked ~ label .seg.drift{background:var(--drift-b-soft);color:var(--drift-b);}
+  /* candidate C: bronze */
+  #c:checked ~ label .seg.drift{background:var(--drift-c-soft);color:var(--drift-c);}
+
+  /* ---- Section 2: branching replay ---- */
+  .replay-canvas{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:28px 20px 20px;position:relative;}
+  .canvas-title{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-400);margin-bottom:20px;}
+  .drift-tree{display:flex;flex-direction:column;align-items:center;gap:0;}
+  .node{font-family:var(--mono);font-size:11px;border-radius:7px;padding:8px 14px;text-align:center;position:relative;z-index:2;}
+  .node.root{background:var(--panel);border:1.5px solid var(--drift-a);color:var(--ink-900);box-shadow:0 2px 6px rgba(20,24,28,.08);}
+  .node.sub{background:var(--panel);border:1.5px solid var(--line-strong);color:var(--ink-600);font-size:10.5px;max-width:190px;}
+  .node.sub.active{border-color:var(--active);color:var(--ink-900);background:var(--active-soft);}
+  .node.final{background:var(--drift-a-soft);border:1.5px solid var(--drift-a);color:var(--drift-a);font-weight:700;}
+  .branch-row{display:flex;gap:28px;margin:0 0 0;position:relative;}
+  .stem{width:1.5px;height:22px;background:var(--line-strong);}
+  .fan{position:relative;height:22px;width:100%;}
+  .fan svg{position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;}
+  .sub-col{display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .mini-caption{font-family:var(--mono);font-size:9px;color:var(--ink-400);}
+  .step-badge{position:absolute;top:16px;right:16px;background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;padding:5px 10px;font-family:var(--mono);font-size:10.5px;color:var(--ink-900);box-shadow:0 2px 6px rgba(20,24,28,.08);}
+  .step-badge b{color:var(--active);}
+  .scrubber{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+  .tbtn{width:26px;height:26px;border-radius:6px;border:1px solid var(--line-strong);background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--ink-600);}
+  .rail{flex:1;height:4px;background:var(--line-strong);border-radius:2px;position:relative;}
+  .rail .fill{position:absolute;left:0;top:0;height:100%;width:46%;background:var(--drift-a);border-radius:2px;}
+  .rail .tick{position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:var(--panel);border:2px solid var(--line-strong);}
+  .rail .tick.done{border-color:var(--drift-a);}
+  .rail .tick.now{border-color:var(--active);background:var(--active);}
+  .counter{font-family:var(--mono);font-size:10.5px;color:var(--ink-600);}
+  .caption{font-family:var(--mono);font-size:11px;color:var(--ink-600);margin-top:10px;}
+
+  /* ---- Section 3: vector space ---- */
+  .vs-shell{border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .vs-tabs{display:flex;background:var(--chrome);border-bottom:1px solid var(--line);}
+  .vs-tab{font-family:var(--sans);font-size:11px;font-weight:600;padding:10px 16px;color:var(--ink-400);border-bottom:2px solid transparent;cursor:pointer;}
+  .vs-tab.on{color:var(--ink-900);border-bottom-color:var(--ink-900);background:var(--paper);}
+  .vs-body{background:var(--paper);padding:24px 20px 16px;position:relative;min-height:280px;}
+  .scatter{position:relative;height:230px;}
+  .dot{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--ink-400);opacity:.55;}
+  .dot.hit{width:11px;height:11px;background:var(--panel);border:2px solid var(--accent);opacity:1;}
+  .dot.query{width:13px;height:13px;background:var(--active);border:2px solid var(--panel);box-shadow:0 0 0 3px var(--active-soft);}
+  .score{position:absolute;font-family:var(--mono);font-size:9.5px;color:var(--accent);background:var(--panel);border:1px solid var(--line-strong);border-radius:4px;padding:1px 4px;}
+  .link{position:absolute;height:1px;background:var(--line-strong);transform-origin:0 0;}
+  .vs-caption{font-family:var(--mono);font-size:10.5px;color:var(--ink-600);border-top:1px solid var(--line);padding-top:12px;margin-top:8px;}
+  .compare-cta{display:inline-flex;align-items:center;gap:6px;border:1px dashed var(--line-strong);border-radius:7px;padding:8px 12px;font-size:12px;color:var(--ink-600);margin-top:14px;}
+  .compare-cta b{color:var(--ink-900);}
+
+  .flags{background:var(--chrome);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin-top:6px;}
+  .flags h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-600);margin:0 0 8px;}
+  .flags p{font-size:12px;color:var(--ink-600);line-height:1.6;margin:0 0 6px;}
+  .flags p:last-child{margin-bottom:0;}
+</style>
+
+<div class="wrap">
+  <div class="masthead">
+    <div class="eyebrow">GraphRAG Lens — Instrument, extended</div>
+    <h1>Three things to decide before Epic 7 &amp; 8 lock in</h1>
+    <p class="lede">Working sketches, not final chrome — same tokens as the shipped app (paper / panel / ink / line / accent / global). Pick a direction in each section; nothing here is load-bearing yet.</p>
+  </div>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>DRIFT's third mode color</h2></div>
+    <p class="sec-note">The existing rule bans a third saturated mode hue — you chose to break it, so DRIFT needs a real color of its own. All three candidates below avoid the palette already spoken for: <code>accent</code> blue, <code>global</code> teal, <code>active</code> warm-orange, and all five Community hull tints.</p>
+    <div class="candidates">
+      <div class="cand">
+        <input type="radio" name="drift-color" id="a" checked>
+        <label for="a">
+          <div class="cand-title"><span><span class="swatch" style="background:var(--drift-a)"></span>Violet — #7C3AED</span><span class="picked-tag">Selected</span></div>
+          <div class="toggle-row">
+            <div class="seg local">Local</div>
+            <div class="seg global">Global</div>
+            <div class="seg drift">Drift</div>
+          </div>
+          <div class="hint">DRIFT runs a community pass, spawns targeted sub-questions, then re-ranks and synthesizes.</div>
+        </label>
+      </div>
+      <div class="cand">
+        <input type="radio" name="drift-color" id="b">
+        <label for="b">
+          <div class="cand-title"><span><span class="swatch" style="background:var(--drift-b)"></span>Rose — #C0225F</span><span class="picked-tag">Selected</span></div>
+          <div class="toggle-row">
+            <div class="seg local">Local</div>
+            <div class="seg global">Global</div>
+            <div class="seg drift">Drift</div>
+          </div>
+          <div class="hint">DRIFT runs a community pass, spawns targeted sub-questions, then re-ranks and synthesizes.</div>
+        </label>
+      </div>
+      <div class="cand">
+        <input type="radio" name="drift-color" id="c">
+        <label for="c">
+          <div class="cand-title"><span><span class="swatch" style="background:var(--drift-c)"></span>Bronze — #92660B</span><span class="picked-tag">Selected</span></div>
+          <div class="toggle-row">
+            <div class="seg local">Local</div>
+            <div class="seg global">Global</div>
+            <div class="seg drift">Drift</div>
+          </div>
+          <div class="hint">DRIFT runs a community pass, spawns targeted sub-questions, then re-ranks and synthesizes.</div>
+        </label>
+      </div>
+    </div>
+    <div class="flags" style="margin-top:20px;">
+      <h3>Worth knowing</h3>
+      <p><b>Violet</b> sits closest to Community-4's pale purple hull tint — fine as a saturated toggle/answer-tag color, but if DRIFT ever gets its own node-highlight ring on the graph canvas (like Local's accent ring), it'll want to stay clearly more saturated than that hull, the same way <code>active</code>-orange already out-saturates Community-1's orange.</p>
+      <p><b>Rose</b> has zero collision anywhere in the current palette — cleanest pick if you want DRIFT visually unmistakable at a glance.</p>
+      <p><b>Bronze</b> reads calmer/earthier, furthest in tone from both existing mode colors, but is the closest in family to Community-5's gold.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>DRIFT Replay — branching step view</h2></div>
+    <p class="sec-note">Community pass at the top spawns sub-questions as parallel branches; each resolves via its own mini local-search trace, then the branches converge into one re-rank + synthesize step. The linear transport controls (step/play/scrub) still work underneath — they now step through the tree in a fixed traversal order (top → each branch in turn → convergence), while the canvas above shows the shape.</p>
+    <div class="replay-canvas">
+      <div class="step-badge">Step <b>04</b> / 07 — sub-q 2 traversed</div>
+      <div class="canvas-title">Knowledge Graph — Replaying DRIFT Trace</div>
+      <div class="drift-tree">
+        <div class="node root">Community Pass<br><span class="mini-caption">3 candidate communities scanned</span></div>
+        <div class="stem"></div>
+        <div class="fan">
+          <svg viewBox="0 0 400 22" preserveAspectRatio="none">
+            <path d="M200,0 L60,22" stroke="#CBD1D8" stroke-width="1.5" fill="none"/>
+            <path d="M200,0 L200,22" stroke="#CBD1D8" stroke-width="1.5" fill="none"/>
+            <path d="M200,0 L340,22" stroke="#CBD1D8" stroke-width="1.5" fill="none"/>
+          </svg>
+        </div>
+        <div class="branch-row">
+          <div class="sub-col">
+            <div class="node sub">Sub-Q1 · "Who investigated the theft?"</div>
+            <span class="mini-caption">✓ resolved</span>
+          </div>
+          <div class="sub-col">
+            <div class="node sub active">Sub-Q2 · "What was Moriarty's link to it?"</div>
+            <span class="mini-caption">traversing now</span>
+          </div>
+          <div class="sub-col">
+            <div class="node sub">Sub-Q3 · "Where was the meeting held?"</div>
+            <span class="mini-caption">queued</span>
+          </div>
+        </div>
+        <div class="stem"></div>
+        <div class="node final">Re-rank &amp; Synthesize → Final Answer</div>
+      </div>
+      <div class="scrubber">
+        <div class="tbtn">⏮</div>
+        <div class="tbtn">⏸</div>
+        <div class="tbtn">⏭</div>
+        <div class="rail">
+          <div class="fill"></div>
+          <div class="tick done" style="left:6%"></div>
+          <div class="tick done" style="left:24%"></div>
+          <div class="tick now" style="left:46%"></div>
+          <div class="tick" style="left:64%"></div>
+          <div class="tick" style="left:82%"></div>
+          <div class="tick" style="left:96%"></div>
+        </div>
+        <span class="counter">04 / 07</span>
+      </div>
+      <div class="caption">community pass → spawned 3 sub-questions → sub-q1 resolved → <b style="color:var(--ink-900)">sub-q2 traversing</b> → next: sub-q3</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>Vector Space — the new comparison view</h2></div>
+    <p class="sec-note">A "Compare" action on any answer (on-demand, not automatic) opens a second tab next to Knowledge Graph. Chunks appear as points in projected embedding space; asking a question drops the query in live and lights up its nearest neighbors with their similarity scores — the literal picture of "what got vectorized."</p>
+    <div class="vs-shell">
+      <div class="vs-tabs">
+        <div class="vs-tab">Knowledge Graph</div>
+        <div class="vs-tab on">Vector Space</div>
+      </div>
+      <div class="vs-body">
+        <div class="canvas-title" style="margin-bottom:14px;">Vector Space — Replaying Vector Trace</div>
+        <div class="scatter" id="scatter">
+          <!-- chunk cloud -->
+          <div class="dot" style="left:8%;top:20%"></div>
+          <div class="dot" style="left:14%;top:55%"></div>
+          <div class="dot" style="left:22%;top:12%"></div>
+          <div class="dot" style="left:30%;top:70%"></div>
+          <div class="dot" style="left:38%;top:38%"></div>
+          <div class="dot" style="left:46%;top:80%"></div>
+          <div class="dot" style="left:58%;top:18%"></div>
+          <div class="dot" style="left:64%;top:60%"></div>
+          <div class="dot" style="left:72%;top:30%"></div>
+          <div class="dot" style="left:80%;top:66%"></div>
+          <div class="dot" style="left:86%;top:22%"></div>
+          <div class="dot" style="left:92%;top:48%"></div>
+          <div class="dot" style="left:18%;top:88%"></div>
+          <div class="dot" style="left:52%;top:8%"></div>
+          <!-- query + top-k -->
+          <div class="dot query" style="left:50%;top:46%"></div>
+          <div class="dot hit" style="left:58%;top:18%"></div>
+          <div class="dot hit" style="left:38%;top:38%"></div>
+          <div class="dot hit" style="left:64%;top:60%"></div>
+          <div class="score" style="left:60%;top:11%">0.87</div>
+          <div class="score" style="left:26%;top:34%">0.82</div>
+          <div class="score" style="left:66%;top:64%">0.79</div>
+          <svg style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;">
+            <line x1="50%" y1="46%" x2="58%" y2="18%" stroke="#CBD1D8" stroke-width="1"/>
+            <line x1="50%" y1="46%" x2="38%" y2="38%" stroke="#CBD1D8" stroke-width="1"/>
+            <line x1="50%" y1="46%" x2="64%" y2="60%" stroke="#CBD1D8" stroke-width="1"/>
+          </svg>
+        </div>
+        <div class="vs-caption">step 3/5 — query embedded → 3 nearest chunks retrieved (0.87 / 0.82 / 0.79) → next: synthesize answer</div>
+      </div>
+    </div>
+    <div class="compare-cta">↻ <b>Compare with Vector Search</b> — see the same question answered by plain similarity retrieval</div>
+    <div class="flags" style="margin-top:16px;">
+      <h3>Worth knowing</h3>
+      <p>The query dot reuses <code>active</code>-orange (today's "current step" color) since it means the same thing here: "this is the live, happening-right-now thing." Hit chunks use <code>accent</code>-blue rings rather than a new hue — deliberately, so a viewer doesn't have to learn a fourth color meaning just for this one view.</p>
+      <p>Open question this sketch doesn't answer yet: does the 2D projection recompute per corpus (so layout is stable across questions), or does it visually "settle" once at ingestion time? Worth pinning down before Story 8.4 gets written.</p>
+    </div>
+  </section>
+</div>

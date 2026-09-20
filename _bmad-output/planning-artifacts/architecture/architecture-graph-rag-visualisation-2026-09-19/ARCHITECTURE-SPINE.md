@@ -8,7 +8,7 @@ scope: 'Whole system'
 status: final
 created: 2026-09-19
 updated: 2026-09-20
-binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17]
+binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22]
 sources:
   - _bmad-output/planning-artifacts/briefs/brief-graph-rag-visualisation-2026-09-19/brief.md
   - _bmad-output/planning-artifacts/briefs/brief-graph-rag-visualisation-2026-09-19/addendum.md
@@ -148,6 +148,18 @@ graph TD
 - **Prevents:** A presenter's LOCAL/GLOBAL question landing against a Corpus that hasn't finished ingesting (or that failed) and getting a confusing, partial, or misleading answer instead of a clear "still building" message mid-demo. This reverses this project's own original UX allowance — EXPERIENCE.md's now-superseded "queries proceed against a partial graph" decision, the same allowance AD-14 was originally written to protect (see AD-14's reconciliation note above) — a deliberate, accepted trade-off from the `spec-demo-ready-showcase-workflow.md` story, not an oversight.
 - **Rule:** `CorpusController.query()` checks `CorpusStore.status(corpusId)` *before* invoking either use case. A `BUILDING` or `FAILED` Corpus responds `409 Conflict` with a plain-language message, and neither `AnswerLocalSearch` nor `AnswerGlobalSearch` is invoked at all — no use case call, no read, no partial answer. This gate lives entirely in `graphrag-web`, above the use-case boundary AD-14 governs: once a read use case *is* invoked (Corpus is `READY`), it remains exactly as lock-free and non-blocking as AD-14 specifies. `ExploreGraph`/`GET /api/graph` has no equivalent gate and is unaffected — Explore was never in this story's scope and keeps reading whatever is currently committed, ready or not.
 
+### AD-17 — Vector subsystem reuses existing adapters; no new container (added 2026-09-20, v1.1)
+
+- **Binds:** New `EmbeddingPort`, `VectorStorePort` in `graphrag-core`; `AnswerVectorBaseline`, `ConstructVectorIndex` use cases; FR-19–FR-22.
+- **Prevents:** A third data-store container (a dedicated vector DB) creeping in and violating AD-8's "exactly two containers" rule; LangChain4j/OpenAI or Neo4j-driver types leaking outside their existing adapter boundaries the way AD-3/AD-2 already prevent for LLM and graph access.
+- **Rule:** `EmbeddingPort` is implemented by the *existing* `graphrag-adapter-langchain4j` (LangChain4j already wraps OpenAI embeddings — no new adapter module). `VectorStorePort` is implemented by the *existing* `graphrag-adapter-neo4j`, using Neo4j 2026.x's native vector index rather than a separate vector database — this is what keeps AD-8 intact. `ConstructVectorIndex` runs as its own step alongside `IngestCorpus` (chunk the Corpus, embed each chunk via `EmbeddingPort`, persist via `VectorStorePort`); it does not block or gate Entity/Relationship extraction, and vice versa. The 2D projection used by the Vector Space view (EXPERIENCE.md) is computed once during this step and persisted alongside the vectors — never recomputed per query.
+
+### AD-18 — Query mode and trace-step shape extend for DRIFT and the Vector Baseline (added 2026-09-20, v1.1)
+
+- **Binds:** AD-13 (query contract); AD-5 (trace steps); `AnswerDriftSearch`, `AnswerVectorBaseline` use cases; FR-18, FR-21.
+- **Prevents:** AD-13's mode enum and AD-5's step-kind set silently going stale as v1.1 adds real new modes/step kinds, without reopening or contradicting Epic 3/4/5's already-`review` stories built against the original AD-5/AD-13 text.
+- **Rule:** AD-13's `mode` field extends to `"LOCAL" | "GLOBAL" | "DRIFT"`; response shapes (`answer` / `noAnswer` / `error`) are unchanged. AD-5's trace-step model extends with two new step kinds beyond "Entity, Relationship, or Community touched": a **sub-question-spawned** step (DRIFT only, carries the spawned question text and its parent community pass) and a **chunk-retrieved-via-similarity** step (Vector Baseline only, carries the chunk id and its similarity score). Both remain part of one ordered step sequence per AD-5's "never an unordered set" rule. The Vector Baseline's trace is a *separate* trace (its own `traceId`, per AD-5), never merged into the same trace as the GraphRAG answer it's compared against — the Compare CTA (EXPERIENCE.md) triggers a second, independent `AnswerVectorBaseline` call, not a mode branch inside the original query.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -176,8 +188,9 @@ graph TD
 graphrag-lens/
   graphrag-core/                  # domain + use cases + ports — zero framework deps
     src/main/java/.../domain/     # Corpus, Entity, Relationship, Community, RetrievalTrace, Tag
-    src/main/java/.../usecase/    # IngestCorpus, DetectCommunities, AnswerLocalSearch, AnswerGlobalSearch, ExploreGraph
-    src/main/java/.../port/       # GraphStorePort, LlmPort, DocumentParserPort
+    src/main/java/.../usecase/    # IngestCorpus, DetectCommunities, AnswerLocalSearch, AnswerGlobalSearch, ExploreGraph,
+                                   # AnswerDriftSearch, ConstructVectorIndex, AnswerVectorBaseline (v1.1)
+    src/main/java/.../port/       # GraphStorePort, LlmPort, DocumentParserPort, EmbeddingPort, VectorStorePort (v1.1)
   graphrag-adapter-neo4j/         # implements GraphStorePort (driver + Cypher + GDS calls)
   graphrag-adapter-langchain4j/   # implements LlmPort (LangChain4j + OpenAI)
   graphrag-adapter-parsing/       # implements DocumentParserPort (plain text, PDFBox)
@@ -227,6 +240,8 @@ Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of
 | Setup & Deployment (FR-14–FR-15) | `docker-compose.yml`, `graphrag-web` config | AD-8, Consistency Conventions (config) |
 | Graph Exploration (FR-16–FR-17) | `ExploreGraph` use case, `graphrag-adapter-neo4j` | AD-1, AD-2, AD-11, AD-14 |
 | Live ingestion progress (EXPERIENCE.md State Patterns) | `graphrag-web` SSE endpoints | AD-7, AD-12 |
+| DRIFT Search (FR-18) *(v1.1)* | `AnswerDriftSearch` use case (orchestrates `AnswerLocalSearch` + Community summaries) | AD-1, AD-3, AD-6, AD-13, AD-18 |
+| Vector-RAG Comparison Baseline (FR-19–FR-22) *(v1.1)* | `ConstructVectorIndex`, `AnswerVectorBaseline` use cases; `EmbeddingPort`, `VectorStorePort` | AD-1, AD-17, AD-18 |
 
 ## Deferred
 

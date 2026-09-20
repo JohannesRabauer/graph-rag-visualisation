@@ -33,6 +33,10 @@ colors:
   community-4-label: '#9B6BA8'
   community-5: '#FBF3D0'
   community-5-label: '#B99A2E'
+  drift: '#C0225F'
+  drift-soft: '#FBDCE7'
+  vector-hit: '{colors.accent}'
+  vector-query: '{colors.active}'
 typography:
   ui:
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
@@ -89,8 +93,42 @@ components:
     active-local-foreground: '{colors.accent}'
     active-global-background: '{colors.global-soft}'
     active-global-foreground: '{colors.global}'
+    active-drift-background: '{colors.drift-soft}'
+    active-drift-foreground: '{colors.drift}'
     inactive-foreground: '{colors.ink-400}'
     label-typography: '{typography.tag}'
+  drift-tree:
+    root-border: '{colors.drift}'
+    sub-default-border: '{colors.line-strong}'
+    sub-default-foreground: '{colors.ink-600}'
+    sub-active-border: '{colors.active}'
+    sub-active-background: '{colors.active-soft}'
+    final-background: '{colors.drift-soft}'
+    final-border: '{colors.drift}'
+    final-foreground: '{colors.drift}'
+    branch-line-color: '{colors.line-strong}'
+    typography: '{typography.data-mono}'
+  vector-space-tab:
+    inactive-foreground: '{colors.ink-400}'
+    active-foreground: '{colors.ink-900}'
+    active-underline: '{colors.ink-900}'
+    background: '{colors.chrome}'
+  embedding-scatter:
+    background: '{colors.paper}'
+    chunk-dot: '{colors.ink-400}'
+    chunk-dot-opacity: '0.55'
+    hit-dot-fill: '{colors.panel}'
+    hit-dot-border: '{colors.vector-hit}'
+    query-dot-fill: '{colors.vector-query}'
+    query-dot-halo: '{colors.active-soft}'
+    link-line: '{colors.line-strong}'
+    score-label-typography: '{typography.data-mono}'
+    score-label-color: '{colors.vector-hit}'
+  compare-cta:
+    border: '1px dashed {colors.line-strong}'
+    radius: '{rounded.DEFAULT}'
+    foreground: '{colors.ink-600}'
+    emphasis-foreground: '{colors.ink-900}'
   message-question:
     background: '{colors.ink-900}'
     foreground: '#FFFFFF'
@@ -219,8 +257,10 @@ The palette holds two structural neutrals, two "mode" accents, one alert/active 
 - **Global (`#0E7C86`)** means **Global Search**, the cool teal complement to accent-blue, used identically (active toggle, answer tag) but never mixed with Accent in the same component. **Global-soft (`#DCF2F1`)** is its tint.
 - **Active (`#E85D2B`)** is the single warm, alert-adjacent color in the system. It marks "the current step" — the actively traversed edge, the current node in a Replay, the "now" tick on the scrubber — and doubles as the error-state color (FR-5, FR-9/FR-10 failure states) precisely because both meanings share the same instinct: "look here, something is happening that needs your attention right now." **Active-soft (`#FFE9DE`)** is its fill tint (active-node halo, error banner background).
 - **Community-1 through Community-5** are hull-tint colors for community visualization (main-screen toggle and the always-on Explore page view). The mockup ships three (`community-1` orange, `community-2` blue, `community-3` green) because its demo dataset has three Communities. This spine extends the set to five, using the same tint/label pairing logic and choosing simple, visually separated categorical hues (orange, blue, green, purple, gold) in the spirit of a ColorBrewer qualitative set, since the PRD sets no ceiling on Community count. Colorblind-safety is a soft, best-effort goal per the memlog, not a validated/contrast-tested palette — an acceptable v1 gap, not a blocker.
+- **Drift (`#C0225F`)** means **DRIFT Search** (v1.1) — a deliberate, considered break of the "exactly two mode hues" rule below, chosen as the mode set grew to three. Rose was picked over violet/bronze alternatives specifically because it has zero collision anywhere else in the palette (unlike violet, which sits close to Community-4's purple hull tint). Used identically to Accent/Global: active toggle state, answer tag, scrubber fill during a DRIFT Replay. **Drift-soft (`#FBDCE7`)** is its tint.
+- **Vector-hit** and **vector-query** (v1.1, Vector Space view only) are aliases, not new hues: hit chunks reuse `{colors.accent}` (a ring highlight, not a fill), and the live query point reuses `{colors.active}` — deliberately, so a viewer isn't asked to learn a fourth color meaning just for one secondary view. "This is the current/live thing" (Active) and "this was matched" (Accent) already mean that everywhere else in the app.
 
-Avoid: introducing a third "mode" hue (Local/Global stays exactly two), using Active for anything decorative, tinting Panel or Paper away from neutral, and giving Community hulls saturated fills (they stay pale tints so node/edge lines read on top of them).
+Avoid: introducing a *fourth* mode hue beyond Local/Global/Drift, using Active for anything decorative outside its "current step" / "live query point" meaning, tinting Panel or Paper away from neutral, and giving Community hulls saturated fills (they stay pale tints so node/edge lines read on top of them).
 
 ## Typography
 
@@ -251,7 +291,11 @@ Corners are consistently soft-but-tight: `{rounded.sm}` (6px) for small controls
 ## Components
 
 - **Chat panel** (`{components.chat-panel}`) — left rail, `{colors.panel}` background, right hairline border. Contains the mode toggle, message thread, and composer, top to bottom.
-- **Local/Global Search mode toggle** (`{components.mode-toggle}`) — two-segment control, uppercase tag-weight labels. Active segment fills with the matching mode's soft tint and text in its accent color (`{colors.accent-soft}`/`{colors.accent}` for Local, `{colors.global-soft}`/`{colors.global}` for Global); inactive segment is `{colors.ink-400}` text on `{colors.panel}`. A one-line explanatory hint below the toggle always states what the active mode does in plain language (tutorial-clarity mandate) — for example, "Local Search traverses specific Entities and Relationships around your question."
+- **Local/Global/Drift Search mode toggle** (`{components.mode-toggle}`, three-segment as of v1.1) — uppercase tag-weight labels. Active segment fills with the matching mode's soft tint and text in its accent color (`{colors.accent-soft}`/`{colors.accent}` for Local, `{colors.global-soft}`/`{colors.global}` for Global, `{colors.drift-soft}`/`{colors.drift}` for Drift); inactive segments are `{colors.ink-400}` text on `{colors.panel}`. A one-line explanatory hint below the toggle always states what the active mode does in plain language (tutorial-clarity mandate) — for example, "Local Search traverses specific Entities and Relationships around your question," or "DRIFT runs a community pass, spawns targeted sub-questions, then re-ranks and synthesizes."
+- **DRIFT tree** (`{components.drift-tree}`, v1.1) — the DRIFT-mode Replay canvas. A root node (drift-colored border) for the community pass, a fan of branch lines (`{colors.line-strong}`) down to sub-question nodes (default: line-strong border/ink-600 text; the currently-traversing one: active-colored border and soft fill, same "current step" language as the main graph canvas), converging into a single final node (drift-soft fill, drift border/text) for re-rank + synthesize. The linear scrubber (`{components.scrubber}`) sits below unchanged, stepping through the tree in a fixed traversal order: community pass → each branch in turn → convergence.
+- **Vector Space tab** (`{components.vector-space-tab}`, v1.1) — a two-tab switch ("Knowledge Graph" / "Vector Space") reusing the Explore-page view-switch pattern rather than a permanent split screen, so exactly one hero surface is ever showing. Inactive tab is `{colors.ink-400}` on `{colors.chrome}`; active tab is `{colors.ink-900}` with a bottom underline, on `{colors.paper}`.
+- **Embedding scatter** (`{components.embedding-scatter}`, v1.1) — corpus chunks render as small `{colors.ink-400}` dots at 0.55 opacity in a 2D projection that **settles once at ingestion time** and stays stable across questions (it is not recomputed per query). Asking a question drops a query dot (`{colors.vector-query}` fill, soft halo) live into that same space; its top-k nearest chunks get a ring highlight (`{colors.vector-hit}` border, panel fill, enlarged) connected by thin `{colors.line-strong}` lines, each labeled with its similarity score in `{typography.data-mono}`. Replayed step-by-step via the same scrubber pattern as the Retrieval Trace: chunking → each chunk embedded → query embedded → chunks ranked/retrieved → answer synthesized.
+- **Compare CTA** (`{components.compare-cta}`, v1.1) — visually identical to the existing Replay CTA (dashed border, same radius/foreground tokens), appears on an answer already showing a Replay CTA, reading "Compare with Vector Search — see the same question answered by plain similarity retrieval." Triggers the Vector Baseline **on demand only**; it is never run automatically alongside every GraphRAG answer.
 - **Message bubbles** — question bubbles (`{components.message-question}`) are dark-filled, right-aligned, sharp-cornered on the tail side. Answer content (`{components.message-answer}`) is unbubbled body text tagged with a small colored mode label. Every answer that has a Retrieval Trace carries a **Replay CTA** (`{components.replay-cta}`): a dashed-border pill-ish row reading "Replay this answer's Retrieval Trace — N steps."
 - **Composer** (`{components.composer}`) — single-line text input plus a dark circular-ish send button with a play-style glyph. Placeholder copy stays plain ("Ask a question about the Corpus…").
 - **Graph canvas** (`{components.graph-canvas}`) — the hero surface. Faint 24px grid on `{colors.paper}`. An uppercase eyebrow title state-labels what's showing ("Knowledge Graph — Replaying Trace" / "Knowledge Graph — Resting"). A legend row lists visible Community names with color swatches when the community-visualization toggle (main screen) or the always-on Explore view is active.
@@ -270,7 +314,8 @@ Corners are consistently soft-but-tight: `{rounded.sm}` (6px) for small controls
 | Do | Don't |
 |---|---|
 | Keep the graph canvas the brightest, most detailed surface on screen | Add decorative color, gradients, or texture to chat/chrome that competes with the graph |
-| Use `{colors.accent}` for Local Search and `{colors.global}` for Global Search, consistently, everywhere | Introduce a third saturated "mode" color, or swap accent/global meaning between components |
+| Use `{colors.accent}` for Local, `{colors.global}` for Global, `{colors.drift}` for Drift, consistently, everywhere | Introduce a fourth saturated "mode" color, or swap accent/global/drift meaning between components |
+| Reuse `{colors.active}`/`{colors.accent}` for the Vector Space view's query/hit dots rather than new hues | Give the Vector Space view its own color vocabulary separate from the rest of the app |
 | Reserve `{typography.data-mono}` for data (steps, counts, trace captions) | Set prose, buttons, or chat messages in monospace |
 | Explain toggles and modes in one plain sentence near the control | Ship a control (Local/Global, community toggle) with no inline explanation of what it does |
 | Use `{colors.active}` for "this is the current step" and for error/failure states | Use `{colors.active}` decoratively, or introduce a second red/alert hue |
