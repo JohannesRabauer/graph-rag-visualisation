@@ -331,6 +331,7 @@ class CorpusControllerTest {
                 .getContentAsString();
         List<String> kinds = JsonPath.read(traceBody, "$.steps[*].kind");
         assertThat(kinds).contains("ENTITY");
+        assertThat(kinds).contains("RELATIONSHIP");
         assertThat(kinds).isNotEmpty();
     }
 
@@ -347,6 +348,48 @@ class CorpusControllerTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(409);
         assertThat(response.getBody()).containsKey("error");
+    }
+
+    @Test
+    void queryingAfterFailedIngestionReturnsConflictWithFailureGuidance() {
+        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Corpus corpus = new Corpus("failed-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        isolatedCorpusStore.put(corpus);
+        isolatedCorpusStore.markFailed(corpus.id());
+        CorpusController controller = new CorpusController(
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody()).containsKey("error");
+    }
+
+    @Test
+    void localSearchReadsOnlyGraphDataFromTheSelectedCorpus() {
+        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Corpus corpusA = new Corpus("corpus-a", List.of(new com.graphraglens.core.domain.UploadedDocument("a.txt", "A")));
+        Corpus corpusB = new Corpus("corpus-b", List.of(new com.graphraglens.core.domain.UploadedDocument("b.txt", "B")));
+        isolatedCorpusStore.put(corpusA);
+        isolatedCorpusStore.put(corpusB);
+        isolatedCorpusStore.markReady(corpusA.id());
+        isolatedCorpusStore.markReady(corpusB.id());
+
+        com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter scopedGraphStore =
+                new com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter();
+        scopedGraphStore.persistEntities(corpusA.id(), List.of(new com.graphraglens.core.domain.Entity("Irene Adler", "Person")));
+        scopedGraphStore.persistEntities(corpusB.id(), List.of(new com.graphraglens.core.domain.Entity("Professor Moriarty", "Person")));
+
+        CorpusController controller = new CorpusController(
+                null, isolatedCorpusStore, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore());
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                corpusA.id(), Map.of("question", "Who is Moriarty?", "mode", "LOCAL"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).containsKey("answer");
+        assertThat(String.valueOf(response.getBody().get("answer"))).doesNotContain("Moriarty");
     }
 
     @Test

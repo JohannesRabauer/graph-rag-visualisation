@@ -45,6 +45,9 @@ class DetectCommunitiesTest {
         assertFalse(graphStore.persistedMemberships.isEmpty());
         assertFalse(graphStore.persistedMemberships.stream()
                 .allMatch(member -> member.communityId() == null || member.communityId().isBlank()));
+        assertEquals("corpus-1", graphStore.lastReadCorpusId);
+        assertEquals("corpus-1", graphStore.lastPersistedCommunitiesCorpusId);
+        assertEquals("corpus-1", graphStore.lastPersistedMembershipsCorpusId);
     }
 
     @Test
@@ -90,6 +93,9 @@ class DetectCommunitiesTest {
         private final List<Relationship> storedRelationships;
         private final List<Community> persistedCommunities = new ArrayList<>();
         private final List<CommunityMembership> persistedMemberships = new ArrayList<>();
+        private String lastReadCorpusId;
+        private String lastPersistedCommunitiesCorpusId;
+        private String lastPersistedMembershipsCorpusId;
 
         private RecordingGraphStore(List<Entity> storedEntities, List<Relationship> storedRelationships) {
             this.storedEntities = storedEntities;
@@ -103,6 +109,7 @@ class DetectCommunitiesTest {
 
         @Override
         public List<Entity> entities(String corpusId) {
+            lastReadCorpusId = corpusId;
             return storedEntities;
         }
 
@@ -113,6 +120,7 @@ class DetectCommunitiesTest {
 
         @Override
         public List<Relationship> relationships(String corpusId) {
+            lastReadCorpusId = corpusId;
             return storedRelationships;
         }
 
@@ -133,6 +141,7 @@ class DetectCommunitiesTest {
 
         @Override
         public void persistCommunities(String corpusId, java.util.Collection<Community> communities) {
+            lastPersistedCommunitiesCorpusId = corpusId;
             persistedCommunities.addAll(communities);
         }
 
@@ -143,6 +152,7 @@ class DetectCommunitiesTest {
 
         @Override
         public void persistCommunityMemberships(String corpusId, java.util.Collection<CommunityMembership> memberships) {
+            lastPersistedMembershipsCorpusId = corpusId;
             persistedMemberships.addAll(memberships);
         }
     }

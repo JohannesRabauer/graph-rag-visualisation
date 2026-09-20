@@ -492,21 +492,22 @@
     });
 
     activeProgressSource.addEventListener('error', function (event) {
-      setIngestionBusy(false);
-      activeCorpusReady = false;
-      renderWorkflowStatus('FAILED');
       try {
         var payload = JSON.parse(event.data);
         if (payload && payload.data && payload.data.error) {
+          setIngestionBusy(false);
+          activeCorpusReady = false;
           showErrorBanner(payload.data.error);
           renderWorkflowStatus('FAILED', payload.data.error);
         }
       } catch (e) {
-        console.warn('Invalid SSE error payload', e);
+        // Transport-level EventSource errors also use the "error" event name
+        // but do not carry our structured SSE payload.
       }
     });
 
     activeProgressSource.onerror = function () {
+      showErrorBanner('The progress stream disconnected. You can reconnect it or start over with a new corpus.');
       activeProgressSource.close();
       activeProgressSource = null;
     };

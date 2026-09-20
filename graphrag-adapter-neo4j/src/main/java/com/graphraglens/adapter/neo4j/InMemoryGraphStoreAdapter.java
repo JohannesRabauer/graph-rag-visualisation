@@ -185,7 +185,7 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return entities();
         }
-        return new ArrayList<>(scopedMap(entitiesByCorpusId, corpusId).values());
+        return new ArrayList<>(readScopedMap(entitiesByCorpusId, corpusId).values());
     }
 
     @Override
@@ -193,7 +193,7 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return relationships();
         }
-        return new ArrayList<>(scopedMap(relationshipsByCorpusId, corpusId).values());
+        return new ArrayList<>(readScopedMap(relationshipsByCorpusId, corpusId).values());
     }
 
     @Override
@@ -201,7 +201,7 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return communities();
         }
-        return new ArrayList<>(scopedMap(communitiesByCorpusId, corpusId).values());
+        return new ArrayList<>(readScopedMap(communitiesByCorpusId, corpusId).values());
     }
 
     @Override
@@ -209,10 +209,15 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return communityMemberships();
         }
-        return new ArrayList<>(scopedMap(communityMembershipsByCorpusId, corpusId).values());
+        return new ArrayList<>(readScopedMap(communityMembershipsByCorpusId, corpusId).values());
     }
 
     private static <T> Map<String, T> scopedMap(Map<String, Map<String, T>> index, String corpusId) {
         return index.computeIfAbsent(corpusId, ignored -> Collections.synchronizedMap(new LinkedHashMap<>()));
+    }
+
+    private static <T> Map<String, T> readScopedMap(Map<String, Map<String, T>> index, String corpusId) {
+        Map<String, T> scoped = index.get(corpusId);
+        return scoped == null ? Collections.emptyMap() : scoped;
     }
 }

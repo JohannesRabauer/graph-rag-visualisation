@@ -2,7 +2,7 @@
 title: 'Demo-ready end-to-end showcase workflow'
 type: 'feature'
 created: '2026-09-20'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -102,6 +102,20 @@ baseline_commit: '39bd7917812bc2a0d4e994f6458c3c2a171dd2fd'
 ## Spec Change Log
 
 ## Review Triage Log
+
+- blind-hunter — `edge-case-hunter` returned `Input empty or undecodable` for `/tmp/spec-showcase-review.diff` — **verdict: false** — other layers successfully read the same diff file, so this is reviewer execution failure, not a product defect.
+- blind-hunter — `InMemoryGraphStoreAdapter` read methods mutated scoped maps via `computeIfAbsent` — **verdict: medium / patch** — fixed by switching scoped reads to non-mutating `readScopedMap(...)`.
+- blind-hunter — per-corpus maps are not fully synchronized under concurrent ingestion/query — **verdict: maybe-false / defer** — shared maps were pre-existing and no concrete failing path was demonstrated; would need concurrent stress test evidence.
+- blind-hunter — SSE `"error"` event conflated payload errors with transport errors in `upload.js` — **verdict: medium / patch** — fixed by only transitioning to FAILED when structured payload error exists.
+- blind-hunter — “Retry progress stream” does not restart failed graph construction — **verdict: low / false** — UI offers explicit restart path and this story’s accepted behavior is recovery guidance, not in-place pipeline replay.
+- blind-hunter — no scoped communities/memberships adapter tests — **verdict: medium / patch** — added `readsScopedCommunitiesAndMembershipsByCorpusId` in `InMemoryGraphStoreAdapterTest`.
+- blind-hunter — `ExtractEntitiesAndRelationshipsTest` did not assert corpus id persisted — **verdict: medium / patch** — added `persistedCorpusId` assertion.
+- blind-hunter — `DetectCommunitiesTest` did not verify corpus-scoped reads/writes — **verdict: medium / patch** — recording store now captures read/persist corpus ids and assertions added.
+- blind-hunter — `CorpusStore.status()` default BUILDING can block unknown corpus ids — **verdict: low / false** — unknown ids are guarded earlier by `corpusStore.get(...).orElseThrow(...)`, so this path does not create user-visible indefinite blocks.
+- blind-hunter — async failure path emits generic message without exception details — **verdict: low / defer** — behavior is intentional user-safe messaging and logging strategy is outside this story’s approved scope.
+- verification-gap — FAILED branch at query boundary unverified — **verdict: medium / patch** — added `queryingAfterFailedIngestionReturnsConflictWithFailureGuidance`.
+- verification-gap — LOCAL corpus scoping unverified in multi-corpus scenario — **verdict: medium / patch** — added `localSearchReadsOnlyGraphDataFromTheSelectedCorpus`.
+- verification-gap — relationship-step trace behavior weakly asserted — **verdict: medium / patch** — strengthened trace test to require `RELATIONSHIP` kind.
 
 ## Design Notes
 

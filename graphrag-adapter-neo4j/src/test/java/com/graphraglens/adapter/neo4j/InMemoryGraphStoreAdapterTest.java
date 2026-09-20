@@ -2,6 +2,8 @@ package com.graphraglens.adapter.neo4j;
 
 import com.graphraglens.core.domain.Entity;
 import com.graphraglens.core.domain.Relationship;
+import com.graphraglens.core.domain.Community;
+import com.graphraglens.core.domain.CommunityMembership;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,5 +34,20 @@ class InMemoryGraphStoreAdapterTest {
         assertEquals(1, adapter.entities("corpus-b").size());
         assertEquals(1, adapter.relationships("corpus-a").size());
         assertEquals(0, adapter.relationships("corpus-b").size());
+    }
+
+    @Test
+    void readsScopedCommunitiesAndMembershipsByCorpusId() {
+        InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
+
+        adapter.persistCommunities("corpus-a", java.util.List.of(new Community("community-a", "A summary")));
+        adapter.persistCommunities("corpus-b", java.util.List.of(new Community("community-b", "B summary")));
+        adapter.persistCommunityMemberships("corpus-a",
+                java.util.List.of(new CommunityMembership("community-a", "sherlock holmes::person")));
+
+        assertEquals(1, adapter.communities("corpus-a").size());
+        assertEquals(1, adapter.communities("corpus-b").size());
+        assertEquals(1, adapter.communityMemberships("corpus-a").size());
+        assertEquals(0, adapter.communityMemberships("corpus-b").size());
     }
 }
