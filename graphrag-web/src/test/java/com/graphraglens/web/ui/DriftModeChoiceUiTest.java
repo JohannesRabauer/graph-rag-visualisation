@@ -40,5 +40,10 @@ class DriftModeChoiceUiTest extends UiTestSupport {
         Locator latestAnswer = page.locator(".message.answer").last();
         assertThat(latestAnswer.locator(".answer-tag")).hasText("Drift Search · Answer");
         assertThat(latestAnswer).containsText("DRIFT Search isn't implemented yet.");
+        assertThat(latestAnswer).hasAttribute("data-mode", "DRIFT");
+
+        String tagColor = String.valueOf(latestAnswer.locator(".answer-tag").evaluate(
+                "tag => getComputedStyle(tag).color"));
+        org.assertj.core.api.Assertions.assertThat(tagColor).isEqualTo("rgb(192, 34, 95)");
     }
 }

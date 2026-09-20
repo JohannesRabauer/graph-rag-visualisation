@@ -190,7 +190,7 @@ public class CorpusController {
 
     /**
      * Generates a fresh {@code traceId} and stores a {@link RetrievalTrace} for
-     * the given steps under it — shared by both the LOCAL and GLOBAL query
+     * the given steps under it — shared by the LOCAL, GLOBAL, and DRIFT query
      * paths so a trace is always captured (even zero-step) before the query
      * response is built (Story 5.1 AC2).
      */

@@ -672,7 +672,7 @@
     }
     if (state === 'READY') {
       workflowStatus.hidden = false;
-      workflowStatusText.textContent = 'Knowledge Graph — Ready. Ask a LOCAL or GLOBAL question now.';
+      workflowStatusText.textContent = 'Knowledge Graph — Ready. Ask a LOCAL, GLOBAL, or DRIFT question now.';
       if (workflowRecoveryActions) {
         workflowRecoveryActions.hidden = true;
       }

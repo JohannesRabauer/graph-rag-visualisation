@@ -9,7 +9,28 @@ review_loop_iteration: 0 # incremented by step-04 before each review loopback
 followup_review_recommended: false # set by step-04 on status: done — true if the LLM decided another review pass is worthwhile
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      DriftModeChoiceUiTest only exercises DRIFT mode selection via mouse click, not keyboard
+      activation, despite the epic's accessibility-floor expectation.
+    evidence: |-
+      Pre-existing gap: the Local and Global mode-choice options have no keyboard-activation test
+      either, so this is not something this story introduced or regressed — it mirrors the
+      existing test pattern (page.locator(...).click()) used across all mode-choice tests.
+    location: >-
+      graphrag-web/src/test/java/com/graphraglens/web/ui/DriftModeChoiceUiTest.java
+    severity: low
+  - summary: >-
+      No UI test asserts the Replay CTA renders and opens correctly for a zero-step trace, which
+      the DRIFT placeholder response always produces.
+    evidence: |-
+      Real but pre-existing gap: upload.js's own comment documents zero-step Replay CTA rendering
+      as deliberate, established behavior ("— 0 steps is itself a meaningful, plain-language
+      answer"), and no mode (LOCAL/GLOBAL/DRIFT) currently has a UI test covering the zero-step
+      Replay CTA path — not introduced or regressed by this story.
+    location: >-
+      graphrag-web/src/main/resources/static/js/upload.js:536-541
+    severity: low
 ---
 
 <intent-contract>
@@ -82,9 +103,53 @@ deferred: []
 - 2026-09-20 — `false` — `DriftModeChoiceUiTest.java:9-43`: UI coverage does include both the DRIFT hint/color state and the chat-tag behavior after a DRIFT query, so the claimed verification gap is not present.
 - 2026-09-20 — `false` — `CorpusController.java:149-155`: the reason text matches this story's explicit requirement ("DRIFT Search isn't implemented yet."); the broader epic's future "no viable sub-questions" wording belongs to Story 7.2's real DRIFT execution path, not this placeholder contract extension.
 
+### 2026-09-20 — Review pass
+
+- verdicts: 10 findings — high 0, medium 1, low 3, false 3, maybe-false 0 (3 further findings routed `defer`, counted at their real-outcome verdict: 0 medium/high, 2 low-but-real routed `defer` as pre-existing, 1 `low` routed `defer`)
+- findings:
+  - `[medium]` `[patch]` (blind-hunter + verification-gap, grouped) `upload.js:675` ready-state banner still reads "Ask a LOCAL or GLOBAL question now." after DRIFT became selectable — undercuts this story's own intent that DRIFT be demonstrable exactly like the other two modes. Fixed: text now reads "Ask a LOCAL, GLOBAL, or DRIFT question now."
+  - `[false]` `[reject]` (blind-hunter) DRIFT's `noAnswer` response omits `mode`, claimed as API asymmetry — refuted: `CorpusControllerGlobalSearchTest.java:51` shows the existing GLOBAL `noAnswer` shape already omits `mode` by established convention (`globalSearchResponse`'s `noAnswer` branch never included it either); DRIFT's placeholder simply follows the same precedent.
+  - `[false]` `[reject]` (blind-hunter) Replay CTA rendering for the zero-step DRIFT placeholder claimed confusing ("Nothing was touched") — refuted: `upload.js:536-541`'s own comment documents this as deliberate, pre-existing behavior predating this story ("— 0 steps is itself a meaningful, plain-language answer"), unchanged by this diff.
+  - `[low]` `[defer]` (blind-hunter) `DriftModeChoiceUiTest` only exercises mouse clicks, not keyboard activation, despite the epic's accessibility-floor note — pre-existing gap shared by the Local/Global mode-choice tests too; not introduced or regressed by this change.
+  - `[low]` `[patch]` (blind-hunter) `MainControllerTest.java` asserts `"Local Search"`/`"Global Search"` render in the template but was not extended to assert `"Drift Search"` — a real caller-path gap (a deleted DRIFT `<label>` would not fail this specific test). Fixed: added `assertThat(body).contains("Drift Search");`.
+  - `[false]` `[reject]` (blind-hunter) `--drift-soft` token claimed as dead design surface — refuted: `instrument.css`'s own header comment states every color token is "copied verbatim from that frontmatter's colors ... table, not re-derived," i.e. the file's established convention is to mirror DESIGN.md's full token table regardless of current consumption; `--drift-soft` is DESIGN.md-defined and slated for Story 7.4's `components.drift-tree` convergence node.
+  - `[low]` `[patch]` (blind-hunter) `captureTrace`'s Javadoc still said "shared by both the LOCAL and GLOBAL query paths," stale now that DRIFT also calls it. Fixed: reworded to "shared by the LOCAL, GLOBAL, and DRIFT query paths."
+  - `[medium]` `[patch]` (verification-gap, grouped with the ready-banner finding above) same ready-state guidance gap, filed independently by this layer with its own evidence (`UiTestSupport.java:110` only waits for the substring `Ready`); same fix applies.
+  - `[low]` `[patch]` (verification-gap) no test asserted the DRIFT answer message keeps `data-mode="DRIFT"` or the answer-tag's computed drift color — a real, narrowly-scoped gap (removing `message.dataset.mode = activeMode` would not fail any existing test). Fixed: extended `DriftModeChoiceUiTest` to assert `data-mode="DRIFT"` and the tag's computed color `rgb(192, 34, 95)`.
+  - `[low]` `[defer]` (verification-gap) no UI test asserts the zero-step Replay CTA renders/opens correctly for the DRIFT placeholder — real gap, but the underlying zero-step-replay behavior is pre-existing and untested for LOCAL/GLOBAL as well (no mode has a zero-step replay UI test); not introduced by this story.
+
+Patches applied (4): ready-state banner copy, `MainControllerTest` "Drift Search" assertion, `captureTrace` Javadoc wording, and `DriftModeChoiceUiTest`'s `data-mode`/color assertion. All re-verified passing (see Verification below).
+
 ## Verification
 
 **Commands:**
 - `mvn -pl graphrag-web -am test -Dtest=CorpusControllerTest,CorpusControllerGlobalSearchTest` -- expected: all pass, including the new DRIFT and unrecognized-mode assertions.
 - `mvn -pl graphrag-web -am test -Dtest=DriftModeChoiceUiTest` (or the project's existing Playwright UI test invocation) -- expected: pass, confirming the DRIFT option renders and recolors correctly.
 - `mvn -pl graphrag-web -am test '-Dtest=CorpusControllerTest,CorpusControllerGlobalSearchTest,DriftModeChoiceUiTest' '-Dsurefire.failIfNoSpecifiedTests=false'` -- passed (30 tests).
+- Post-review-patch re-run: `mvn -pl graphrag-web -am test '-Dtest=MainControllerTest,DriftModeChoiceUiTest,CorpusControllerTest,CorpusControllerGlobalSearchTest' '-Dsurefire.failIfNoSpecifiedTests=false'` -- passed (36 tests, BUILD SUCCESS).
+
+## Auto Run Result
+
+**Summary:** Added DRIFT as a third selectable mode on the mode-choice radiogroup (dot fill + label recolor to `#C0225F`, DRIFT-specific hint text) and extended `POST /api/corpora/{corpusId}/query`'s `mode` validation to accept `DRIFT`. Since `AnswerDriftSearch` (Story 7.2) does not exist yet, a `DRIFT` query returns an honest `200 {"noAnswer": true, "reason": "DRIFT Search isn't implemented yet."}` placeholder rather than silently answering via Local Search under the wrong label — matching the existing `noAnswer` contract shape already used by Global Search.
+
+**Files changed:**
+- `graphrag-web/src/main/resources/templates/index.html` -- added the third `DRIFT` radio option to `.mode-choice`.
+- `graphrag-web/src/main/resources/static/css/instrument.css` -- added `--drift`/`--drift-soft` tokens and the DRIFT `.mode-choice-option`/`.answer-tag` color rules.
+- `graphrag-web/src/main/resources/static/js/upload.js` -- added the DRIFT hint branch, a `answerTagLabel(mode)` helper (also fixing the pre-existing GLOBAL/LOCAL-only ternary so DRIFT answers label correctly), and updated the ready-state banner copy to mention DRIFT.
+- `graphrag-web/src/main/java/com/graphraglens/web/CorpusController.java` -- extended mode validation to accept `DRIFT`, added the placeholder `DRIFT` response branch, and updated `captureTrace`'s Javadoc.
+- `graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerTest.java` -- added tests for the DRIFT `noAnswer` response, the DRIFT + `BUILDING` conflict response, and the updated three-mode validation error message.
+- `graphrag-web/src/test/java/com/graphraglens/web/MainControllerTest.java` -- added a `"Drift Search"` template-rendering assertion alongside the existing `"Local Search"`/`"Global Search"` ones.
+- `graphrag-web/src/test/java/com/graphraglens/web/ui/DriftModeChoiceUiTest.java` -- new Playwright test asserting DRIFT selection recolors the choice and updates the hint, and that a DRIFT query renders a correctly labeled, correctly colored placeholder answer.
+- `_bmad-output/implementation-artifacts/epic-7-context.md` -- compiled epic context (new).
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` -- `epic-7` moved to `in-progress`, `7-1-...` moved to `review`.
+
+**Review findings breakdown:**
+- Patched (4, all `low`/`medium`, none `high`): stale ready-state banner copy (`medium`, filed independently by both the blind-hunter and verification-gap layers as one grouped entry); `MainControllerTest` missing a `"Drift Search"` assertion (`low`); stale `captureTrace` Javadoc (`low`); missing `data-mode`/computed-color assertion on the DRIFT answer tag (`low`).
+- Deferred (2, both `low`, pre-existing and not caused by this story): no keyboard-activation test for mode-choice selection (shared gap across all three modes); no zero-step Replay CTA UI test (shared gap across all modes, and the underlying zero-step-render behavior is itself pre-existing/deliberate).
+- Rejected (3, all `false`, refuted with cited evidence): DRIFT's `noAnswer` response omitting `mode` (matches existing GLOBAL `noAnswer` precedent); the zero-step Replay CTA being "confusing" (documented deliberate pre-existing behavior); `--drift-soft` being dead code (file's own header comment establishes the convention of mirroring DESIGN.md's full token table upfront).
+
+**Follow-up review recommendation:** `false`. Only one `medium`-verdict entry was patched (the ready-state banner text, filed by two layers but one root cause/one entry) and no `high` entries were patched, so the "two or more medium" and "any high" triggers do not apply.
+
+**Verification performed:** `mvn -pl graphrag-web -am test` targeted at `CorpusControllerTest`, `CorpusControllerGlobalSearchTest`, and `DriftModeChoiceUiTest` after implementation (30 tests, BUILD SUCCESS), then re-run including `MainControllerTest` after the review patches (36 tests, BUILD SUCCESS). All four I/O & Edge-Case Matrix rows are covered by passing tests: DRIFT selection/hint/color (`DriftModeChoiceUiTest`), DRIFT query `noAnswer` shape (`CorpusControllerTest.driftSearchReturnsTheNoAnswerShapeUntilTheImplementationExists`), unrecognized mode's 400 message (`CorpusControllerTest.unrecognizedModesListDriftInTheValidationError`), and DRIFT + `BUILDING` conflict (`CorpusControllerTest.driftQueryWhileGraphIsStillBuildingReturnsTheExistingConflictResponse`).
+
+**Residual risks:** None blocking. The two deferred items (keyboard-activation coverage, zero-step Replay CTA coverage) are pre-existing gaps shared by all three modes, not introduced by this change — appropriate for a future, separately-scoped test-hardening pass rather than this story.
