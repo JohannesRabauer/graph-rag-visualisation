@@ -165,46 +165,10 @@ body {
   flex-shrink: 0;
 }
 
-/* ---- app bar nav ----
-   The persistent link to the Explore page (Story 6.1), and — on the
-   Explore page itself — the link back to the main screen. Grouped with
-   the corpus-chip slot on the right side of the app bar. */
 .app-bar-right {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-}
-
-.app-bar-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.app-bar-link {
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-full);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-600);
-  text-decoration: none;
-}
-
-.app-bar-link:hover {
-  color: var(--ink-900);
-  background: var(--chrome);
-}
-
-.app-bar-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.app-bar-link.active {
-  color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .brand-mark::before {
@@ -1034,13 +998,17 @@ body {
 }
 
 /* ---- node detail panel ----
-   DESIGN.md `components.node-detail-panel`: Explore page only, slides in
-   from the right on Entity node click (Story 6.2). Stays permanently in
-   the DOM — never inserted/removed — and is toggled only via the
-   `.is-open` class flipping `transform`, so `explore.js` never has to do a
-   destructive full-subtree textContent/innerHTML swap (the exact mistake
-   Story 6.1's own review caught). `.app-frame`'s `overflow: hidden`
-   (above) clips the panel while it sits off-canvas at `translateX(100%)`. */
+   DESIGN.md `components.node-detail-panel`: slides in from the right on
+   Entity node click. Originally the separate Explore page's own
+   component (Story 6.2); merged onto the main screen's canvas (2026-09-20
+   UX pass) once that page was folded in, so it now coexists with the
+   Retrieval Trace Replay scrubber and community toggle on the same
+   canvas — see the coexistence rules below. Stays permanently in the
+   DOM — never inserted/removed — and is toggled only via the `.is-open`
+   class flipping `transform`, never a destructive full-subtree
+   textContent/innerHTML swap (Story 6.1's own review caught that
+   mistake). `.app-frame`'s `overflow: hidden` (above) clips the panel
+   while it sits off-canvas at `translateX(100%)`. */
 .node-detail-panel {
   position: absolute;
   top: 0;
@@ -1063,6 +1031,25 @@ body {
 .node-detail-panel.is-open {
   transform: translateX(0);
   visibility: visible;
+}
+
+/* Coexistence with the other canvas-overlay controls (2026-09-20 UX pass,
+   merging the former Explore page's detail panel onto this canvas): the
+   panel is a full-height 300px right rail, which would otherwise sit on
+   top of the replay scrubber's right edge and the community toggle's
+   top-right corner. Both retreat to make room only while the panel is
+   actually open — a deliberate choice (per the project owner) that
+   Replay and the detail panel coexist rather than one closing the other. */
+.graph-stage:has(.node-detail-panel.is-open) .replay-scrubber {
+  right: 300px;
+}
+
+.graph-stage:has(.node-detail-panel.is-open) .community-toggle-wrap {
+  right: calc(300px + var(--space-5));
+}
+
+.graph-stage:has(.node-detail-panel.is-open) .graph-legend {
+  max-width: calc(100% - 300px - var(--space-8));
 }
 
 .node-detail-close {

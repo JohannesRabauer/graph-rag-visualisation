@@ -20,8 +20,8 @@ public record Entity(String name, String type) {
      * Shorthand for {@code new Entity(name, type).normalizedIdentity()} —
      * used wherever only a Relationship's source/target name+type (not a
      * full Entity) is on hand and an identity string is needed to match it
-     * against a rendered node (e.g. {@code CorpusController} and
-     * {@code ExploreController}'s relationship payloads).
+     * against a rendered node (e.g. {@code CorpusController}'s
+     * relationship payloads).
      */
     public static String identityOf(String name, String type) {
         return new Entity(name, type).normalizedIdentity();

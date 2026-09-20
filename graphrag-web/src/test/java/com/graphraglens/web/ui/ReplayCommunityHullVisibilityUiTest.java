@@ -68,17 +68,15 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         }
         assertThat(caption).containsText("Sherlock Holmes");
 
-        // Ask the page itself which Community is the singleton (rather than
-        // hard-coding a community id) and read its hull's actual resolved
-        // opacity through the GraphCanvas test hook, which talks to the
-        // real Cytoscape instance the page is running.
+        // Read the singleton's own community id directly off the rendered
+        // graph (Cytoscape's compound-node structure) and check its hull's
+        // actual resolved opacity — no backend call involved.
         Number singletonOpacity = (Number) page.evaluate(
-                "() => fetch('/api/graph').then(r => r.json()).then(body => {"
-                        + "  const singleton = (body.communities || []).find(c => "
-                        + "    (c.memberEntityIdentities || []).length === 1 && "
-                        + "    (c.memberEntityIdentities || [])[0] === '" + SHERLOCK_HOLMES_IDENTITY + "');"
-                        + "  return singleton ? window.GraphCanvas.communityHullOpacity(singleton.communityId) : null;"
-                        + "})");
+                "identity => {"
+                        + "  const communityId = window.GraphCanvas.communityIdForEntity(identity);"
+                        + "  return communityId ? window.GraphCanvas.communityHullOpacity(communityId) : null;"
+                        + "}",
+                SHERLOCK_HOLMES_IDENTITY);
 
         org.assertj.core.api.Assertions.assertThat(singletonOpacity).isNotNull();
         org.assertj.core.api.Assertions.assertThat(singletonOpacity.doubleValue()).isGreaterThan(0.0);
@@ -86,16 +84,15 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         // Sanity check the fix is actually scoped: a hull that is neither the
         // current nor the previous Replay step stays hidden — the toggle's
         // "with vs. without" comparison must still work for everything else
-        // while Replay is open. ("previous" is also force-shown by design —
-        // that community contains "King", the current step's neighbor in the
-        // demo corpus's deterministic extraction — so this excludes both.)
+        // while Replay is open. "Professor Moriarty" sits in a third,
+        // unrelated Community in the demo corpus's deterministic extraction
+        // (neither Sherlock Holmes's own singleton nor "King", the current
+        // step's previous-step neighbor, which is also force-shown by design).
         Number untouchedHullOpacity = (Number) page.evaluate(
-                "() => fetch('/api/graph').then(r => r.json()).then(body => {"
-                        + "  const untouched = (body.communities || []).find(c => "
-                        + "    !(c.memberEntityIdentities || []).includes('" + SHERLOCK_HOLMES_IDENTITY + "') && "
-                        + "    !(c.memberEntityIdentities || []).includes('king::concept'));"
-                        + "  return untouched ? window.GraphCanvas.communityHullOpacity(untouched.communityId) : null;"
-                        + "})");
+                "() => {"
+                        + "  const communityId = window.GraphCanvas.communityIdForEntity('professor moriarty::concept');"
+                        + "  return communityId ? window.GraphCanvas.communityHullOpacity(communityId) : null;"
+                        + "}");
 
         org.assertj.core.api.Assertions.assertThat(untouchedHullOpacity).isNotNull();
         org.assertj.core.api.Assertions.assertThat(untouchedHullOpacity.doubleValue()).isEqualTo(0.0);

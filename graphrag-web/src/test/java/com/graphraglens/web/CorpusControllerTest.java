@@ -485,35 +485,6 @@ class CorpusControllerTest {
     }
 
     @Test
-    void exploreGraphEndpointServesEntitiesRelationshipsAndCommunitiesOverRealHttp() throws Exception {
-        // ExploreControllerTest covers the endpoint's JSON shape directly
-        // against an isolated GraphStorePort; this test instead proves
-        // GET /api/graph actually serializes correctly over the real HTTP
-        // dispatcher/Jackson pipeline (the I/O matrix's "called directly"
-        // scenario), accepting the shared, unreset GraphStorePort's usual
-        // caveat that other tests' data may already be present.
-        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        String corpusId = JsonPath.read(responseBody, "$.corpusId");
-
-        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
-                .emit(eq(corpusId), eq("ingestion-complete"), any());
-
-        mockMvc.perform(get("/api/graph"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith("application/json"))
-                .andExpect(jsonPath("$.entities").isArray())
-                .andExpect(jsonPath("$.entities[0].identity").exists())
-                .andExpect(jsonPath("$.entities[0].name").exists())
-                .andExpect(jsonPath("$.entities[0].type").exists())
-                .andExpect(jsonPath("$.relationships").isArray())
-                .andExpect(jsonPath("$.communities").isArray());
-    }
-
-    @Test
     void globalSearchStillReturnsAnOrdinaryAnswerWhenNoCommunityClearlyMatchesTheQuestion() throws Exception {
         String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
                 .andExpect(status().isCreated())

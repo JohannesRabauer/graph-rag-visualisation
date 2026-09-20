@@ -81,37 +81,37 @@ class MainControllerTest {
     }
 
     @Test
-    void mainScreenLinksToTheExplorePage() throws Exception {
+    void mainScreenHasNoSeparateExplorePageLeftToLinkTo() throws Exception {
         String body = mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        assertThat(body).contains("href=\"/explore\"");
+        // The former separate Explore page (Story 6.1) was merged onto this
+        // screen's own canvas (2026-09-20 UX pass) — no second page exists
+        // to link to any more.
+        assertThat(body).doesNotContain("href=\"/explore\"");
     }
 
     @Test
-    void rendersTheExplorePage() throws Exception {
-        String body = mockMvc.perform(get("/explore"))
+    void mainScreenRendersTheEntityDetailPanelMergedFromTheFormerExplorePage() throws Exception {
+        String body = mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        assertThat(body).contains("instrument.css");
-        assertThat(body).contains("id=\"graph-canvas\"");
-        assertThat(body).contains("id=\"graph-legend\"");
-        assertThat(body).contains("id=\"explore-loading\"");
-        assertThat(body).contains("id=\"explore-empty-state\"");
-        assertThat(body).contains("id=\"explore-empty-message\"");
         assertThat(body).contains("id=\"entity-detail-panel\"");
-        assertThat(body).contains("href=\"/\"");
-        assertThat(body).contains("cytoscape@3.28.1");
-        assertThat(body).contains("graph-canvas.js");
-        assertThat(body).contains("explore.js");
-        assertThat(body).doesNotContain("id=\"chat-panel\"");
-        assertThat(body).doesNotContain("id=\"community-toggle-wrap\"");
-        assertThat(body).doesNotContain("id=\"replay-scrubber\"");
+        assertThat(body).contains("id=\"entity-detail-close\"");
+        assertThat(body).contains("id=\"entity-detail-name\"");
+        assertThat(body).contains("id=\"entity-detail-type\"");
+        assertThat(body).contains("id=\"entity-detail-relationships\"");
+        assertThat(body).contains("id=\"entity-detail-tags\"");
+    }
+
+    @Test
+    void getExploreNoLongerHasARoute() throws Exception {
+        mockMvc.perform(get("/explore")).andExpect(status().isNotFound());
     }
 }

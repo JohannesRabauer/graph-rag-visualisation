@@ -25,15 +25,15 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
  * pom.xml comment and ARCHITECTURE-SPINE.md): starts the actual Spring Boot
  * app on a random port and drives it with a real, already-installed headless
  * Chromium via Playwright, so the vanilla JS this module ships (Replay
- * scrubber, Explore node-tap/detail-panel, community-hull toggling) gets
- * genuine browser-behavior coverage that {@code mvn test} previously had no
- * way to catch (see deferred-work.md's Story 5.2/6.1/6.2 entries).
+ * scrubber, node-tap/detail-panel, community-hull toggling) gets genuine
+ * browser-behavior coverage that {@code mvn test} previously had no way to
+ * catch (see deferred-work.md's Story 5.2/6.1/6.2 entries).
  *
  * <p>Always uses the LOCAL, deterministic, offline LLM stub — no
  * {@code OPENAI_API_KEY} is read or required (ParserConfig's own fallback) —
  * so these tests stay fast, free, and reproducible.
  *
- * <p>The app itself loads Cytoscape.js from a CDN (index.html/explore.html),
+ * <p>The app itself loads Cytoscape.js from a CDN (index.html),
  * which this sandbox's egress policy blocks outright — not a proxy
  * configuration issue, a hard 403 organization-policy denial. Rather than
  * depend on live network access at all (flaky, environment-specific), every
