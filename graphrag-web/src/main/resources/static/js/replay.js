@@ -111,6 +111,9 @@
         loadError = false;
         steps = (result.body && result.body.steps) || [];
         currentIndex = 0;
+        if (window.DriftTree) {
+          window.DriftTree.build(steps);
+        }
         open();
         buildTicks();
         renderStep();
@@ -127,6 +130,9 @@
     loadError = true;
     steps = [];
     currentIndex = 0;
+    if (window.DriftTree) {
+      window.DriftTree.clear();
+    }
     open();
     buildTicks();
     updateCounterAndCaption();
@@ -151,6 +157,9 @@
     scrubber.hidden = true;
     if (graphEyebrow) {
       graphEyebrow.textContent = RESTING_EYEBROW_TEXT;
+    }
+    if (window.DriftTree) {
+      window.DriftTree.clear();
     }
     if (window.GraphCanvas) {
       window.GraphCanvas.clearStepHighlights();
@@ -272,6 +281,13 @@
         window.GraphCanvas.highlightStep(steps, currentIndex);
       }
     }
+    if (window.DriftTree) {
+      if (steps.length === 0) {
+        window.DriftTree.clear();
+      } else {
+        window.DriftTree.highlightStep(steps, currentIndex);
+      }
+    }
   }
 
   function updateCounterAndCaption() {
@@ -291,6 +307,8 @@
   function captionFor(step, index, total) {
     var verb = step.kind === 'COMMUNITY' ? 'examined community'
         : step.kind === 'RELATIONSHIP' ? 'traversed relationship'
+        : step.kind === 'SUB_QUESTION_SPAWNED' ? 'spawned sub-question'
+        : step.kind === 'SYNTHESIS' ? 'synthesized answer'
         : 'matched entity';
     return 'Step ' + (index + 1) + ' / ' + total + ' — ' + verb + ' ' + step.label;
   }

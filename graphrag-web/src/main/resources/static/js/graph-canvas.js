@@ -657,6 +657,9 @@
     if (!step || !step.identifier) {
       return null;
     }
+    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS') {
+      return null;
+    }
     return step.kind === 'COMMUNITY' ? 'community::' + step.identifier : step.identifier;
   }
 
@@ -724,8 +727,10 @@
     // RELATIONSHIP step: that step is already an edge, not a node either
     // side of one, so there's nothing for findEdgesBetween to bridge.
     for (var i = currentIndex; i < steps.length - 1; i += 1) {
-      if (steps[i].kind !== 'RELATIONSHIP' && steps[i + 1].kind !== 'RELATIONSHIP') {
-        findEdgesBetween(stepNodeId(steps[i]), stepNodeId(steps[i + 1])).forEach(function (edge) {
+      var fromStepId = stepNodeId(steps[i]);
+      var toStepId = stepNodeId(steps[i + 1]);
+      if (steps[i].kind !== 'RELATIONSHIP' && steps[i + 1].kind !== 'RELATIONSHIP' && fromStepId && toStepId) {
+        findEdgesBetween(fromStepId, toStepId).forEach(function (edge) {
           edge.addClass('edge-upcoming');
         });
       }
@@ -739,8 +744,11 @@
       highlightRetrievalStep(previous, 'step-previous');
     }
 
-    if (previous && current && previous.kind !== 'RELATIONSHIP' && current.kind !== 'RELATIONSHIP') {
-      findEdgesBetween(stepNodeId(previous), stepNodeId(current)).forEach(function (edge) {
+    var previousStepId = stepNodeId(previous);
+    var currentStepId = stepNodeId(current);
+    if (previous && current && previous.kind !== 'RELATIONSHIP' && current.kind !== 'RELATIONSHIP'
+        && previousStepId && currentStepId) {
+      findEdgesBetween(previousStepId, currentStepId).forEach(function (edge) {
         edge.removeClass('edge-upcoming');
         edge.addClass('edge-traversed');
       });
@@ -754,6 +762,9 @@
   // unit. Any other kind just highlights its own node, as before.
   function highlightRetrievalStep(step, nodeClass) {
     if (!cy || !step) {
+      return;
+    }
+    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS') {
       return;
     }
     if (step.kind === 'RELATIONSHIP') {

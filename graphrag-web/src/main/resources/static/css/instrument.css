@@ -518,6 +518,129 @@ body {
   text-overflow: ellipsis;
 }
 
+.drift-tree {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: min(720px, calc(100% - var(--space-10)));
+  padding: 0 var(--space-4);
+  pointer-events: none;
+}
+
+.drift-tree[hidden] {
+  display: none;
+}
+
+.drift-tree-node {
+  min-width: 120px;
+  max-width: 210px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-600);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.drift-tree-root {
+  border-color: var(--drift);
+  color: var(--ink-900);
+}
+
+.drift-tree-final {
+  background: var(--drift-soft);
+  border-color: var(--drift);
+  color: var(--drift);
+}
+
+.drift-tree-root.is-current,
+.drift-tree-final.is-current {
+  box-shadow: 0 0 0 2px var(--active-soft);
+}
+
+.drift-tree-branches {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) 0;
+}
+
+.drift-tree-branch-rail,
+.drift-tree-converge-rail {
+  position: absolute;
+  left: var(--space-5);
+  right: var(--space-5);
+  height: 1.5px;
+  background: var(--line-strong);
+}
+
+.drift-tree-branch-rail {
+  top: 0;
+}
+
+.drift-tree-converge-rail {
+  bottom: 0;
+}
+
+.drift-tree-branch {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.drift-tree-line {
+  width: 0;
+  min-height: 20px;
+  border-left: 1.5px solid var(--line-strong);
+}
+
+.drift-tree-line.is-upcoming {
+  border-left-style: dashed;
+}
+
+.drift-tree-branch-node.is-current {
+  border-color: var(--active);
+  background: var(--active-soft);
+  color: var(--ink-900);
+}
+
+.drift-tree-resolved {
+  min-height: 1em;
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-600);
+  visibility: hidden;
+}
+
+.drift-tree-branch.is-resolved .drift-tree-resolved {
+  visibility: visible;
+}
+
+.drift-tree-stem {
+  width: 0;
+  height: 18px;
+  border-left: 1.5px solid var(--line-strong);
+}
+
 .community-toggle-wrap {
   position: absolute;
   top: var(--space-3);
@@ -1062,6 +1185,10 @@ body {
   right: 300px;
 }
 
+.graph-stage:has(.node-detail-panel.is-open) .drift-tree {
+  width: min(720px, calc(100% - 300px - var(--space-10)));
+}
+
 .graph-stage:has(.node-detail-panel.is-open) .community-toggle-wrap {
   right: calc(300px + var(--space-5));
 }
@@ -1217,6 +1344,10 @@ body {
   .replay-meta {
     max-width: 30%;
   }
+
+  .drift-tree {
+    width: min(620px, calc(100% - var(--space-8)));
+  }
 }
 
 @media (max-width: 640px) {
@@ -1279,6 +1410,22 @@ body {
 
   .replay-meta {
     max-width: 100%;
+  }
+
+  .drift-tree {
+    bottom: 108px;
+    width: calc(100% - var(--space-6));
+    padding: 0;
+  }
+
+  .drift-tree-branches {
+    gap: var(--space-2);
+  }
+
+  .drift-tree-node {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
   }
 
   .node-detail-panel {

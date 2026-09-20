@@ -60,6 +60,7 @@
         </div>
 
         <div id="graph-canvas" hidden aria-hidden="true"></div>
+        <div class="drift-tree" id="drift-tree" hidden aria-hidden="true"></div>
 
         <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Resting</p>
         <div class="workflow-status" id="workflow-status" role="status" aria-live="polite" hidden>
@@ -115,6 +116,7 @@
   </div>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
   <script th:src="@{/js/graph-canvas.js}" src="/js/graph-canvas.js"></script>
+  <script th:src="@{/js/drift-tree.js}" src="/js/drift-tree.js"></script>
   <script th:src="@{/js/replay.js}" src="/js/replay.js"></script>
   <script th:src="@{/js/upload.js}" src="/js/upload.js"></script>
 </body>
