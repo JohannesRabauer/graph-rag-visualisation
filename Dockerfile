@@ -12,6 +12,9 @@ COPY graphrag-adapter-parsing/pom.xml graphrag-adapter-parsing/pom.xml
 COPY graphrag-web/pom.xml graphrag-web/pom.xml
 
 COPY graphrag-core/src graphrag-core/src
+COPY graphrag-adapter-neo4j/src graphrag-adapter-neo4j/src
+COPY graphrag-adapter-langchain4j/src graphrag-adapter-langchain4j/src
+COPY graphrag-adapter-parsing/src graphrag-adapter-parsing/src
 COPY graphrag-web/src graphrag-web/src
 
 RUN mvn -q -B package -DskipTests
