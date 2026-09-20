@@ -14,8 +14,10 @@ import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
 import com.graphraglens.core.usecase.AnswerGlobalSearch;
 import com.graphraglens.core.usecase.AnswerLocalSearch;
+import com.graphraglens.core.usecase.AnswerDriftSearch;
 import com.graphraglens.core.usecase.BuildKnowledgeGraph;
 import com.graphraglens.core.usecase.DetectCommunities;
+import com.graphraglens.core.usecase.DriftSearchAnswer;
 import com.graphraglens.core.usecase.GlobalSearchAnswer;
 import com.graphraglens.core.usecase.IngestCorpus;
 import com.graphraglens.core.usecase.LocalSearchAnswer;
@@ -146,13 +148,7 @@ public class CorpusController {
             return globalSearchResponse(question, corpus.id());
         }
         if ("DRIFT".equalsIgnoreCase(mode)) {
-            String traceId = captureTrace(List.of());
-            return ResponseEntity.ok(Map.of(
-                    "answerId", UUID.randomUUID().toString(),
-                    "traceId", traceId,
-                    "traceStepCount", 0,
-                    "noAnswer", true,
-                    "reason", "DRIFT Search isn't implemented yet."));
+            return driftSearchResponse(question, corpus.id());
         }
 
         LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort).answer(question, corpus.id());
@@ -186,6 +182,27 @@ public class CorpusController {
                 "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
                 "mode", "GLOBAL"));
+    }
+
+    private ResponseEntity<Map<String, Object>> driftSearchResponse(String question, String corpusId) {
+        DriftSearchAnswer result = new AnswerDriftSearch(graphStorePort, llmPort).answer(question, corpusId);
+        String traceId = captureTrace(result.steps());
+
+        if (result.noAnswer()) {
+            return ResponseEntity.ok(Map.of(
+                    "answerId", UUID.randomUUID().toString(),
+                    "traceId", traceId,
+                    "traceStepCount", result.steps().size(),
+                    "noAnswer", true,
+                    "reason", result.reason()));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "answerId", UUID.randomUUID().toString(),
+                "traceId", traceId,
+                "traceStepCount", result.steps().size(),
+                "answer", result.answer(),
+                "mode", "DRIFT"));
     }
 
     /**

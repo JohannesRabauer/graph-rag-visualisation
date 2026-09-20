@@ -30,16 +30,16 @@ class DriftModeChoiceUiTest extends UiTestSupport {
     }
 
     @Test
-    void driftQueriesStayClearlyLabeledWhenTheBackendReturnsTheNotImplementedReason() {
+    void driftQueriesStayClearlyLabeledWhenTheBackendReturnsARealDriftAnswer() {
         loadDemoDatasetAndWaitReady();
 
         page.locator("label.mode-choice-option:has(input[value='DRIFT'])").click();
-        page.locator("#chat-input").fill("What happens in drift mode?");
+        page.locator("#chat-input").fill("What did Irene Adler do to Sherlock Holmes?");
         page.locator("#chat-form .send-button").click();
 
         Locator latestAnswer = page.locator(".message.answer").last();
         assertThat(latestAnswer.locator(".answer-tag")).hasText("Drift Search · Answer");
-        assertThat(latestAnswer).containsText("DRIFT Search isn't implemented yet.");
+        assertThat(latestAnswer).containsText("Irene Adler");
         assertThat(latestAnswer).hasAttribute("data-mode", "DRIFT");
 
         String tagColor = String.valueOf(latestAnswer.locator(".answer-tag").evaluate(

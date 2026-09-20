@@ -1,7 +1,9 @@
 package com.graphraglens.web;
 
 import com.graphraglens.core.domain.Corpus;
+import com.graphraglens.core.domain.GraphExtraction;
 import com.graphraglens.core.port.GraphStorePort;
+import com.graphraglens.core.port.LlmPort;
 import com.jayway.jsonpath.JsonPath;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -524,14 +526,14 @@ class CorpusControllerTest {
     }
 
     @Test
-    void driftSearchReturnsTheNoAnswerShapeUntilTheImplementationExists() {
+    void driftSearchReturnsTheDistinctNoAnswerShapeWhenNoCommunitiesExistYet() {
         CorpusStore isolatedCorpusStore = new CorpusStore();
         Corpus corpus = new Corpus("ready-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, retrievalTraceStore);
+                null, isolatedCorpusStore, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Try DRIFT", "mode", "DRIFT"));
@@ -540,12 +542,18 @@ class CorpusControllerTest {
         assertThat(response.getBody()).containsKeys("answerId", "traceId", "traceStepCount", "noAnswer", "reason");
         assertThat(response.getBody()).containsEntry("traceStepCount", 0);
         assertThat(response.getBody()).containsEntry("noAnswer", true);
-        assertThat(response.getBody()).containsEntry("reason", "DRIFT Search isn't implemented yet.");
+        assertThat(response.getBody()).containsEntry("reason",
+                "DRIFT Search cannot run yet because this corpus has no Community summaries. Wait for the Community "
+                        + "pass to finish, then try again.");
         assertThat(response.getBody()).doesNotContainKeys("answer", "mode");
 
         String traceId = String.valueOf(response.getBody().get("traceId"));
         assertThat(retrievalTraceStore.get(traceId)).isPresent();
         assertThat(retrievalTraceStore.get(traceId).orElseThrow().steps()).isEmpty();
+    }
+
+    private static LlmPort stubLlmPort() {
+        return corpus -> new GraphExtraction(List.of(), List.of());
     }
 
     @Test
