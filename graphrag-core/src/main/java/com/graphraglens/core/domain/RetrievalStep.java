@@ -14,6 +14,7 @@ package com.graphraglens.core.domain;
 public record RetrievalStep(Kind kind, String identifier, String label) {
 
     public RetrievalStep {
+        java.util.Objects.requireNonNull(kind, "kind must not be null");
         identifier = identifier == null ? "" : identifier.trim();
         label = label == null ? "" : label.trim();
     }

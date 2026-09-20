@@ -2,7 +2,7 @@
 title: 'Capture the Retrieval Trace'
 type: 'feature'
 created: '2026-09-19'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -73,6 +73,19 @@ baseline_commit: '5bcfb807ad77d13247db49bbfa2ac165e6565f68'
 ## Spec Change Log
 
 ## Review Triage Log
+
+Three-layer review (blind-hunter, edge-case-hunter, verification-gap) ran in parallel against the full diff.
+
+- **patch** — LOCAL trace step order (the story's central new sorting guarantee — first-occurrence text index, not `graphStorePort.entities()`'s iteration order) was asserted only order-agnostically (verification-gap + blind-hunter, same root cause). Added `localSearchTraceOrdersEntityStepsByWhereTheyFirstAppearInTheMatchedSentenceNotByGraphStoreOrder`, seeding entities in the opposite order from the sentence and asserting relative order (robust against shared-test-state duplicates).
+- **patch** — `entityStepsNamedIn` used a raw substring match with no word-boundary check, so a short entity name could false-match inside an unrelated word (blind-hunter + edge-case-hunter, same root cause). Switched to a `\b...\b` regex match.
+- **patch** — `graphStorePort.entities()` had no null-guard, inconsistent with `AnswerGlobalSearch`'s established convention of null-checking the analogous `communities()` call (edge-case-hunter). Added the guard.
+- **patch** — No dedicated unit test exercised `RetrievalStep`/`RetrievalTrace`'s compact-constructor normalization (blind-hunter). Added `RetrievalTraceTest`.
+- **patch** — The query response never exposed a step count, but the epic's UX spec requires the chat answer's Replay CTA to read "— N steps" before Replay is clicked (blind-hunter). Added a `traceStepCount` field to all three response shapes (LOCAL, GLOBAL matched, GLOBAL `noAnswer`).
+- **patch** — `RetrievalStep`'s compact constructor guarded `identifier`/`label` against null but not `kind`, so a null `Kind` would only fail later, inside `stepPayload()` (blind-hunter). Added `Objects.requireNonNull(kind, ...)`.
+- **patch** — Trace-id generation/storage was duplicated verbatim between `query()`'s LOCAL branch and `globalSearchResponse()` (blind-hunter). Extracted a shared `captureTrace(List<RetrievalStep>)` helper.
+- **defer** — `RetrievalStep.Kind.RELATIONSHIP` defined but never emitted by either search path (blind-hunter). Intentional placeholder, not a broken promise of this story's AC. Logged in `deferred-work.md`.
+- **defer** — Local Search's trace is a best-effort text cross-reference, not a genuine graph traversal (blind-hunter's cross-corpus-blast-radius finding, and the pre-existing text-matching limitation this story's own Boundaries already named). Already covered by this spec's frozen "Never" clause and `deferred-work.md`'s Story 4.4/5.1 entries — no new entry needed for the cross-corpus angle specifically (same accepted `GraphStorePort` limitation as Stories 4.3/4.4); added one new entry for the retrieval-mechanism rework itself.
+- **false** — Claimed `sprint-status.yaml` showing `in-progress` "contradicts" the spec's `in-review`/`done` frontmatter (blind-hunter). Disproof: this reflects the build workflow's own intentional staged status lifecycle (`in-progress` during implementation and review, synced to `review` only at the finalize/present step) — the same pattern was used consistently for every prior story this session (4.3, 4.4).
 
 ## Design Notes
 

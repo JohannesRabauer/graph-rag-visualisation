@@ -33,6 +33,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -135,19 +136,18 @@ public class CorpusController {
         }
 
         LocalSearchResult result = buildAnswer(corpus, question);
-        String traceId = UUID.randomUUID().toString();
-        retrievalTraceStore.put(traceId, new RetrievalTrace(traceId, result.steps()));
+        String traceId = captureTrace(result.steps());
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
                 "traceId", traceId,
+                "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
                 "mode", mode.toUpperCase(Locale.ROOT)));
     }
 
     private ResponseEntity<Map<String, Object>> globalSearchResponse(String question) {
         GlobalSearchAnswer result = new AnswerGlobalSearch(graphStorePort).answer(question);
-        String traceId = UUID.randomUUID().toString();
-        retrievalTraceStore.put(traceId, new RetrievalTrace(traceId, result.steps()));
+        String traceId = captureTrace(result.steps());
 
         if (result.noAnswer()) {
             // AD-13's distinct no-answer shape — a normal outcome (Communities
@@ -155,6 +155,7 @@ public class CorpusController {
             return ResponseEntity.ok(Map.of(
                     "answerId", UUID.randomUUID().toString(),
                     "traceId", traceId,
+                    "traceStepCount", result.steps().size(),
                     "noAnswer", true,
                     "reason", result.reason()));
         }
@@ -162,8 +163,21 @@ public class CorpusController {
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
                 "traceId", traceId,
+                "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
                 "mode", "GLOBAL"));
+    }
+
+    /**
+     * Generates a fresh {@code traceId} and stores a {@link RetrievalTrace} for
+     * the given steps under it — shared by both the LOCAL and GLOBAL query
+     * paths so a trace is always captured (even zero-step) before the query
+     * response is built (Story 5.1 AC2).
+     */
+    private String captureTrace(List<RetrievalStep> steps) {
+        String traceId = UUID.randomUUID().toString();
+        retrievalTraceStore.put(traceId, new RetrievalTrace(traceId, steps));
+        return traceId;
     }
 
     @GetMapping("/api/traces/{traceId}")
@@ -293,15 +307,21 @@ public class CorpusController {
         record NamedAt(int index, Entity entity) {
         }
 
-        String lowerSentence = sentence.toLowerCase(Locale.ROOT);
+        Collection<Entity> entities = graphStorePort.entities();
+        if (entities == null) {
+            return List.of();
+        }
+
         List<NamedAt> matches = new ArrayList<>();
-        for (Entity entity : graphStorePort.entities()) {
+        for (Entity entity : entities) {
             if (entity == null || entity.name() == null || entity.name().isBlank()) {
                 continue;
             }
-            int index = lowerSentence.indexOf(entity.name().toLowerCase(Locale.ROOT));
-            if (index >= 0) {
-                matches.add(new NamedAt(index, entity));
+            java.util.regex.Matcher wordBoundaryMatch = java.util.regex.Pattern
+                    .compile("\\b" + java.util.regex.Pattern.quote(entity.name().toLowerCase(Locale.ROOT)) + "\\b")
+                    .matcher(sentence.toLowerCase(Locale.ROOT));
+            if (wordBoundaryMatch.find()) {
+                matches.add(new NamedAt(wordBoundaryMatch.start(), entity));
             }
         }
 

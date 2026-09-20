@@ -296,6 +296,60 @@ class CorpusControllerTest {
     }
 
     @Test
+    void localSearchTraceOrdersEntityStepsByWhereTheyFirstAppearInTheMatchedSentenceNotByGraphStoreOrder() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "order-trace.txt", "text/plain",
+                "Irene Adler outwitted Sherlock Holmes by stealing the photograph."
+                        .getBytes(StandardCharsets.UTF_8));
+
+        String uploadBody = mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(uploadBody, "$.corpusId");
+
+        // Seed the graph store with the two entities in the OPPOSITE order from
+        // how they appear in the sentence, so a test that passed merely because
+        // entityStepsNamedIn happened to preserve graphStorePort.entities()'s
+        // own iteration order would fail here — only sorting by first-occurrence
+        // sentence index (Story 5.1 AC3) makes this assertion pass.
+        graphStorePort.persistEntities(List.of(
+                new com.graphraglens.core.domain.Entity("Sherlock Holmes", "Person"),
+                new com.graphraglens.core.domain.Entity("Irene Adler", "Person")));
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        String queryBody = mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
+                        .contentType("application/json")
+                        .content("{\"question\":\"Why was Irene Adler able to outwit Sherlock Holmes?\",\"mode\":\"LOCAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String traceId = JsonPath.read(queryBody, "$.traceId");
+
+        // Asserts relative order rather than exact indices [0]/[1]: the shared,
+        // unreset GraphStorePort (this story's own accepted "Never" boundary)
+        // can carry duplicate-named Entities from earlier tests in this class
+        // with different types, so more than one "Irene Adler"/"Sherlock
+        // Holmes" step is possible — what must hold is that every "Irene
+        // Adler" step precedes every "Sherlock Holmes" step, matching the
+        // sentence's actual word order.
+        String traceBody = mockMvc.perform(get("/api/traces/{traceId}", traceId))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        List<String> labels = JsonPath.read(traceBody, "$.steps[*].label");
+        int lastIreneIndex = labels.lastIndexOf("Irene Adler");
+        int firstHolmesIndex = labels.indexOf("Sherlock Holmes");
+        assertThat(lastIreneIndex).isGreaterThanOrEqualTo(0);
+        assertThat(firstHolmesIndex).isGreaterThan(lastIreneIndex);
+    }
+
+    @Test
     void localSearchNoMatchStillProducesAFetchableZeroStepTrace() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "files", "no-match.txt", "text/plain",
