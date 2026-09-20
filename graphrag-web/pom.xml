@@ -22,6 +22,7 @@
 
   <properties>
     <spring-boot.version>4.1.1</spring-boot.version>
+    <playwright.version>1.56.0</playwright.version>
   </properties>
 
   <dependencyManagement>
@@ -73,6 +74,24 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-webmvc-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      Test-scope only, per AD-15 amendment (see ARCHITECTURE-SPINE.md):
+      drives a real, already-installed Chromium (never downloaded by this
+      build) to assert actual browser behavior for the vanilla JS this
+      module ships (Replay scrubber, Explore node-tap/detail-panel,
+      community-hull toggling) — none of which any `mvn test` run could
+      previously catch. AD-15 still holds: no package.json, no npm install,
+      no JS build/bundle step exists anywhere in this repository. Playwright
+      itself bundles a Node-based automation driver as its runtime browser-
+      control mechanism, invoked here purely as a Maven test dependency, not
+      as an authoring/build toolchain for shipped frontend code.
+    -->
+    <dependency>
+      <groupId>com.microsoft.playwright</groupId>
+      <artifactId>playwright</artifactId>
+      <version>${playwright.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

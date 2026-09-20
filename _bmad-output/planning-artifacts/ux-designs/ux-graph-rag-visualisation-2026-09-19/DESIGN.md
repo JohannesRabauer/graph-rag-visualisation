@@ -2,7 +2,7 @@
 title: GraphRAG Lens — Design
 status: final
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-20
 name: GraphRAG Lens
 description: Live GraphRAG-on-Neo4j visualizer for a solo creator's coding stream. Instrument register — a lab-bright canvas where the graph is the only thing that gets to be loud.
 colors:
@@ -148,6 +148,8 @@ components:
     opacity: '0.55–0.7'
     label-typography: '{typography.data-mono}'
     label-colors: ['{colors.community-1-label}', '{colors.community-2-label}', '{colors.community-3-label}', '{colors.community-4-label}', '{colors.community-5-label}']
+    hidden-opacity: '0'
+    hidden-label: 'none'
   step-badge:
     background: '{colors.panel}'
     border: '1px solid {colors.line-strong}'
@@ -176,7 +178,7 @@ components:
     radius: '{rounded.full}'
     typography: '{typography.data-mono}'
     foreground: '{colors.ink-600}'
-  community-detection-toggle:
+  community-visualization-toggle:
     off-background: '{colors.panel}'
     off-border: '{colors.line-strong}'
     on-background: '{colors.accent-soft}'
@@ -252,13 +254,13 @@ Corners are consistently soft-but-tight: `{rounded.sm}` (6px) for small controls
 - **Local/Global Search mode toggle** (`{components.mode-toggle}`) — two-segment control, uppercase tag-weight labels. Active segment fills with the matching mode's soft tint and text in its accent color (`{colors.accent-soft}`/`{colors.accent}` for Local, `{colors.global-soft}`/`{colors.global}` for Global); inactive segment is `{colors.ink-400}` text on `{colors.panel}`. A one-line explanatory hint below the toggle always states what the active mode does in plain language (tutorial-clarity mandate) — for example, "Local Search traverses specific Entities and Relationships around your question."
 - **Message bubbles** — question bubbles (`{components.message-question}`) are dark-filled, right-aligned, sharp-cornered on the tail side. Answer content (`{components.message-answer}`) is unbubbled body text tagged with a small colored mode label. Every answer that has a Retrieval Trace carries a **Replay CTA** (`{components.replay-cta}`): a dashed-border pill-ish row reading "Replay this answer's Retrieval Trace — N steps."
 - **Composer** (`{components.composer}`) — single-line text input plus a dark circular-ish send button with a play-style glyph. Placeholder copy stays plain ("Ask a question about the Corpus…").
-- **Graph canvas** (`{components.graph-canvas}`) — the hero surface. Faint 24px grid on `{colors.paper}`. An uppercase eyebrow title state-labels what's showing ("Knowledge Graph — Replaying Trace" / "Knowledge Graph — Resting"). A legend row lists visible Community names with color swatches when the community-detection toggle (main screen) or the always-on Explore view is active.
+- **Graph canvas** (`{components.graph-canvas}`) — the hero surface. Faint 24px grid on `{colors.paper}`. An uppercase eyebrow title state-labels what's showing ("Knowledge Graph — Replaying Trace" / "Knowledge Graph — Resting"). A legend row lists visible Community names with color swatches when the community-visualization toggle (main screen) or the always-on Explore view is active.
 - **Nodes and edges** — default nodes (`{components.node-default}`) are small white-filled, dark-stroked circles labeled below in body type. The node just-visited in a Replay step gets the accent ring (`{components.node-previous-step}`); the currently active node gets the larger warm-active ring (`{components.node-active}`). Edges default to a thin dark hairline (`{components.edge-default}`); the edge just traversed thickens and turns Active-colored (`{components.edge-traversed}`); edges not yet reached in the trace render dashed (`{components.edge-upcoming}`).
-- **Community hulls** (`{components.community-hull}`) — soft, pale ellipses behind their member nodes, each with an uppercase monospace label in a matching darker tint. Visible only when the main-screen toggle is ON, or always on the Explore page.
+- **Community hulls** (`{components.community-hull}`) — soft, pale ellipses behind their member nodes, each with an uppercase monospace label in a matching darker tint. Visible only when the main-screen toggle is ON, or always on the Explore page; hidden state (`{components.community-hull.hidden-opacity}`) drops both the fill and label to nothing. During Retrieval Trace Replay (EXPERIENCE.md's Component Patterns), a hull that the current or previous step touches is forced back to its visible tint and label — a per-hull override, not a change to the toggle itself, so every other hidden hull stays hidden.
 - **Step badge** (`{components.step-badge}`) — a small floating monospace chip overlaid on the canvas during Replay, reading, for example, "Step 3 / 5 — traversed outwitted," with the step number and traversed-relationship name in `{colors.active}`.
 - **Retrieval Trace scrubber** (`{components.scrubber}`) — bottom bar of the canvas region. Transport buttons (step-back / play-pause / step-forward, `{components.transport-button}`) sit left of a horizontal track: a thin rail (`{colors.line-strong}`) with an accent-colored fill up to the current position, and discrete circular ticks per trace step — done ticks ring in accent, the current tick is a larger filled Active dot, future ticks are hollow line-strong outlines. A monospace step counter ("03 / 05") sits at the right; a one-line monospace caption below states the trace in plain sequence ("matched X → traversed Y → Z → next: …").
 - **Corpus chip** (`{components.corpus-chip}`) — small pill in the app bar naming the active Corpus and document count (for example, "Sherlock Holmes — Demo Dataset · 12 documents"), monospace, with a small neutral status dot.
-- **Community-detection toggle** (`{components.community-detection-toggle}`, main screen only) — defaults ON for a fresh Corpus's first run, and can be toggled freely afterward; when ON, adopts the accent tint (reuses `{colors.accent-soft}`/`{colors.accent}` rather than introducing a third color, since this toggle is orthogonal to the Local/Global mode toggle and doesn't need its own hue).
+- **Community-visualization toggle** (`{components.community-visualization-toggle}`, main screen only) — defaults ON for a fresh Corpus's first run, and can be toggled freely afterward; when ON, adopts the accent tint (reuses `{colors.accent-soft}`/`{colors.accent}` rather than introducing a third color, since this toggle is orthogonal to the Local/Global mode toggle and doesn't need its own hue). Named for what it actually controls — whether Community *formation is shown/animated* — never Community *detection* itself, which always runs regardless of this toggle's state (EXPERIENCE.md's Component Patterns).
 - **Error banner** (`{components.error-banner}`) — appears inline in the chat thread or canvas header on an LLM-call or extraction failure (FR-5); Active-soft fill, Active border, plain-language message, no icon glyphs beyond the existing warm-color cue.
 - **Explore page canvas** — reuses the graph canvas, node/edge, and community-hull tokens above wholesale (`{components.graph-canvas}`, `{components.node-default}`, `{components.community-hull}`); Communities render with their hulls always visible here (no toggle, unlike the main screen). No chat panel occupies the left rail, so the canvas has the full frame width to itself.
 - **Node detail panel** (`{components.node-detail-panel}`) — Explore page only, slides in from the right on node click. Eyebrow heading names the Entity; body text lists its Relationships and any details; tags render as small `{colors.chrome}`-filled monospace chips in a wrapping row. Closes on clicking elsewhere on the canvas or clicking the same node again.
