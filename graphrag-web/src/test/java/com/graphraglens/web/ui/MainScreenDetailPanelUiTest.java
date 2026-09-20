@@ -1,27 +1,19 @@
 package com.graphraglens.web.ui;
 
 import com.microsoft.playwright.Locator;
-import com.microsoft.playwright.assertions.LocatorAssertions;
 import org.junit.jupiter.api.Test;
 
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
 
 /**
- * Real-browser coverage for the Explore page's node-click detail panel
- * (Story 6.2), which previously had no JS-executing test at all (see
- * deferred-work.md's Story 6.2 entry) — a regression in the open/close/swap
- * wiring or the hull-tap-ignored behavior could ship with {@code mvn test}
- * green.
- *
- * <p>Node interactions go through the {@code GraphCanvas.simulateTap} test
- * hook, which fires a real Cytoscape 'tap' event on the target element —
- * exercising the exact same {@code cy.on('tap', ...)} handler wiring a real
- * pointer click would, without depending on pixel coordinates translated
- * through the still-animating force-directed layout (proved flaky under
- * headless browser automation: a node's rendered position keeps moving for
- * ~400ms after the graph loads).
+ * Real-browser coverage for the Entity detail panel now that it lives on
+ * the main screen's own canvas (merged from the former separate Explore
+ * page, 2026-09-20 UX pass — see deferred-work.md's Story 6.2 entry for
+ * the original gap this replaces). Node interactions go through the
+ * {@code GraphCanvas.simulateTap} test hook, matching the pattern already
+ * established for the Explore page's own equivalent coverage.
  */
-class ExploreDetailPanelUiTest extends UiTestSupport {
+class MainScreenDetailPanelUiTest extends UiTestSupport {
 
     private static final String OPEN_CLASS_PATTERN = ".*\\bis-open\\b.*";
 
@@ -33,24 +25,9 @@ class ExploreDetailPanelUiTest extends UiTestSupport {
                 .isTrue();
     }
 
-    @SuppressWarnings("unchecked")
-    private String firstCommunityIdExcluding(String excludedMemberIdentity) {
-        return (String) page.evaluate(
-                "excluded => fetch('/api/graph').then(r => r.json()).then(body => {"
-                        + "  const other = (body.communities || []).find(c => "
-                        + "    !(c.memberEntityIdentities || []).includes(excluded));"
-                        + "  return other ? other.communityId : null;"
-                        + "})",
-                excludedMemberIdentity);
-    }
-
     @Test
-    void clickingEntitiesOpensClosesAndSwapsTheDetailPanelAndHullTapsAreIgnored() {
+    void clickingEntitiesOnTheMainScreenOpensClosesAndSwapsTheDetailPanelAndHullTapsAreIgnored() {
         loadDemoDatasetAndWaitReady();
-
-        page.navigate(baseUrl() + "/explore");
-        assertThat(page.locator("#graph-canvas"))
-                .not().isHidden(new LocatorAssertions.IsHiddenOptions().setTimeout(20000));
 
         Locator panel = page.locator("#entity-detail-panel");
         Locator name = page.locator("#entity-detail-name");
@@ -70,10 +47,7 @@ class ExploreDetailPanelUiTest extends UiTestSupport {
         assertThat(panel).not().hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
 
         // Tap a DIFFERENT Entity — the panel opens directly with the new
-        // content (no separate close step needed). "holmes::person" is its
-        // own singleton Community in the demo corpus's deterministic
-        // extraction (the bare "Holmes" mention, distinct from "Sherlock
-        // Holmes").
+        // content (no separate close step needed).
         tap("sherlock holmes::person");
         assertThat(name).containsText("Sherlock Holmes");
         tap("holmes::person");
@@ -86,9 +60,35 @@ class ExploreDetailPanelUiTest extends UiTestSupport {
         tap("holmes::person");
         assertThat(panel).not().hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
 
-        String communityId = firstCommunityIdExcluding("sherlock holmes::person");
+        // "King" is in a different Community from Sherlock Holmes (demo
+        // corpus's deterministic extraction) — read the community id
+        // directly off the rendered graph rather than any backend call.
+        String communityId = (String) page.evaluate(
+                "() => window.GraphCanvas.communityIdForEntity('king::concept')");
         org.assertj.core.api.Assertions.assertThat(communityId).isNotNull();
         tap("community::" + communityId);
         assertThat(panel).not().hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
+    }
+
+    @Test
+    void detailPanelAndRetrievalTraceReplayCoexistOnTheSameCanvas() {
+        // Explicit design decision: unlike a design where opening one closes
+        // the other, both stay visible together on the merged canvas.
+        loadDemoDatasetAndWaitReady();
+
+        page.locator("#chat-input").fill("Tell me about Irene Adler.");
+        page.locator("#chat-form .send-button").click();
+        Locator replayCta = page.locator(".replay-cta");
+        assertThat(replayCta).isVisible();
+        replayCta.click();
+
+        Locator scrubber = page.locator("#replay-scrubber");
+        assertThat(scrubber).not().isHidden();
+
+        Locator panel = page.locator("#entity-detail-panel");
+        tap("holmes::person");
+
+        assertThat(panel).hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
+        assertThat(scrubber).not().isHidden();
     }
 }

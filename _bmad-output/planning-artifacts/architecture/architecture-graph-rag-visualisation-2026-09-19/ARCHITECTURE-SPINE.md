@@ -35,7 +35,7 @@ graph TD
         ParseAdapter[graphrag-adapter-parsing<br/>Plain text + Apache PDFBox]
     end
     subgraph Core [graphrag-core — zero framework deps]
-        UseCases[Use Cases:<br/>IngestCorpus, DetectCommunities,<br/>AnswerLocalSearch, AnswerGlobalSearch,<br/>ExploreGraph]
+        UseCases[Use Cases:<br/>IngestCorpus, DetectCommunities,<br/>AnswerLocalSearch, AnswerGlobalSearch]
         Ports[Ports:<br/>GraphStorePort, LlmPort, DocumentParserPort]
         Domain[Domain model:<br/>Corpus, Entity, Relationship,<br/>Community, RetrievalTrace, Tag]
     end
@@ -109,13 +109,13 @@ graph TD
 ### AD-10 — Entities are deduplicated by identity, never blind-created
 
 - **Binds:** `IngestCorpus` use case; `graphrag-adapter-neo4j`.
-- **Prevents:** The same real-world entity, mentioned multiple times across a Corpus (or across repeated LLM extraction calls), producing multiple Entity nodes — which would silently degrade Community detection (FR-6) and Explore-page structure (FR-16) depending purely on which contributor wrote the write path.
+- **Prevents:** The same real-world entity, mentioned multiple times across a Corpus (or across repeated LLM extraction calls), producing multiple Entity nodes — which would silently degrade Community detection (FR-6) and graph-exploration structure (FR-16) depending purely on which contributor wrote the write path.
 - **Rule:** Entity writes use Cypher `MERGE` keyed on a normalized identity (lowercased name + entity type), never a blind `CREATE`. The same identity key always resolves to the same node within a Corpus.
 
 ### AD-11 — Communities are first-class nodes, not a scalar property
 
 - **Binds:** `DetectCommunities`, `AnswerGlobalSearch` use cases; `graphrag-adapter-neo4j`; FR-6/FR-7/FR-10/FR-16.
-- **Prevents:** A `communityId` scalar property on Entity nodes (which cannot hold a per-community summary, and gives Explore/FR-16 nothing to query directly) coexisting with, or being chosen instead of, real Community nodes.
+- **Prevents:** A `communityId` scalar property on Entity nodes (which cannot hold a per-community summary, and gives graph exploration/FR-16 nothing to query directly) coexisting with, or being chosen instead of, real Community nodes.
 - **Rule:** Each detected Community is written as its own `(:Community {id, summary})` node, related to its member Entities via `[:BELONGS_TO]` relationships. `AD-4`'s undirected projection for GDS Leiden governs the *input* to detection; this AD governs the *output* written back to the graph.
 
 ### AD-12 — Progress is one multiplexed SSE stream per Corpus, with a fixed event envelope
@@ -130,11 +130,11 @@ graph TD
 - **Prevents:** An independently-built frontend and backend agreeing on *which* use case runs (Local vs. Global, AD from FR-9/FR-10) but not on the wire shape of the result — in particular, "no answer found" (a normal, expected outcome per FR-9/FR-10) being conflated with an actual LLM failure (FR-5's error state), since both would otherwise land on the same generic `{"error": ...}` shape.
 - **Rule:** A query is `POST /api/corpora/{corpusId}/query` with body `{"question": "...", "mode": "LOCAL" | "GLOBAL"}`. A successful answer responds `{"answerId": "...", "traceId": "...", "answer": "..."}`. A "no answer found" result (FR-9/FR-10 consequence) is a distinct, successful response shape — `{"answerId": "...", "traceId": "...", "noAnswer": true, "reason": "..."}` — never the generic error shape. An actual LLM-call failure during generation (FR-5's principle, extended per AD-6's Component Patterns note) uses the same `{"error": "<plain-language message>"}` shape as extraction failures, and is also emitted as an `error` event on that Corpus's AD-12 SSE stream so a still-open connection sees it without polling.
 
-### AD-14 — Query and Explore reads run against whatever is currently committed; no locking against in-flight ingestion
+### AD-14 — Query reads run against whatever is currently committed; no locking against in-flight ingestion
 
-- **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch`, `ExploreGraph` use cases; `graphrag-adapter-neo4j`; FR-8–FR-11, FR-16–FR-17.
+- **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch` use cases; `graphrag-adapter-neo4j`; FR-8–FR-11.
 - **Prevents:** A read use case, once actually invoked, introducing a lock, queue, or wait against in-flight ingestion at the storage/read-path level. This is narrower than "a query is always accepted" — **reconciled 2026-09-20:** it originally read as a blanket guarantee that any query is always accepted regardless of Corpus state, which a later story reversed at the web layer (see AD-16). What this AD actually prevents, and still holds today, is the *use case itself* ever locking, queuing, or waiting on the write path once it runs.
-- **Rule:** Every Entity/Relationship/Community write (AD-10, AD-11) commits in its own Neo4j transaction as soon as extracted/detected — never batched into one Corpus-wide transaction. Once a read use case is invoked, it never waits for or blocks on in-flight ingestion; it simply reads whatever is currently committed, which may be a partial graph. No additional locking or coordination exists between the write path and the read path. `ExploreGraph` is never gated by Corpus workflow status (AD-16) — the Explore page always reads whatever currently exists, ready or not, matching its own "no Corpus ingested yet" empty-state design; only `AnswerLocalSearch`/`AnswerGlobalSearch` sit behind AD-16's web-layer gate.
+- **Rule:** Every Entity/Relationship/Community write (AD-10, AD-11) commits in its own Neo4j transaction as soon as extracted/detected — never batched into one Corpus-wide transaction. Once a read use case is invoked, it never waits for or blocks on in-flight ingestion; it simply reads whatever is currently committed, which may be a partial graph. No additional locking or coordination exists between the write path and the read path. **Superseded for graph exploration (2026-09-20):** the `ExploreGraph` use case and its `GET /api/graph` endpoint, which this AD used to also bind (FR-16–FR-17), were removed when the former separate Explore page was merged into the main screen — pan/zoom/click exploration now reads directly off the Cytoscape elements the browser already holds from the AD-12 SSE stream, with no separate backend read at all, so no locking/gating question arises for it in the first place.
 
 ### AD-15 — Frontend is Java-native: Thymeleaf shell, unbundled JS for the canvas
 
@@ -142,11 +142,11 @@ graph TD
 - **Prevents:** A second build toolchain (Node/npm/a bundler) creeping into a project explicitly meant to stay Java-native; a contributor assuming a compile step exists for client JS when none does.
 - **Rule:** The page shell (layout, chat panel scaffolding, toggles, initial state) is server-rendered via Thymeleaf templates in `graphrag-web/src/main/resources/templates/`. Cytoscape.js and any other client-side JavaScript (the graph canvas, replay scrubber, SSE consumption) are plain, unbundled `.js` files under `graphrag-web/src/main/resources/static/js/` — vendored or CDN-loaded, never TypeScript, never passed through a bundler. There is no `frontend/` module, no `package.json`-driven build step anywhere in the project. **Test-only exception (added 2026-09-20):** `graphrag-web`'s test sources may depend on Playwright-Java (a Maven test-scope dependency; see `graphrag-web/pom.xml` and `src/test/java/.../ui/`) to drive a real headless browser for UI-behavior tests. Playwright-Java bundles a Node-based automation driver internally, but it is a test-runtime dependency invoked via `mvn test`, never an authoring or build step for the app's own JS — no `package.json`, no `npm install`, and no bundler is introduced into the shipped app or anywhere in the repository as a result.
 
-### AD-16 — Corpus workflow status gates Query at the web layer; Explore is never gated (added 2026-09-20)
+### AD-16 — Corpus workflow status gates Query at the web layer (added 2026-09-20)
 
 - **Binds:** `graphrag-web`'s `CorpusController`/`CorpusStore`; FR-8–FR-11.
 - **Prevents:** A presenter's LOCAL/GLOBAL question landing against a Corpus that hasn't finished ingesting (or that failed) and getting a confusing, partial, or misleading answer instead of a clear "still building" message mid-demo. This reverses this project's own original UX allowance — EXPERIENCE.md's now-superseded "queries proceed against a partial graph" decision, the same allowance AD-14 was originally written to protect (see AD-14's reconciliation note above) — a deliberate, accepted trade-off from the `spec-demo-ready-showcase-workflow.md` story, not an oversight.
-- **Rule:** `CorpusController.query()` checks `CorpusStore.status(corpusId)` *before* invoking either use case. A `BUILDING` or `FAILED` Corpus responds `409 Conflict` with a plain-language message, and neither `AnswerLocalSearch` nor `AnswerGlobalSearch` is invoked at all — no use case call, no read, no partial answer. This gate lives entirely in `graphrag-web`, above the use-case boundary AD-14 governs: once a read use case *is* invoked (Corpus is `READY`), it remains exactly as lock-free and non-blocking as AD-14 specifies. `ExploreGraph`/`GET /api/graph` has no equivalent gate and is unaffected — Explore was never in this story's scope and keeps reading whatever is currently committed, ready or not.
+- **Rule:** `CorpusController.query()` checks `CorpusStore.status(corpusId)` *before* invoking either use case. A `BUILDING` or `FAILED` Corpus responds `409 Conflict` with a plain-language message, and neither `AnswerLocalSearch` nor `AnswerGlobalSearch` is invoked at all — no use case call, no read, no partial answer. This gate lives entirely in `graphrag-web`, above the use-case boundary AD-14 governs: once a read use case *is* invoked (Corpus is `READY`), it remains exactly as lock-free and non-blocking as AD-14 specifies. Graph exploration (FR-16–FR-17) has no equivalent gate and needs none — since the 2026-09-20 Explore-into-main-screen merge it is pure client-side canvas interaction with elements already received via SSE (see AD-14's superseded note), never a server call this gate could apply to.
 
 ### AD-17 — Vector subsystem reuses existing adapters; no new container (added 2026-09-20, v1.1)
 
@@ -188,7 +188,7 @@ graph TD
 graphrag-lens/
   graphrag-core/                  # domain + use cases + ports — zero framework deps
     src/main/java/.../domain/     # Corpus, Entity, Relationship, Community, RetrievalTrace, Tag
-    src/main/java/.../usecase/    # IngestCorpus, DetectCommunities, AnswerLocalSearch, AnswerGlobalSearch, ExploreGraph,
+    src/main/java/.../usecase/    # IngestCorpus, DetectCommunities, AnswerLocalSearch, AnswerGlobalSearch,
                                    # AnswerDriftSearch, ConstructVectorIndex, AnswerVectorBaseline (v1.1)
     src/main/java/.../port/       # GraphStorePort, LlmPort, DocumentParserPort, EmbeddingPort, VectorStorePort (v1.1)
   graphrag-adapter-neo4j/         # implements GraphStorePort (driver + Cypher + GDS calls)
@@ -238,7 +238,7 @@ Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of
 | Query Interface (FR-8–FR-11) | `AnswerLocalSearch`, `AnswerGlobalSearch` use cases | AD-1, AD-3, AD-6, AD-11, AD-13, AD-14, AD-16 |
 | Retrieval Trace & Playback (FR-12–FR-13) | Use cases (trace capture) + `graphrag-web` (in-memory store, replay API) | AD-5, AD-13 |
 | Setup & Deployment (FR-14–FR-15) | `docker-compose.yml`, `graphrag-web` config | AD-8, Consistency Conventions (config) |
-| Graph Exploration (FR-16–FR-17) | `ExploreGraph` use case, `graphrag-adapter-neo4j` | AD-1, AD-2, AD-11, AD-14 |
+| Graph Exploration (FR-16–FR-17) | Client-side `graph-canvas.js` on the merged main screen (Cytoscape elements already populated via the AD-12 SSE stream — no dedicated read use case or endpoint since the 2026-09-20 Explore-into-main-screen merge) | AD-1, AD-2, AD-11, AD-12, AD-15 |
 | Live ingestion progress (EXPERIENCE.md State Patterns) | `graphrag-web` SSE endpoints | AD-7, AD-12 |
 | DRIFT Search (FR-18) *(v1.1)* | `AnswerDriftSearch` use case (orchestrates `AnswerLocalSearch` + Community summaries) | AD-1, AD-3, AD-6, AD-13, AD-18 |
 | Vector-RAG Comparison Baseline (FR-19–FR-22) *(v1.1)* | `ConstructVectorIndex`, `AnswerVectorBaseline` use cases; `EmbeddingPort`, `VectorStorePort` | AD-1, AD-17, AD-18 |

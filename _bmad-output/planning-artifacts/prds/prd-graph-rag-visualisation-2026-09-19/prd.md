@@ -47,7 +47,7 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **UJ-3. Freely exploring the Knowledge Graph.**
   - **Persona + context:** the creator (or a viewer), after a Corpus has been ingested, wanting to browse the graph itself rather than ask it a question.
   - **Entry state:** a Corpus has already been ingested via UJ-1; the Knowledge Graph exists.
-  - **Path:** navigates to the Explore page → sees the full Knowledge Graph with Communities always visible → pans and zooms freely → clicks an Entity → sees its connections, details, and Tags.
+  - **Path:** on the main screen's own graph canvas → pans and zooms freely → clicks an Entity → sees its connections, details, and Tags. **(Updated 2026-09-20:** originally a separate Explore page, merged into the main screen since it duplicated a slightly more capable version of the same canvas behind a second page and a second navigation step — see FR-16/FR-17.)
   - **Climax:** the graph stops being an abstraction tied to one question's answer — it's simply there, browsable on its own terms.
   - **Resolution:** the creator (or viewer) has a concrete, self-directed sense of the graph's actual structure, independent of any specific query.
 
@@ -63,7 +63,7 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **Global Search** — a retrieval mode that answers corpus-wide, thematic questions by aggregating over Community summaries.
 - **Retrieval Trace** — the captured, ordered record of which Entities, Relationships, and Communities were touched while answering a query.
 - **Replay** — the scrubbable, step-by-step visualization of a Retrieval Trace, shown after retrieval completes.
-- **Tag** — a small, user-facing label on an Entity, shown alongside that Entity's connections and details on the Explore page.
+- **Tag** — a small, user-facing label on an Entity, shown alongside that Entity's connections and details in the Entity detail panel.
 - **DRIFT Search** *(v1.1)* — a third retrieval mode: a Community-summary pass first, which spawns targeted Local Search sub-questions from its results, then re-ranks and synthesizes a final answer.
 - **Vector Baseline** *(v1.1)* — a deliberately plain vector-similarity retrieval pipeline (chunk the Corpus → embed → top-k similarity search → synthesize), built to visualize how it differs from GraphRAG, not to be scored against it.
 
@@ -171,17 +171,17 @@ The OpenAI API key is supplied via an environment variable at startup; no in-app
 
 ### 4.7 Graph Exploration
 
-**Description:** A dedicated page for free-form exploration of the full Knowledge Graph, independent of any query — browsing the graph's actual structure rather than asking it a question. Realizes UJ-3.
+**Description:** Free-form exploration of the full Knowledge Graph on the main screen's own canvas, independent of any query — browsing the graph's actual structure rather than asking it a question. Realizes UJ-3. **(Updated 2026-09-20:** originally specified as a dedicated Explore page reached via a persistent link/tab; merged into the main screen since it duplicated a slightly more capable version of the same canvas — pan/zoom plus a node-click detail panel — behind a second page. The consequences below are otherwise unchanged.)
 
 #### FR-16: Explore the full Knowledge Graph
-User can navigate to a dedicated Explore page showing the full Knowledge Graph, with pan and zoom, reached via a persistent link/tab from the main screen.
+The main screen's own graph canvas is pannable and zoomable at all times — no separate page or mode is needed to reach this capability.
 
 **Consequences (testable):**
-- Communities are always visualized on this page (no toggle, unlike FR-7's main-screen behavior) — this page's purpose is structural exploration, so hiding Community structure would work against it.
-- If no Corpus has been ingested yet, the page shows a clear empty state pointing back to the main screen's ingestion entry point, rather than a blank or broken canvas.
+- Communities are visualized on this canvas according to the community-visualization toggle (FR-7) — there is no separate always-on exploration view; the same toggle governs both.
+- If no Corpus has been ingested yet, the canvas shows the main screen's own idle/empty state (FR-1–FR-3's entry point), rather than a blank or broken canvas.
 
 #### FR-17: Inspect an Entity's details
-User can click any Entity on the Explore page to see its connections (Relationships), details, and Tags.
+User can click any Entity on the main screen's graph canvas, at any time, to see its connections (Relationships), details, and Tags.
 
 **Out of Scope:** Editing an Entity, its Relationships, or its Tags — this is a read-only exploration view for v1.
 
@@ -229,7 +229,7 @@ Corpus chunk embeddings are projected into 2D and shown as a scatter; this proje
 - Live/real-time streaming visualization of retrieval (replay only).
 - Packaging or publishing this as a standalone library (future — see brief's Vision).
 - A marketing/showcase website, polished README, and app icon — explicitly parked for later (see addendum).
-- Editing Entities, Relationships, or Tags on the Explore page (read-only for v1).
+- Editing Entities, Relationships, or Tags via the Entity detail panel (read-only for v1).
 
 ## 7. MVP Scope
 
@@ -240,11 +240,11 @@ Corpus chunk embeddings are projected into 2D and shown as a scatter; this proje
 - Chat-based query interface answering via Local Search and Global Search (FR-8–FR-11).
 - Captured, replayable Retrieval Trace with scrub controls (FR-12–FR-13).
 - One-command (Docker Compose) setup with API key via environment variable (FR-14–FR-15).
-- Free-form Knowledge Graph exploration on a dedicated page, with Entity detail inspection (FR-16–FR-17).
+- Free-form Knowledge Graph exploration on the main screen's own canvas, with Entity detail inspection (FR-16–FR-17).
 
 ### 7.2 Out of Scope for MVP
 - Everything listed under Non-Goals above.
-- Editing Entities, Relationships, or Tags on the Explore page — read-only for v1 (FR-17).
+- Editing Entities, Relationships, or Tags via the Entity detail panel — read-only for v1 (FR-17).
 - Library extraction/publishing — deferred to a future version, once the demo itself works. *(Revisit once v1 is stable and used on-stream a few times.)*
 - Marketing website, README polish, and app icon — deferred; parked in the brief's addendum as future roadmap items.
 

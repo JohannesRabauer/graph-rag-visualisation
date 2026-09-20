@@ -30,15 +30,16 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         loadDemoDatasetAndWaitReady();
 
         // Turn the community-visualization toggle OFF before asking anything,
-        // so every hull starts hidden. The checkbox itself is visually
-        // replaced by its own <label>'s custom slider styling (instrument.css)
-        // and isn't the real click target for a user — click the label, same
-        // as a real click would land.
+        // so every hull starts hidden. Clicking the wrapping <label> (rather
+        // than the checkbox directly) exercises the same activation path a
+        // real click on the label's text would take.
         page.locator("label.community-toggle").click();
 
         // GLOBAL Search puts every Community on the trace (AnswerGlobalSearch
-        // always adds one COMMUNITY step per Community, matched or not).
-        page.locator("button.mode-button[data-mode='GLOBAL']").click();
+        // always adds one COMMUNITY step per Community, matched or not). The
+        // radio input itself is visually hidden in favor of its custom dot
+        // (instrument.css) — click the label, same as a real click would land.
+        page.locator("label.mode-choice-option:has(input[value='GLOBAL'])").click();
         page.locator("#chat-input").fill("Tell me about the corpus.");
         page.locator("#chat-form .send-button").click();
 
@@ -67,17 +68,15 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         }
         assertThat(caption).containsText("Sherlock Holmes");
 
-        // Ask the page itself which Community is the singleton (rather than
-        // hard-coding a community id) and read its hull's actual resolved
-        // opacity through the GraphCanvas test hook, which talks to the
-        // real Cytoscape instance the page is running.
+        // Read the singleton's own community id directly off the rendered
+        // graph (Cytoscape's compound-node structure) and check its hull's
+        // actual resolved opacity — no backend call involved.
         Number singletonOpacity = (Number) page.evaluate(
-                "() => fetch('/api/graph').then(r => r.json()).then(body => {"
-                        + "  const singleton = (body.communities || []).find(c => "
-                        + "    (c.memberEntityIdentities || []).length === 1 && "
-                        + "    (c.memberEntityIdentities || [])[0] === '" + SHERLOCK_HOLMES_IDENTITY + "');"
-                        + "  return singleton ? window.GraphCanvas.communityHullOpacity(singleton.communityId) : null;"
-                        + "})");
+                "identity => {"
+                        + "  const communityId = window.GraphCanvas.communityIdForEntity(identity);"
+                        + "  return communityId ? window.GraphCanvas.communityHullOpacity(communityId) : null;"
+                        + "}",
+                SHERLOCK_HOLMES_IDENTITY);
 
         org.assertj.core.api.Assertions.assertThat(singletonOpacity).isNotNull();
         org.assertj.core.api.Assertions.assertThat(singletonOpacity.doubleValue()).isGreaterThan(0.0);
@@ -85,16 +84,15 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         // Sanity check the fix is actually scoped: a hull that is neither the
         // current nor the previous Replay step stays hidden — the toggle's
         // "with vs. without" comparison must still work for everything else
-        // while Replay is open. ("previous" is also force-shown by design —
-        // that community contains "King", the current step's neighbor in the
-        // demo corpus's deterministic extraction — so this excludes both.)
+        // while Replay is open. "Professor Moriarty" sits in a third,
+        // unrelated Community in the demo corpus's deterministic extraction
+        // (neither Sherlock Holmes's own singleton nor "King", the current
+        // step's previous-step neighbor, which is also force-shown by design).
         Number untouchedHullOpacity = (Number) page.evaluate(
-                "() => fetch('/api/graph').then(r => r.json()).then(body => {"
-                        + "  const untouched = (body.communities || []).find(c => "
-                        + "    !(c.memberEntityIdentities || []).includes('" + SHERLOCK_HOLMES_IDENTITY + "') && "
-                        + "    !(c.memberEntityIdentities || []).includes('king::concept'));"
-                        + "  return untouched ? window.GraphCanvas.communityHullOpacity(untouched.communityId) : null;"
-                        + "})");
+                "() => {"
+                        + "  const communityId = window.GraphCanvas.communityIdForEntity('professor moriarty::concept');"
+                        + "  return communityId ? window.GraphCanvas.communityHullOpacity(communityId) : null;"
+                        + "}");
 
         org.assertj.core.api.Assertions.assertThat(untouchedHullOpacity).isNotNull();
         org.assertj.core.api.Assertions.assertThat(untouchedHullOpacity.doubleValue()).isEqualTo(0.0);

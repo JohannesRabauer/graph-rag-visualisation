@@ -647,16 +647,29 @@
     legend.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   }
 
-  // Resolves a RetrievalStep's node id on the Cytoscape canvas. ENTITY (and
-  // any future RELATIONSHIP) steps use the same `normalizedIdentity()`
-  // string Story 4.3's SSE events already use as node ids; COMMUNITY steps
-  // use the `community::` + id prefix `addCommunity` gives its compound
-  // parent node.
+  // Resolves a RetrievalStep's node id on the Cytoscape canvas. ENTITY steps
+  // use the same `normalizedIdentity()` string Story 4.3's SSE events
+  // already use as node ids; COMMUNITY steps use the `community::` + id
+  // prefix `addCommunity` gives its compound parent node. RELATIONSHIP
+  // steps have no node of their own — see `parseRelationshipEdgeId` and
+  // `highlightRetrievalStep` below, which resolve them as edges instead.
   function stepNodeId(step) {
     if (!step || !step.identifier) {
       return null;
     }
     return step.kind === 'COMMUNITY' ? 'community::' + step.identifier : step.identifier;
+  }
+
+  // A RELATIONSHIP step's `identifier` is built (AnswerLocalSearch) with
+  // the exact same `sourceIdentity->type->targetIdentity` convention
+  // `addRelationship` below uses for the rendered edge's own id, so it
+  // resolves directly to a real edge rather than needing to be inferred
+  // from adjacent ENTITY steps.
+  function parseRelationshipEdgeId(identifier) {
+    var parts = String(identifier || '').split('->');
+    return parts.length === 3
+      ? { sourceIdentity: parts[0], targetIdentity: parts[2] }
+      : null;
   }
 
   // Looks for every edge connecting the two given node ids in either
@@ -707,32 +720,63 @@
 
     // Only pairs from the current step onward are "not yet reached" — a
     // pair entirely behind currentIndex was already passed and should not
-    // read as an upcoming/dashed preview.
+    // read as an upcoming/dashed preview. Skipped for any pair touching a
+    // RELATIONSHIP step: that step is already an edge, not a node either
+    // side of one, so there's nothing for findEdgesBetween to bridge.
     for (var i = currentIndex; i < steps.length - 1; i += 1) {
-      findEdgesBetween(stepNodeId(steps[i]), stepNodeId(steps[i + 1])).forEach(function (edge) {
-        edge.addClass('edge-upcoming');
-      });
+      if (steps[i].kind !== 'RELATIONSHIP' && steps[i + 1].kind !== 'RELATIONSHIP') {
+        findEdgesBetween(stepNodeId(steps[i]), stepNodeId(steps[i + 1])).forEach(function (edge) {
+          edge.addClass('edge-upcoming');
+        });
+      }
     }
 
     if (current) {
-      var currentNode = cy.getElementById(stepNodeId(current));
-      if (currentNode && currentNode.length > 0) {
-        currentNode.addClass('step-active');
-      }
+      highlightRetrievalStep(current, 'step-active');
     }
 
     if (previous) {
-      var previousNode = cy.getElementById(stepNodeId(previous));
-      if (previousNode && previousNode.length > 0) {
-        previousNode.addClass('step-previous');
-      }
+      highlightRetrievalStep(previous, 'step-previous');
     }
 
-    if (previous && current) {
+    if (previous && current && previous.kind !== 'RELATIONSHIP' && current.kind !== 'RELATIONSHIP') {
       findEdgesBetween(stepNodeId(previous), stepNodeId(current)).forEach(function (edge) {
         edge.removeClass('edge-upcoming');
         edge.addClass('edge-traversed');
       });
+    }
+  }
+
+  // Applies a Replay step's highlight. A RELATIONSHIP step names a real
+  // rendered edge directly (see `parseRelationshipEdgeId`) — mark it
+  // traversed and ring both of its endpoint Entities with the same class a
+  // plain ENTITY step's own node would get, so the hop reads clearly as one
+  // unit. Any other kind just highlights its own node, as before.
+  function highlightRetrievalStep(step, nodeClass) {
+    if (!cy || !step) {
+      return;
+    }
+    if (step.kind === 'RELATIONSHIP') {
+      var edge = cy.getElementById(step.identifier);
+      if (edge && edge.length > 0) {
+        edge.addClass('edge-traversed');
+      }
+      var endpoints = parseRelationshipEdgeId(step.identifier);
+      if (endpoints) {
+        var sourceNode = cy.getElementById(endpoints.sourceIdentity);
+        var targetNode = cy.getElementById(endpoints.targetIdentity);
+        if (sourceNode && sourceNode.length > 0) {
+          sourceNode.addClass(nodeClass);
+        }
+        if (targetNode && targetNode.length > 0) {
+          targetNode.addClass(nodeClass);
+        }
+      }
+      return;
+    }
+    var node = cy.getElementById(stepNodeId(step));
+    if (node && node.length > 0) {
+      node.addClass(nodeClass);
     }
   }
 
@@ -797,6 +841,39 @@
     return hull.numericStyle('background-opacity');
   }
 
+  // Test-support only: the raw communityId (no `community::` prefix) the
+  // given Entity is currently parented under, i.e. which rendered hull it
+  // belongs to — reads Cytoscape's own compound-node structure directly
+  // rather than depending on any backend endpoint. Returns null if the
+  // Entity isn't rendered or isn't inside a community hull.
+  function communityIdForEntity(identity) {
+    if (!cy || !identity) {
+      return null;
+    }
+    var node = cy.getElementById(identity);
+    if (!node || node.length === 0) {
+      return null;
+    }
+    var parent = node.parent();
+    if (!parent || parent.length === 0) {
+      return null;
+    }
+    return communityIdFromParentId(parent.id());
+  }
+
+  // Test-support only: whether a rendered element (node, hull, or edge —
+  // Cytoscape ids are unique across all of them) currently carries a given
+  // class. Generic on purpose, so it covers any future highlight class
+  // without a new single-purpose hook each time — e.g. asserting a
+  // RetrievalStep's edge actually got `edge-traversed` during Replay.
+  function elementHasClass(elementId, className) {
+    if (!cy || !elementId) {
+      return false;
+    }
+    var element = cy.getElementById(elementId);
+    return !!(element && element.length > 0 && element.hasClass(className));
+  }
+
   window.GraphCanvas = {
     init: init,
     addEntity: addEntity,
@@ -809,6 +886,8 @@
     onBackgroundTap: onBackgroundTap,
     focusCommunity: focusCommunity,
     simulateTap: simulateTap,
-    communityHullOpacity: communityHullOpacity
+    communityHullOpacity: communityHullOpacity,
+    communityIdForEntity: communityIdForEntity,
+    elementHasClass: elementHasClass
   };
 })();
