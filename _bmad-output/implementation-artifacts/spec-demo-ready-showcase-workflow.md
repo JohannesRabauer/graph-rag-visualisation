@@ -2,7 +2,7 @@
 title: 'Demo-ready end-to-end showcase workflow'
 type: 'feature'
 created: '2026-09-20'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -95,6 +95,7 @@ baseline_commit: '39bd7917812bc2a0d4e994f6458c3c2a171dd2fd'
   - `graphrag-core/src/test/java/com/graphraglens/core/usecase/ExtractEntitiesAndRelationshipsTest.java`
   - `graphrag-adapter-neo4j/src/test/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapterTest.java`
 - Verification is blocked in this environment because JDK 25 is unavailable:
+- User accepted this temporary verification gap on 2026-09-20 to continue and merge; full JDK-25 validation is deferred to follow-up environment run.
   - `mvn test` fails at enforcer (`GraphRAG Lens requires JDK 25 or newer`)
   - `mvn -Denforcer.skip=true test` fails during compile (`release version 25 not supported`)
   - `mvn -pl graphrag-web test` fails standalone dependency resolution without prior reactor install.
