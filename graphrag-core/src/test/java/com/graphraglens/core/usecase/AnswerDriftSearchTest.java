@@ -38,7 +38,7 @@ class AnswerDriftSearchTest {
     }
 
     @Test
-    void returnsAnOrdinaryAnswerWhenNoCommunityClearlyMatchesTheQuestion() {
+    void reportsTheDistinctNoAnswerShapeWhenTheCommunityPassYieldsNoViableSubQuestions() {
         StubGraphStore graphStore = new StubGraphStore(
                 List.of(new Community("community-1", "This community centers on Baker Street and violin practice.")),
                 List.of(),
@@ -47,10 +47,10 @@ class AnswerDriftSearchTest {
         DriftSearchAnswer result = new AnswerDriftSearch(graphStore, stubLlmPort())
                 .answer("zzqqxx nonsense gibberish flimflam");
 
-        assertFalse(result.noAnswer());
-        assertNotNull(result.answer());
-        assertTrue(result.answer().contains("none of them clearly matched"));
-        assertNull(result.reason());
+        assertTrue(result.noAnswer());
+        assertNull(result.answer());
+        assertNotNull(result.reason());
+        assertTrue(result.reason().contains("no sub-questions could be generated"));
         assertEquals(1, result.steps().size());
         assertEquals(RetrievalStep.Kind.COMMUNITY, result.steps().getFirst().kind());
     }
@@ -222,7 +222,7 @@ class AnswerDriftSearchTest {
                         "corpus-b", List.of()));
 
         DriftSearchAnswer result = new AnswerDriftSearch(graphStore, stubLlmPort())
-                .answer("Tell me about Moriarty", "corpus-a");
+                .answer("Tell me about Irene Adler", "corpus-a");
 
         assertFalse(result.noAnswer());
         assertNotNull(result.answer());
@@ -251,6 +251,33 @@ class AnswerDriftSearchTest {
         assertFalse(result.noAnswer());
         assertNotNull(result.answer());
         assertTrue(result.answer().contains("did not find a graph-grounded local match yet"));
+    }
+
+    @Test
+    void ordersTiedCandidatesLexicographicallyByCommunityIdRegardlessOfStoreOrder() {
+        StubGraphStore graphStore = new StubGraphStore(
+                List.of(
+                        new Community("community-b", "This community centers on Dr Watson, a detectives companion."),
+                        new Community("community-a", "This community centers on Sherlock Holmes, a detectives icon.")),
+                List.of(
+                        new Entity("Dr Watson", "Person"),
+                        new Entity("Mary Morstan", "Person"),
+                        new Entity("Sherlock Holmes", "Person"),
+                        new Entity("Irene Adler", "Person")),
+                List.of(
+                        new Relationship("Dr Watson", "Person", "MARRIED", "Mary Morstan", "Person"),
+                        new Relationship("Sherlock Holmes", "Person", "INVESTIGATES", "Irene Adler", "Person")));
+
+        DriftSearchAnswer result = new AnswerDriftSearch(graphStore, stubLlmPort())
+                .answer("Tell me about detectives");
+
+        assertFalse(result.noAnswer());
+        assertNotNull(result.answer());
+        // Both communities tie on the "detectives" token, but the default
+        // LlmPort receives tied candidates already sorted lexicographically
+        // by community id ("community-a" before "community-b") regardless of
+        // the store's own iteration order, so the Sherlock Holmes hop wins.
+        assertTrue(result.answer().contains("Sherlock Holmes investigates Irene Adler."));
     }
 
     private static LlmPort stubLlmPort() {

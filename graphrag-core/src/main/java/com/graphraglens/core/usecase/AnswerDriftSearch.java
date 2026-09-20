@@ -56,10 +56,7 @@ public class AnswerDriftSearch {
         }
 
         if (bestScore <= 0) {
-            return DriftSearchAnswer.matched(
-                    "DRIFT searched the available Community summaries, but none of them clearly matched that question "
-                            + "yet. Try asking about a named person, place, or event.",
-                    steps);
+            return DriftSearchAnswer.noViableSubQuestions(steps);
         }
 
         int topScore = bestScore;

@@ -76,7 +76,7 @@ development_status:
 
   epic-7: in-progress
   7-1-add-drift-to-the-mode-toggle-and-query-contract: done
-  7-2-implement-answerdriftsearch: backlog
+  7-2-implement-answerdriftsearch: done
   7-3-capture-the-drift-trace: backlog
   7-4-replay-the-drift-trace-as-a-branching-tree: backlog
   epic-7-retrospective: optional
