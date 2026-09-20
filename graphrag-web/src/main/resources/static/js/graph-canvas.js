@@ -210,18 +210,30 @@
         {
           // Compound (community-hull) version of the same two states: only
           // the border changes, since a compound node's width/height must
-          // stay driven by its children's layout, not a fixed size.
+          // stay driven by its children's layout, not a fixed size. Also
+          // restores background-opacity/label over `.hull-hidden` (below,
+          // earlier in this array) — a Retrieval Trace step touching a
+          // Community must be visible during Replay even if the community-
+          // visualization toggle is currently OFF, otherwise the step
+          // advances with nothing to see (deferred-work: Story 5.2 gap).
+          // This forces only the specific hull(s) a step touches; every
+          // other hidden hull is untouched, so the toggle's "with vs.
+          // without" comparison still works once Replay closes.
           selector: 'node.step-active.community-hull',
           style: {
             'border-color': readCssVar('--active', '#E85D2B'),
-            'border-width': 3
+            'border-width': 3,
+            'background-opacity': 0.6,
+            label: 'data(label)'
           }
         },
         {
           selector: 'node.step-previous.community-hull',
           style: {
             'border-color': readCssVar('--accent', '#2563EB'),
-            'border-width': 2.5
+            'border-width': 2.5,
+            'background-opacity': 0.6,
+            label: 'data(label)'
           }
         },
         {
@@ -743,6 +755,48 @@
     }
   }
 
+  // Test-support only: fires a real Cytoscape 'tap' event on a rendered node
+  // (entity id or `community::<id>` hull) or, with no identity, on the
+  // background — exercising the exact same `cy.on('tap', ...)` handler
+  // wiring (including the hull-vs-entity branching in `init`'s own tap
+  // listener) that a real pointer click would, without depending on pixel
+  // coordinates translated through a still-animating force-directed layout
+  // (`queueLayout`'s 'cose' layout), which proved flaky under headless
+  // browser automation. Returns false if the node isn't currently rendered.
+  function simulateTap(identity) {
+    if (!cy) {
+      return false;
+    }
+    if (!identity) {
+      cy.emit('tap');
+      return true;
+    }
+    var node = cy.getElementById(identity);
+    if (!node || node.length === 0) {
+      return false;
+    }
+    node.emit('tap');
+    return true;
+  }
+
+  // Test-support only: the actual rendered background-opacity Cytoscape's
+  // style cascade resolves for a Community hull (0 when hidden by the
+  // toggle, restored to ~0.6 when visible — whether because the toggle is
+  // ON or because Replay is forcing this specific hull visible for a
+  // Community step). Reading the resolved style, rather than re-deriving
+  // "should this be visible" from class names, is what actually determines
+  // what a viewer sees on screen.
+  function communityHullOpacity(communityId) {
+    if (!cy || !communityId) {
+      return null;
+    }
+    var hull = cy.getElementById('community::' + communityId);
+    if (!hull || hull.length === 0) {
+      return null;
+    }
+    return hull.numericStyle('background-opacity');
+  }
+
   window.GraphCanvas = {
     init: init,
     addEntity: addEntity,
@@ -753,6 +807,8 @@
     clearStepHighlights: clearStepHighlights,
     onNodeTap: onNodeTap,
     onBackgroundTap: onBackgroundTap,
-    focusCommunity: focusCommunity
+    focusCommunity: focusCommunity,
+    simulateTap: simulateTap,
+    communityHullOpacity: communityHullOpacity
   };
 })();
