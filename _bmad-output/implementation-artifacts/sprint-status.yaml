@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-19-2026 13:59
-last_updated: 09-20-2026 02:35
+last_updated: 09-20-2026 03:00
 project: graph-rag-visualisation
 project_key: NOKEY
 tracking_system: file-system
@@ -69,7 +69,7 @@ development_status:
   5-2-replay-the-retrieval-trace: review
   epic-5-retrospective: optional
 
-  epic-6: backlog
-  6-1-explore-the-full-knowledge-graph: backlog
+  epic-6: in-progress
+  6-1-explore-the-full-knowledge-graph: in-progress
   6-2-inspect-an-entity-s-details: backlog
   epic-6-retrospective: optional
