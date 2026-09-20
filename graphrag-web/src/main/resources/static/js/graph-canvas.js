@@ -8,7 +8,7 @@
   // layout runs. Toggling the community view OFF just hides that background
   // (via a style class) while member nodes stay visible and stay parented,
   // so toggling back ON needs no re-fetch and no replay of the fold-in.
-  var COMMUNITY_TOKEN_COUNT = 5;
+  var COMMUNITY_TOKEN_COUNT = 10;
   var HULL_HIDDEN_CLASS = 'hull-hidden';
 
   var cy = null;
@@ -55,6 +55,23 @@
       fill: readCssVar('--community-' + index, '#DCE9FD'),
       labelColor: readCssVar('--community-' + index + '-label', '#5C82C4')
     };
+  }
+
+  // The legend is far more useful naming *what a community is about* than
+  // showing its opaque internal id (e.g. "community-7") — trims the AI/
+  // deterministic summary down to a short label, falling back to the raw
+  // id only when no summary was provided.
+  var LEGEND_LABEL_MAX_LENGTH = 42;
+
+  function legendLabel(communityId, summary) {
+    var text = (summary || '').trim();
+    if (!text) {
+      return communityId;
+    }
+    if (text.length <= LEGEND_LABEL_MAX_LENGTH) {
+      return text;
+    }
+    return text.slice(0, LEGEND_LABEL_MAX_LENGTH - 1).trim() + '…';
   }
 
   function init(options) {
@@ -337,7 +354,8 @@
     });
 
     communityLegendEntries[communityId] = {
-      name: communityId,
+      name: legendLabel(communityId, summary),
+      fullSummary: summary || communityId,
       fill: colors.fill,
       labelColor: colors.labelColor
     };
@@ -370,6 +388,7 @@
 
       var item = document.createElement('span');
       item.className = 'graph-legend-item';
+      item.title = entry.fullSummary || entry.name;
 
       var swatch = document.createElement('span');
       swatch.className = 'graph-legend-swatch';
