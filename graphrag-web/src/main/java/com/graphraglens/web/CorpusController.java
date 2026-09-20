@@ -16,11 +16,14 @@ import com.graphraglens.core.usecase.AnswerGlobalSearch;
 import com.graphraglens.core.usecase.AnswerLocalSearch;
 import com.graphraglens.core.usecase.AnswerDriftSearch;
 import com.graphraglens.core.usecase.BuildKnowledgeGraph;
+import com.graphraglens.core.usecase.ConstructVectorIndex;
 import com.graphraglens.core.usecase.DetectCommunities;
 import com.graphraglens.core.usecase.DriftSearchAnswer;
 import com.graphraglens.core.usecase.GlobalSearchAnswer;
 import com.graphraglens.core.usecase.IngestCorpus;
 import com.graphraglens.core.usecase.LocalSearchAnswer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +53,7 @@ import java.util.concurrent.CompletableFuture;
 @RestController
 public class CorpusController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(CorpusController.class);
     private static final String EXTRACTION_FAILURE_MESSAGE =
             "The LLM call failed during knowledge graph extraction. Nothing was retried — try again when ready.";
     private static final String GRAPH_BUILDING_MESSAGE =
@@ -65,11 +69,12 @@ public class CorpusController {
     private final LlmPort llmPort;
     private final GraphStorePort graphStorePort;
     private final RetrievalTraceStore retrievalTraceStore;
+    private final ConstructVectorIndex constructVectorIndex;
 
     public CorpusController(IngestCorpus ingestCorpus, CorpusStore corpusStore,
                            List<DocumentParserPort> documentParsers, DemoDatasetService demoDatasetService,
                            CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort,
-                           RetrievalTraceStore retrievalTraceStore) {
+                           RetrievalTraceStore retrievalTraceStore, ConstructVectorIndex constructVectorIndex) {
         this.ingestCorpus = ingestCorpus;
         this.corpusStore = corpusStore;
         this.documentParsers = documentParsers;
@@ -78,6 +83,7 @@ public class CorpusController {
         this.llmPort = llmPort;
         this.graphStorePort = graphStorePort;
         this.retrievalTraceStore = retrievalTraceStore;
+        this.constructVectorIndex = constructVectorIndex;
     }
 
     @GetMapping(value = "/api/corpora/{corpusId}/progress", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -101,6 +107,7 @@ public class CorpusController {
         corpusProgressService.emit(corpus.id(), "ingestion-started",
                 Map.of("message", "Knowledge graph construction started for " + corpus.name()));
         startKnowledgeGraphConstruction(corpus);
+        startVectorIndexConstruction(corpus);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(corpusPayload(corpus));
     }
@@ -112,6 +119,7 @@ public class CorpusController {
         corpusProgressService.emit(corpus.id(), "ingestion-started",
                 Map.of("message", "Knowledge graph construction started for " + corpus.name()));
         startKnowledgeGraphConstruction(corpus);
+        startVectorIndexConstruction(corpus);
         return ResponseEntity.status(HttpStatus.CREATED).body(corpusPayload(corpus));
     }
 
@@ -273,6 +281,17 @@ public class CorpusController {
                 corpusStore.markFailed(corpus.id());
                 corpusProgressService.emit(corpus.id(), "error",
                         Map.of("error", EXTRACTION_FAILURE_MESSAGE));
+            }
+        });
+    }
+
+    private void startVectorIndexConstruction(Corpus corpus) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                constructVectorIndex.run(corpus);
+            } catch (Exception ex) {
+                LOG.warn("Vector index construction failed for corpus {} — this does not affect knowledge graph construction.",
+                        corpus.id(), ex);
             }
         });
     }

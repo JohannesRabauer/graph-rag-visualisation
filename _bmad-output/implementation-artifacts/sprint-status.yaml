@@ -81,8 +81,8 @@ development_status:
   7-4-replay-the-drift-trace-as-a-branching-tree: done
   epic-7-retrospective: optional
 
-  epic-8: backlog
-  8-1-build-the-vector-index-alongside-the-knowledge-graph: backlog
+  epic-8: in-progress
+  8-1-build-the-vector-index-alongside-the-knowledge-graph: done
   8-2-implement-answervectorbaseline: backlog
   8-3-trigger-the-vector-baseline-on-demand-from-an-answer: backlog
   8-4-capture-the-vector-trace: backlog

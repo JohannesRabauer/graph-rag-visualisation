@@ -4,6 +4,7 @@ import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.GraphExtraction;
 import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
+import com.graphraglens.core.usecase.ConstructVectorIndex;
 import com.jayway.jsonpath.JsonPath;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -30,6 +31,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -59,6 +62,9 @@ class CorpusControllerTest {
 
     @MockitoSpyBean
     private CorpusProgressService corpusProgressService;
+
+    @MockitoSpyBean
+    private ConstructVectorIndex constructVectorIndex;
 
     @Test
     void progressEndpointStreamsHeartbeatEventsWithNamedEventEnvelope() throws Exception {
@@ -145,6 +151,26 @@ class CorpusControllerTest {
         assertThat(stored.get().documents()).allSatisfy(document ->
                 assertThat(document.content()).isNotBlank());
         assertThat(stored.get().documents().get(0).content()).contains("Irene Adler");
+    }
+
+    @Test
+    void aVectorIndexConstructionFailureDoesNotAffectKnowledgeGraphConstructionOrCorpusProgressEvents() throws Exception {
+        doThrow(new RuntimeException("embedding boom")).when(constructVectorIndex).run(any());
+
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        // Knowledge-graph construction must still run to completion...
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+        assertThat(corpusStore.status(corpusId)).isEqualTo(CorpusStore.CorpusWorkflowStatus.READY);
+
+        // ...and the vector-index failure must never be surfaced as a corpus/progress error.
+        verify(corpusProgressService, never()).emit(eq(corpusId), eq("error"), any());
     }
 
     @Test
@@ -343,7 +369,7 @@ class CorpusControllerTest {
         Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
@@ -358,7 +384,7 @@ class CorpusControllerTest {
         Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "DRIFT"));
@@ -375,7 +401,7 @@ class CorpusControllerTest {
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markFailed(corpus.id());
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
@@ -400,7 +426,7 @@ class CorpusControllerTest {
         scopedGraphStore.persistEntities(corpusB.id(), List.of(new com.graphraglens.core.domain.Entity("Professor Moriarty", "Person")));
 
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore());
+                null, isolatedCorpusStore, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore(), null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpusA.id(), Map.of("question", "Who is Moriarty?", "mode", "LOCAL"));
@@ -533,7 +559,7 @@ class CorpusControllerTest {
         isolatedCorpusStore.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore);
+                null, isolatedCorpusStore, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Try DRIFT", "mode", "DRIFT"));
@@ -563,7 +589,7 @@ class CorpusControllerTest {
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markReady(corpus.id());
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore());
+                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Try something else", "mode", "FOO"));

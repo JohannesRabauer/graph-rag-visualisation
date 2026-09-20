@@ -37,7 +37,7 @@ class CorpusControllerGlobalSearchTest {
 
         CorpusController controller = new CorpusController(
                 null, corpusStore, List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
-                retrievalTraceStore);
+                retrievalTraceStore, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 "corpus-1", Map.of("question", "What is this corpus about?", "mode", "GLOBAL"));
@@ -68,7 +68,7 @@ class CorpusControllerGlobalSearchTest {
     void fetchingAnUnknownTraceIdThrowsIllegalArgumentExceptionThatMapsTo404() {
         CorpusController controller = new CorpusController(
                 null, new CorpusStore(), List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
-                new RetrievalTraceStore());
+                new RetrievalTraceStore(), null);
 
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                         () -> controller.trace("unknown-trace-id")))
@@ -94,7 +94,7 @@ class CorpusControllerGlobalSearchTest {
                         "This community centers on Professor Moriarty and networks.")));
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, null, graphStore, new RetrievalTraceStore());
+                null, corpusStore, List.of(), null, null, null, graphStore, new RetrievalTraceStore(), null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 firstCorpus.id(), Map.of("question", "Tell me about Moriarty", "mode", "GLOBAL"));
