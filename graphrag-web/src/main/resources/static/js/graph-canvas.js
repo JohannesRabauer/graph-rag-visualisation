@@ -50,7 +50,13 @@
     };
   }
 
-  function init() {
+  function init(options) {
+    // `interactive` gates user pan/zoom (Story 6.1's Explore page passes
+    // `{ interactive: true }`); the default stays `false`, matching the
+    // main screen's existing pan/zoom-disabled behavior unchanged
+    // (Story 6.1 AC4 — a regression guard for this shared module).
+    var interactive = !!(options && options.interactive);
+
     var container = graphContainer();
     if (cy) {
       cy.destroy();
@@ -68,6 +74,8 @@
     cy = window.cytoscape({
       container: container,
       elements: [],
+      userZoomingEnabled: interactive,
+      userPanningEnabled: interactive,
       style: [
         {
           selector: 'node',

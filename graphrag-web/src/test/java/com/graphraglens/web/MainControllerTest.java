@@ -75,4 +75,36 @@ class MainControllerTest {
         assertThat(body).contains("id=\"demo-dataset-button\"");
         assertThat(body).contains("upload.js");
     }
+
+    @Test
+    void mainScreenLinksToTheExplorePage() throws Exception {
+        String body = mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body).contains("href=\"/explore\"");
+    }
+
+    @Test
+    void rendersTheExplorePage() throws Exception {
+        String body = mockMvc.perform(get("/explore"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body).contains("instrument.css");
+        assertThat(body).contains("id=\"graph-canvas\"");
+        assertThat(body).contains("id=\"graph-legend\"");
+        assertThat(body).contains("id=\"explore-empty-state\"");
+        assertThat(body).contains("href=\"/\"");
+        assertThat(body).contains("cytoscape@3.28.1");
+        assertThat(body).contains("graph-canvas.js");
+        assertThat(body).contains("explore.js");
+        assertThat(body).doesNotContain("id=\"chat-panel\"");
+        assertThat(body).doesNotContain("id=\"community-toggle-wrap\"");
+        assertThat(body).doesNotContain("id=\"replay-scrubber\"");
+    }
 }

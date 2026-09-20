@@ -155,6 +155,48 @@ body {
   flex-shrink: 0;
 }
 
+/* ---- app bar nav ----
+   The persistent link to the Explore page (Story 6.1), and — on the
+   Explore page itself — the link back to the main screen. Grouped with
+   the corpus-chip slot on the right side of the app bar. */
+.app-bar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.app-bar-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.app-bar-link {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-600);
+  text-decoration: none;
+}
+
+.app-bar-link:hover {
+  color: var(--ink-900);
+  background: var(--chrome);
+}
+
+.app-bar-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-bar-link.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .brand-mark::before {
   content: "";
   position: absolute;
