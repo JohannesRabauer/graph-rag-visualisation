@@ -793,6 +793,130 @@ body {
   background: var(--ink-400);
 }
 
+/* ---- node detail panel ----
+   DESIGN.md `components.node-detail-panel`: Explore page only, slides in
+   from the right on Entity node click (Story 6.2). Stays permanently in
+   the DOM — never inserted/removed — and is toggled only via the
+   `.is-open` class flipping `transform`, so `explore.js` never has to do a
+   destructive full-subtree textContent/innerHTML swap (the exact mistake
+   Story 6.1's own review caught). `.app-frame`'s `overflow: hidden`
+   (above) clips the panel while it sits off-canvas at `translateX(100%)`. */
+.node-detail-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 300px;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.2s ease, visibility 0.2s ease;
+}
+
+.node-detail-panel.is-open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.node-detail-close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-400);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.node-detail-close:hover {
+  color: var(--ink-900);
+}
+
+.node-detail-eyebrow {
+  margin: 0;
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+.node-detail-name {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.node-detail-type {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-600);
+}
+
+.node-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.node-detail-heading {
+  margin: 0;
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+.node-detail-relationships {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+}
+
+.node-detail-relationships-empty {
+  color: var(--ink-400);
+}
+
+.node-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.node-detail-tag {
+  padding: var(--space-1) var(--space-2);
+  background: var(--chrome);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-900);
+}
+
 /* ---- error banner ----
    DESIGN.md `components.error-banner`: Active-soft fill, Active border,
    plain-language message, no icon glyphs beyond the warm-color cue. */

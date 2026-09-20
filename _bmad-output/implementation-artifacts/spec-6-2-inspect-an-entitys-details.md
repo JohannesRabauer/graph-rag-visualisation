@@ -2,7 +2,7 @@
 title: 'Inspect an Entity''s Details'
 type: 'feature'
 created: '2026-09-20'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -48,11 +48,11 @@ baseline_commit: '42722754e7ba4b5d4e4e5ccbbd6bdf79b0d52881'
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `graphrag-web/.../templates/explore.html` -- add `#entity-detail-panel` markup -- gives `explore.js` DOM to populate/toggle
-- [ ] `graphrag-web/.../static/css/instrument.css` -- add `.node-detail-panel` styles per DESIGN.md tokens -- slide-in-from-right visual treatment
-- [ ] `graphrag-web/.../static/js/graph-canvas.js` -- add `onNodeTap`/`onBackgroundTap`, wire Cytoscape `tap` handlers, export both -- lets `explore.js` react to clicks with no per-page Cytoscape wiring duplication
-- [ ] `graphrag-web/.../static/js/explore.js` -- wire the two callbacks to open/update/close/toggle the panel from already-fetched graph data -- no new network call per click
-- [ ] `graphrag-web/.../test/java/com/graphraglens/web/MainControllerTest.java` -- extend `rendersTheExplorePage` to assert `#entity-detail-panel` markup -- server-rendered coverage matching Story 6.1's own test pattern
+- [x] `graphrag-web/.../templates/explore.html` -- add `#entity-detail-panel` markup -- gives `explore.js` DOM to populate/toggle
+- [x] `graphrag-web/.../static/css/instrument.css` -- add `.node-detail-panel` styles per DESIGN.md tokens -- slide-in-from-right visual treatment
+- [x] `graphrag-web/.../static/js/graph-canvas.js` -- add `onNodeTap`/`onBackgroundTap`, wire Cytoscape `tap` handlers, export both -- lets `explore.js` react to clicks with no per-page Cytoscape wiring duplication
+- [x] `graphrag-web/.../static/js/explore.js` -- wire the two callbacks to open/update/close/toggle the panel from already-fetched graph data -- no new network call per click
+- [x] `graphrag-web/.../test/java/com/graphraglens/web/MainControllerTest.java` -- extend `rendersTheExplorePage` to assert `#entity-detail-panel` markup -- server-rendered coverage matching Story 6.1's own test pattern
 
 **Acceptance Criteria:**
 - Given the Explore page has rendered the graph, when I click an Entity node, then a panel slides in from the right showing that Entity's name, type, Relationships, and a Tags row
@@ -63,9 +63,21 @@ baseline_commit: '42722754e7ba4b5d4e4e5ccbbd6bdf79b0d52881'
 
 ## Implementation Notes
 
+All 5 Code Map files changed exactly as planned. The close button (`#entity-detail-close`, present in the Code Map's markup description though not named in the AC list) was wired to the same close function as the two AC-specified close paths (same node again, background click) — a dead control otherwise, and it adds no edit affordance.
+
+Verification: `mvn test` (`JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`) -- full reactor `BUILD SUCCESS`, 29/29 web tests passing (unchanged count — `MainControllerTest`'s existing method gained one more assertion rather than a new test method). `node --check` passed on `explore.js` and `graph-canvas.js`. Re-verified independently after the implementation subagent's own report: read the full diff, re-ran the same commands myself with the same result.
+
+No browser is available in this sandbox, so the manual click/slide-in check from the Verification section was not performed here — it remains a human/browser task.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Self-review (single-pass, given the diff's small, contained footprint and its close match to the spec) against the frozen Boundaries, I/O Matrix, and AC:
+
+- All 6 I/O Matrix rows verified correct by reading the diff: hull-node clicks are excluded via an explicit `hasClass('community-hull')` check (not left to selector specificity), same-node-again closes, a different node swaps content without an intermediate close, background tap closes via Cytoscape's `evt.target === cy` idiom, and an Entity with no Relationships renders a "No relationships" line rather than an empty list.
+- **defer** — No automated, JS-executing test covers the actual click/open/close/swap behavior this story adds (`MainControllerTest`'s new assertion only checks that the panel's static markup exists in server-rendered HTML). Same root cause as the identically-shaped, already-deferred Story 5.2 and Story 6.1 entries: AD-15 forbids a JS build toolchain, and no lightweight JS test runner exists in this repo. Logged in `deferred-work.md`.
+- No other findings — the implementation matches the Code Map's file list, the AC, and the Design Notes' stated approach (client-side filtering of already-fetched data, no destructive DOM overwrite) with no deviations.
 
 ## Design Notes
 

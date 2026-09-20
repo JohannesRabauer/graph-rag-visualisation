@@ -7,8 +7,106 @@
   var graphCanvasEl = document.getElementById('graph-canvas');
   var graphEyebrow = document.getElementById('graph-eyebrow');
 
+  // Entity detail panel (Story 6.2). The panel element stays permanently in
+  // the DOM — opening/closing/swapping only toggles the `.is-open` class and
+  // updates specific child elements' textContent, never a wholesale
+  // textContent/innerHTML overwrite of the panel itself (Story 6.1's own
+  // review-caught pitfall — see the spec's Design Notes).
+  var entityDetailPanel = document.getElementById('entity-detail-panel');
+  var entityDetailClose = document.getElementById('entity-detail-close');
+  var entityDetailName = document.getElementById('entity-detail-name');
+  var entityDetailType = document.getElementById('entity-detail-type');
+  var entityDetailRelationships = document.getElementById('entity-detail-relationships');
+  var entityDetailTags = document.getElementById('entity-detail-tags');
+  var selectedIdentity = null;
+
   if (!graphCanvasEl) {
     return;
+  }
+
+  if (entityDetailClose) {
+    entityDetailClose.addEventListener('click', function () {
+      closeEntityDetailPanel();
+    });
+  }
+
+  function closeEntityDetailPanel() {
+    selectedIdentity = null;
+    if (!entityDetailPanel) {
+      return;
+    }
+    entityDetailPanel.classList.remove('is-open');
+    entityDetailPanel.setAttribute('aria-hidden', 'true');
+  }
+
+  // Builds one line per Relationship involving `identity`, matching on
+  // `sourceIdentity`/`targetIdentity` against the already-fetched
+  // `body.relationships` (no new endpoint — AD-14's read-path philosophy).
+  function relationshipLines(identity, relationships) {
+    var lines = [];
+    (relationships || []).forEach(function (relationship) {
+      var isSource = relationship.sourceIdentity === identity;
+      var isTarget = relationship.targetIdentity === identity;
+      if (!isSource && !isTarget) {
+        return;
+      }
+      var otherName = isSource ? relationship.target : relationship.source;
+      var relationshipType = relationship.type || 'related_to';
+      lines.push(isSource
+          ? '→ ' + relationshipType + ' → ' + otherName
+          : '← ' + relationshipType + ' ← ' + otherName);
+    });
+    return lines;
+  }
+
+  function renderRelationships(identity, relationships) {
+    if (!entityDetailRelationships) {
+      return;
+    }
+    entityDetailRelationships.textContent = '';
+    var lines = relationshipLines(identity, relationships);
+    if (lines.length === 0) {
+      var empty = document.createElement('li');
+      empty.className = 'node-detail-relationships-empty';
+      empty.textContent = 'No relationships';
+      entityDetailRelationships.appendChild(empty);
+      return;
+    }
+    lines.forEach(function (line) {
+      var item = document.createElement('li');
+      item.textContent = line;
+      entityDetailRelationships.appendChild(item);
+    });
+  }
+
+  function renderTags(type) {
+    if (!entityDetailTags) {
+      return;
+    }
+    entityDetailTags.textContent = '';
+    // Always exactly one chip — the Entity's own `type` value stands in for
+    // a Tag (human decision; no real Tag concept exists — see Design Notes).
+    var chip = document.createElement('span');
+    chip.className = 'node-detail-tag';
+    chip.textContent = type || 'Unknown';
+    entityDetailTags.appendChild(chip);
+  }
+
+  function openEntityDetailPanel(nodeData, relationships) {
+    if (!entityDetailPanel) {
+      return;
+    }
+    selectedIdentity = nodeData.identity;
+    if (entityDetailName) {
+      entityDetailName.textContent = nodeData.name || nodeData.identity;
+    }
+    if (entityDetailType) {
+      entityDetailType.textContent = 'Type: ' + (nodeData.type || 'Unknown');
+    }
+    renderRelationships(nodeData.identity, relationships);
+    renderTags(nodeData.type);
+    entityDetailPanel.classList.add('is-open');
+    entityDetailPanel.setAttribute('aria-hidden', 'false');
   }
 
   var NO_CORPUS_MESSAGE_HTML =
@@ -103,5 +201,29 @@
     });
 
     window.GraphCanvas.setHullsVisible(true);
+
+    // Entity detail panel wiring (Story 6.2): `body.relationships` is
+    // already-fetched data held in this call's closure, so no per-click
+    // network request is ever made. `onNodeTap`/`onBackgroundTap` are
+    // opt-in registrations only `explore.js` uses — `upload.js` never
+    // calls them, so the main screen is unaffected.
+    if (typeof window.GraphCanvas.onNodeTap === 'function') {
+      window.GraphCanvas.onNodeTap(function (nodeData) {
+        if (!nodeData || !nodeData.identity) {
+          return;
+        }
+        if (selectedIdentity === nodeData.identity) {
+          closeEntityDetailPanel();
+          return;
+        }
+        openEntityDetailPanel(nodeData, body.relationships || []);
+      });
+    }
+
+    if (typeof window.GraphCanvas.onBackgroundTap === 'function') {
+      window.GraphCanvas.onBackgroundTap(function () {
+        closeEntityDetailPanel();
+      });
+    }
   }
 })();

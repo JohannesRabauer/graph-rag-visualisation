@@ -15,6 +15,13 @@
   var hullsVisible = true;
   var communityLegendEntries = {};
   var layoutQueued = false;
+  // Opt-in tap registrations (Story 6.2). Only `explore.js` calls
+  // `onNodeTap`/`onBackgroundTap`; `upload.js` never does, so the main
+  // screen's own canvas and Story 5.2's Replay click-to-highlight wiring
+  // are unaffected. Stored as module state (not re-wired per `init()` call)
+  // so registering before or after `init()` both work.
+  var nodeTapCallback = null;
+  var backgroundTapCallback = null;
 
   function graphContainer() {
     return document.getElementById('graph-canvas');
@@ -207,7 +214,43 @@
       ]
     });
 
+    // Entity node clicks (Story 6.2): `.community-hull` compound nodes are
+    // skipped so only Entity nodes ever open the detail panel — a tap on a
+    // hull still matches the `node` selector below, so it must be excluded
+    // explicitly rather than relying on selector specificity.
+    cy.on('tap', 'node', function (evt) {
+      var node = evt.target;
+      if (node.hasClass('community-hull')) {
+        return;
+      }
+      if (nodeTapCallback) {
+        nodeTapCallback({
+          identity: node.id(),
+          name: node.data('name'),
+          type: node.data('type')
+        });
+      }
+    });
+
+    // Background clicks: bound without a selector directly on `cy`, this
+    // also receives bubbled taps on nodes/edges, so it must check
+    // `evt.target === cy` (the standard Cytoscape idiom) to isolate an
+    // actual empty-canvas tap.
+    cy.on('tap', function (evt) {
+      if (evt.target === cy && backgroundTapCallback) {
+        backgroundTapCallback();
+      }
+    });
+
     return cy;
+  }
+
+  function onNodeTap(callback) {
+    nodeTapCallback = typeof callback === 'function' ? callback : null;
+  }
+
+  function onBackgroundTap(callback) {
+    backgroundTapCallback = typeof callback === 'function' ? callback : null;
   }
 
   function ensureNode(identity, fallbackLabel) {
@@ -462,6 +505,8 @@
     addCommunity: addCommunity,
     setHullsVisible: setHullsVisible,
     highlightStep: highlightStep,
-    clearStepHighlights: clearStepHighlights
+    clearStepHighlights: clearStepHighlights,
+    onNodeTap: onNodeTap,
+    onBackgroundTap: onBackgroundTap
   };
 })();
