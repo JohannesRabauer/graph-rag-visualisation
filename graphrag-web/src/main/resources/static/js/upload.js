@@ -15,6 +15,7 @@
   var communityToggleWrap = document.getElementById('community-toggle-wrap');
   var communityVisualizationToggle = document.getElementById('community-visualization-toggle');
   var graphCanvasEl = document.getElementById('graph-canvas');
+  var graphEyebrow = document.getElementById('graph-eyebrow');
   var activeProgressSource = null;
   var activeCorpusId = null;
   var currentSearchMode = 'LOCAL';
@@ -96,7 +97,11 @@
             // Use the mode that was actually sent with this request (not the
             // live global, which may have changed if the user toggled modes
             // while this request was in flight).
-            appendAnswer(result.body.answer || result.body.reason, result.body.mode || requestedSearchMode);
+            appendAnswer(
+                result.body.answer || result.body.reason,
+                result.body.mode || requestedSearchMode,
+                result.body.traceId,
+                result.body.traceStepCount);
           } else {
             showErrorBanner(errorMessage(result.body));
           }
@@ -234,6 +239,9 @@
       graphCanvasEl.hidden = false;
       graphCanvasEl.setAttribute('aria-hidden', 'false');
     }
+    if (graphEyebrow) {
+      graphEyebrow.hidden = false;
+    }
     if (window.GraphCanvas) {
       window.GraphCanvas.init();
       window.GraphCanvas.setHullsVisible(true);
@@ -263,7 +271,7 @@
     chatThread.scrollTop = chatThread.scrollHeight;
   }
 
-  function appendAnswer(text, mode) {
+  function appendAnswer(text, mode, traceId, traceStepCount) {
     var activeMode = mode || currentSearchMode;
     var answerText = text || 'No answer was returned.';
     if (!chatThread) {
@@ -281,6 +289,23 @@
     var content = document.createElement('span');
     content.textContent = answerText;
     message.appendChild(content);
+
+    // Story 3.3's own AC required this CTA on every answer message; it was
+    // never shipped until Story 5.2 gave Replay something to open (Story
+    // 5.1's `GET /api/traces/{traceId}`). `traceId` is always present on a
+    // successful query response (LOCAL and GLOBAL, matched or not), so this
+    // renders unconditionally rather than gating on a non-zero step count —
+    // "— 0 steps" is itself a meaningful, plain-language answer.
+    if (traceId) {
+      var replayCta = document.createElement('button');
+      replayCta.type = 'button';
+      replayCta.className = 'replay-cta';
+      replayCta.dataset.traceId = traceId;
+      replayCta.dataset.stepCount = String(traceStepCount || 0);
+      replayCta.textContent =
+          'Replay this answer\'s Retrieval Trace — ' + (traceStepCount || 0) + ' steps';
+      message.appendChild(replayCta);
+    }
 
     chatThread.appendChild(message);
     chatThread.scrollTop = chatThread.scrollHeight;

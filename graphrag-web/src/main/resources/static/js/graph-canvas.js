@@ -119,6 +119,62 @@
             'background-opacity': 0,
             label: ''
           }
+        },
+        {
+          // Replay's "current step" node (DESIGN.md `components.node-active`):
+          // the larger warm-active ring. Wins over `.step-previous` when a
+          // node somehow carries both (shouldn't happen — `clearStepHighlights`
+          // strips both before every `highlightStep` call).
+          selector: 'node.step-active',
+          style: {
+            'background-color': readCssVar('--active-soft', '#FFE9DE'),
+            'border-color': readCssVar('--active', '#E85D2B'),
+            'border-width': 2.5,
+            width: 28,
+            height: 28,
+            'z-index': 10
+          }
+        },
+        {
+          // Replay's "previous step" node (`components.node-previous-step`):
+          // a distinct, smaller accent ring so it reads as "just visited",
+          // not "current".
+          selector: 'node.step-previous',
+          style: {
+            'background-color': readCssVar('--accent-soft', '#DCE7FD'),
+            'border-color': readCssVar('--accent', '#2563EB'),
+            'border-width': 2,
+            width: 22,
+            height: 22,
+            'z-index': 9
+          }
+        },
+        {
+          // The edge directly connecting the previous and current step's
+          // entities, when one already exists among the rendered
+          // Relationships (`components.edge-traversed`) — opportunistic,
+          // per Story 5.2's Design Notes, never guaranteed for every step.
+          selector: 'edge.edge-traversed',
+          style: {
+            'line-color': readCssVar('--active', '#E85D2B'),
+            'target-arrow-color': readCssVar('--active', '#E85D2B'),
+            width: 2.5,
+            'z-index': 10
+          }
+        },
+        {
+          // A preview of edges connecting OTHER consecutive step pairs in the
+          // same trace that also happen to exist in the rendered graph, drawn
+          // dashed so Replay reads as "here's the shape of the trace ahead",
+          // never mistaken for the currently-traversed edge
+          // (`components.edge-upcoming`).
+          selector: 'edge.edge-upcoming',
+          style: {
+            'line-style': 'dashed',
+            'line-dash-pattern': [3, 3],
+            'line-color': readCssVar('--node-line', '#4B5563'),
+            width: 1
+          }
         }
       ]
     });
@@ -263,6 +319,96 @@
     legend.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   }
 
+  // Resolves a RetrievalStep's node id on the Cytoscape canvas. ENTITY (and
+  // any future RELATIONSHIP) steps use the same `normalizedIdentity()`
+  // string Story 4.3's SSE events already use as node ids; COMMUNITY steps
+  // use the `community::` + id prefix `addCommunity` gives its compound
+  // parent node.
+  function stepNodeId(step) {
+    if (!step || !step.identifier) {
+      return null;
+    }
+    return step.kind === 'COMMUNITY' ? 'community::' + step.identifier : step.identifier;
+  }
+
+  // Looks for an edge connecting the two given node ids in either direction.
+  // Deliberately matches on the edge's `source`/`target` data rather than
+  // reconstructing `addRelationship`'s exact `id` string (which also encodes
+  // the relationship type, unknown to a RetrievalStep) — same underlying
+  // convention, direction-agnostic lookup.
+  function findEdgeBetween(idA, idB) {
+    if (!cy || !idA || !idB) {
+      return null;
+    }
+    var found = null;
+    cy.edges().forEach(function (edge) {
+      if (found) {
+        return;
+      }
+      var source = edge.data('source');
+      var target = edge.data('target');
+      if ((source === idA && target === idB) || (source === idB && target === idA)) {
+        found = edge;
+      }
+    });
+    return found;
+  }
+
+  function clearStepHighlights() {
+    if (!cy) {
+      return;
+    }
+    cy.nodes().removeClass('step-active step-previous');
+    cy.edges().removeClass('edge-traversed edge-upcoming');
+  }
+
+  // Highlights the current Replay step (and the previous one) on the
+  // Cytoscape canvas. `steps` is the full ordered RetrievalStep list from
+  // `GET /api/traces/{traceId}`; `currentIndex` is the step Replay is
+  // currently showing. Passing the whole list (rather than just the two
+  // steps involved) lets this also draw the dashed "upcoming" preview for
+  // any other consecutive-step edge that already exists in the graph.
+  function highlightStep(steps, currentIndex) {
+    if (!cy || !steps || steps.length === 0) {
+      clearStepHighlights();
+      return;
+    }
+
+    clearStepHighlights();
+
+    var current = steps[currentIndex];
+    var previous = currentIndex > 0 ? steps[currentIndex - 1] : null;
+
+    for (var i = 0; i < steps.length - 1; i += 1) {
+      var edge = findEdgeBetween(stepNodeId(steps[i]), stepNodeId(steps[i + 1]));
+      if (edge) {
+        edge.addClass('edge-upcoming');
+      }
+    }
+
+    if (current) {
+      var currentNode = cy.getElementById(stepNodeId(current));
+      if (currentNode && currentNode.length > 0) {
+        currentNode.addClass('step-active');
+      }
+    }
+
+    if (previous) {
+      var previousNode = cy.getElementById(stepNodeId(previous));
+      if (previousNode && previousNode.length > 0) {
+        previousNode.addClass('step-previous');
+      }
+    }
+
+    if (previous && current) {
+      var traversedEdge = findEdgeBetween(stepNodeId(previous), stepNodeId(current));
+      if (traversedEdge) {
+        traversedEdge.removeClass('edge-upcoming');
+        traversedEdge.addClass('edge-traversed');
+      }
+    }
+  }
+
   function queueLayout() {
     if (!cy || layoutQueued) {
       return;
@@ -287,6 +433,8 @@
     addEntity: addEntity,
     addRelationship: addRelationship,
     addCommunity: addCommunity,
-    setHullsVisible: setHullsVisible
+    setHullsVisible: setHullsVisible,
+    highlightStep: highlightStep,
+    clearStepHighlights: clearStepHighlights
   };
 })();

@@ -2,7 +2,7 @@
 title: 'Replay the Retrieval Trace'
 type: 'feature'
 created: '2026-09-20'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 context: []
@@ -49,12 +49,12 @@ baseline_commit: '75375ecf4048fcde6181dc6349cfb58b2b356cc9'
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `upload.js` -- pass `traceId`/`traceStepCount` into `appendAnswer`; render the Replay CTA row per answer -- completes Story 3.3's own unshipped AC, gives Replay its entry point
-- [ ] `index.html` -- add the scrubber's static markup and Replay CTA container, `replay.js` script tag -- gives the scrubber somewhere to mount
-- [ ] `graph-canvas.js` -- add `highlightStep(step, previousStep)`/`clearStepHighlights()` -- lets Replay drive canvas highlighting without duplicating Cytoscape logic
-- [ ] `replay.js` (new) -- fetch trace, transport controls (keyboard-operable), step tick track, drag-to-nearest-step, step counter/caption, canvas eyebrow swap -- owns all Replay UI/state
-- [ ] `instrument.css` -- style the CTA, scrubber, and active/previous-step/traversed/upcoming states per DESIGN.md tokens -- visual consistency with the rest of the app
-- [ ] `MainControllerTest.java` -- assert the new static markup renders -- keeps the test suite honest about what's shipped
+- [x] `upload.js` -- pass `traceId`/`traceStepCount` into `appendAnswer`; render the Replay CTA row per answer -- completes Story 3.3's own unshipped AC, gives Replay its entry point
+- [x] `index.html` -- add the scrubber's static markup and Replay CTA container, `replay.js` script tag -- gives the scrubber somewhere to mount
+- [x] `graph-canvas.js` -- add `highlightStep(steps, currentIndex)`/`clearStepHighlights()` -- lets Replay drive canvas highlighting without duplicating Cytoscape logic
+- [x] `replay.js` (new) -- fetch trace, transport controls (keyboard-operable), step tick track, drag-to-nearest-step, step counter/caption, canvas eyebrow swap -- owns all Replay UI/state
+- [x] `instrument.css` -- style the CTA, scrubber, and node/edge highlight tokens (as Cytoscape style rules in `graph-canvas.js`, since node/edge rendering is canvas-drawn, not DOM CSS — see Implementation Notes) per DESIGN.md tokens -- visual consistency with the rest of the app
+- [x] `MainControllerTest.java` -- assert the new static markup renders -- keeps the test suite honest about what's shipped
 
 **Acceptance Criteria:**
 - Given an answer with a trace, when it renders in chat, then a Replay CTA reads "Replay this answer's Retrieval Trace — N steps" (Story 5.2 AC1 / completes Story 3.3's AC).
@@ -65,6 +65,17 @@ baseline_commit: '75375ecf4048fcde6181dc6349cfb58b2b356cc9'
 - Given Replay is not open, when a query is running, then no live/streaming trace visualization appears — Replay is available only after the answer (and its trace) already exist (Story 5.2 AC6).
 
 ## Implementation Notes
+
+- Implemented directly (no subagent dispatch). All six execution tasks completed. `CorpusController`/`RetrievalTraceStore` (Story 5.1's backend) were read for reference only and left untouched, as required.
+- `upload.js`: `appendAnswer` now takes `traceId`/`traceStepCount` and, whenever `traceId` is present (every successful query response, LOCAL and GLOBAL, matched or not), appends a `.replay-cta` `<button>` reading `Replay this answer's Retrieval Trace — {N} steps` — including the `noAnswer`/zero-step case, per the I/O matrix's second row. Also shows the new `#graph-eyebrow` label once a Corpus loads (the graph-canvas's own "Resting" state label, mirroring the idle-state eyebrow), since nothing else in the Code Map owned making that label visible in the first place.
+- `index.html`: added `#graph-eyebrow`, the hidden `#replay-scrubber` (close button, step-back/play-pause/step-forward as real `<button>`s, `#replay-tick-track`, step counter, caption), and `replay.js`'s `<script>` tag between `graph-canvas.js` and `upload.js`.
+- `graph-canvas.js`: added four new Cytoscape style rules (`node.step-active`, `node.step-previous`, `edge.edge-traversed`, `edge.edge-upcoming`) reusing the existing `readCssVar` token pattern, plus `highlightStep(steps, currentIndex)` and `clearStepHighlights()`. `highlightStep` takes the *whole* ordered step list and the current index (not just `(step, previousStep)` as the Code Map sketched) so it can also draw the Design Notes' "upcoming" dashed preview for any other consecutive-step pair that already has a graph edge — the two-argument signature couldn't do that without either duplicating trace state in `graph-canvas.js` or a third argument; passing the full list was the simpler option, and Code Map is non-frozen guidance, not a Boundaries/AC requirement. `identifier` resolves straight to the node id for ENTITY (and any future RELATIONSHIP) steps and to `'community::' + identifier` for COMMUNITY steps, matching `addCommunity`'s compound-node id convention. Edge lookup matches on each edge's `source`/`target` data in either direction rather than reconstructing `addRelationship`'s id string (which also encodes the relationship type, not available on a `RetrievalStep`) — same underlying data, a direction-agnostic, type-agnostic lookup.
+- `replay.js` (new): delegated document-level click listener for `.replay-cta` (works for every CTA `upload.js` appends, regardless of script load order); fetches `GET /api/traces/{traceId}` on click; renders one `<button class="replay-tick">` per step; wires click-to-step, pointerdown/pointermove-drag-to-nearest-step (continuous snap, matching the "always lands on a whole step" constraint), and the three transport buttons. Autoplay runs on a 1.4s `setInterval`, stops (does not loop) at the last step, and step-forward/step-back/tick-click/drag all call `stopPlayback()` first so manual input always overrides autoplay. Transport buttons are `disabled` (not just visually inert) whenever there are zero steps, and play/step-forward are additionally disabled at the last step — satisfies the "no transport controls enabled" zero-step requirement and the "no-op at the boundary" requirement via native `disabled` semantics rather than silent no-ops.
+- `instrument.css`: added `.replay-cta`, `.graph-eyebrow`, and the full `.replay-scrubber`/`.replay-transport-button`/`.replay-track`/`.replay-tick`/`.replay-meta` rule set, all built from existing `:root` tokens (no new custom properties needed — `instrument.css` already defines every color DESIGN.md's new component tokens reference). Node/edge highlight *rendering* itself lives in `graph-canvas.js`'s Cytoscape `style` array, not in `instrument.css` — Cytoscape draws nodes/edges to a canvas, not the DOM, so CSS selectors can't reach them; `instrument.css` remains the single source of the color tokens graph-canvas.js's existing `readCssVar` helper reads, consistent with how the pre-existing community-hull styling already works.
+- `MainControllerTest.java`: added `rendersTheReplayScrubberMarkupAndScript`, asserting `#graph-eyebrow`, `#replay-scrubber`, the three transport button ids, `#replay-tick-track`, `#replay-step-counter`, `#replay-caption`, and the `replay.js` script tag are all present in the rendered page.
+- Verification: `mvn test` (`JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64`) — full reactor `BUILD SUCCESS`, 24 tests in `graphrag-web` (up from 21; the 3 new `MainControllerTest` assertions are additive, no existing test needed to change), 0 failures/errors; `node --check` passed on all three touched/new JS files as a lightweight syntax gate (no JS test runner exists in this repo).
+- Manual browser verification (transport buttons/keyboard/drag against a running app) was not performed in this sandbox — no browser is available here. This is the one Verification-section manual check left undone; the automated `mvn test` check specified by this story's own Verification section was run and passes.
+- Nothing in this spec's Tasks & Acceptance or Boundaries & Constraints was left incomplete. The only judgment call beyond the Code Map's literal text is `highlightStep`'s signature (see above), made to honor the frozen Intent's "upcoming" edge-preview behavior without duplicating trace-order state across two files.
 
 ## Spec Change Log
 

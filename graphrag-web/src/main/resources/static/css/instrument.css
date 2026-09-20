@@ -248,6 +248,184 @@ body {
   flex-shrink: 0;
 }
 
+/* ---- graph canvas eyebrow ----
+   DESIGN.md `components.graph-canvas`: "An uppercase eyebrow title
+   state-labels what's showing" once a Corpus is loaded — mirrors the idle
+   state's own eyebrow, swapped to "Knowledge Graph — Replaying Trace" by
+   replay.js while the scrubber is open (Story 5.2). */
+.graph-eyebrow {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-5);
+  z-index: 2;
+  margin: 0;
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+.graph-eyebrow[hidden] {
+  display: none;
+}
+
+/* ---- Retrieval Trace scrubber ----
+   DESIGN.md `components.scrubber`/`components.transport-button`/
+   `components.step-badge`: docked below the graph canvas, hidden until a
+   Replay CTA is clicked (Story 5.2). */
+.replay-scrubber {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+.replay-scrubber[hidden] {
+  display: none;
+}
+
+.replay-close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-400);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.replay-close:hover {
+  color: var(--ink-900);
+}
+
+.replay-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.replay-transport-button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink-900);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.replay-transport-button:disabled {
+  color: var(--ink-400);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+.replay-transport-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.replay-play-pause {
+  background: var(--ink-900);
+  border-color: var(--ink-900);
+  color: var(--panel);
+}
+
+.replay-play-pause:disabled {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink-400);
+}
+
+.replay-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  position: relative;
+  height: 20px;
+  touch-action: none;
+}
+
+.replay-track::before {
+  content: "";
+  position: absolute;
+  left: var(--space-1);
+  right: var(--space-1);
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--line-strong);
+  z-index: 0;
+}
+
+.replay-tick {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--line-strong);
+  background: var(--panel);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.replay-tick.is-done {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.replay-tick.is-now {
+  border-color: var(--active);
+  background: var(--active);
+  width: 12px;
+  height: 12px;
+}
+
+.replay-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  max-width: 40%;
+}
+
+.replay-step-counter {
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-900);
+  white-space: nowrap;
+}
+
+.replay-caption {
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .community-toggle-wrap {
   position: absolute;
   top: var(--space-3);
@@ -435,6 +613,35 @@ body {
   border-radius: 50%;
   background: currentColor;
   display: inline-block;
+}
+
+/* ---- replay CTA ----
+   DESIGN.md `components.replay-cta`: a dashed-border row on every answer
+   that has a Retrieval Trace, reading "Replay this answer's Retrieval
+   Trace — N steps" (Story 5.2 AC1, completing Story 3.3's own AC). */
+.replay-cta {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+
+.replay-cta:hover {
+  color: var(--ink-900);
+  border-color: var(--ink-600);
+}
+
+.replay-cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .composer {

@@ -39,6 +39,25 @@ class MainControllerTest {
     }
 
     @Test
+    void rendersTheReplayScrubberMarkupAndScript() throws Exception {
+        String body = mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body).contains("id=\"graph-eyebrow\"");
+        assertThat(body).contains("id=\"replay-scrubber\"");
+        assertThat(body).contains("id=\"replay-step-back\"");
+        assertThat(body).contains("id=\"replay-play-pause\"");
+        assertThat(body).contains("id=\"replay-step-forward\"");
+        assertThat(body).contains("id=\"replay-tick-track\"");
+        assertThat(body).contains("id=\"replay-step-counter\"");
+        assertThat(body).contains("id=\"replay-caption\"");
+        assertThat(body).contains("replay.js");
+    }
+
+    @Test
     void rendersTheUploadControlAndHiddenCorpusChipAndErrorBannerSlots() throws Exception {
         String body = mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
