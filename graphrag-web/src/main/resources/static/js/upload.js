@@ -10,6 +10,7 @@
   var chatThread = document.getElementById('chat-thread');
   var chatForm = document.getElementById('chat-form');
   var chatInput = document.getElementById('chat-input');
+  var sendButton = chatForm ? chatForm.querySelector('.send-button') : null;
   var modeButtons = document.querySelectorAll('.mode-button');
   var modeHint = document.getElementById('mode-hint');
   var communityToggleWrap = document.getElementById('community-toggle-wrap');
@@ -76,6 +77,8 @@
         chatInput.value = '';
       }
       hideErrorBanner();
+      setQueryBusy(true);
+      var pendingMessage = appendPendingMessage();
 
       var requestedSearchMode = currentSearchMode;
 
@@ -108,6 +111,10 @@
         })
         .catch(function () {
           showErrorBanner('The question could not be answered. Please try again.');
+        })
+        .finally(function () {
+          removePendingMessage(pendingMessage);
+          setQueryBusy(false);
         });
     });
   }
@@ -248,12 +255,70 @@
     }
     if (graphEyebrow) {
       graphEyebrow.hidden = false;
+      setIngestionBusy(true);
     }
     if (window.GraphCanvas) {
       window.GraphCanvas.init();
       window.GraphCanvas.setHullsVisible(true);
     }
     connectProgressStream(body && body.corpusId);
+  }
+
+  // Busy indicator for the corpus-building phase: entity/relationship
+  // extraction and community detection can take anywhere from a few
+  // seconds to a couple of minutes with a real LLM behind them, and until
+  // now the graph canvas gave no feedback beyond nodes trickling in one at
+  // a time — this makes the "still working" state explicit via the
+  // eyebrow's spinner + text, cleared on `ingestion-complete`/`error`.
+  function setIngestionBusy(isBusy) {
+    if (!graphEyebrow) {
+      return;
+    }
+    graphEyebrow.textContent = isBusy ? 'Knowledge Graph — Building…' : 'Knowledge Graph — Live';
+    graphEyebrow.classList.toggle('is-busy', isBusy);
+    if (graphCanvasEl) {
+      graphCanvasEl.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    }
+  }
+
+  // Busy indicator for an in-flight query (Story-independent UX fix): the
+  // send button swaps its icon for a spinner and both it and the input are
+  // disabled so a second submit can't race the first while its answer is
+  // still being computed (LOCAL/GLOBAL Search can take several seconds —
+  // real LLM calls, not the old deterministic stub).
+  function setQueryBusy(isBusy) {
+    if (chatInput) {
+      chatInput.disabled = isBusy;
+    }
+    if (sendButton) {
+      sendButton.disabled = isBusy;
+      if (isBusy) {
+        sendButton.setAttribute('aria-busy', 'true');
+      } else {
+        sendButton.removeAttribute('aria-busy');
+      }
+    }
+  }
+
+  // A transient "Thinking…" bubble shown for the duration of the fetch —
+  // removed (never left behind) once the real answer or an error arrives,
+  // via `removePendingMessage` in the submit handler's `.finally`.
+  function appendPendingMessage() {
+    if (!chatThread) {
+      return null;
+    }
+    var message = document.createElement('div');
+    message.className = 'message answer pending';
+    message.textContent = 'Thinking…';
+    chatThread.appendChild(message);
+    chatThread.scrollTop = chatThread.scrollHeight;
+    return message;
+  }
+
+  function removePendingMessage(message) {
+    if (message && message.parentNode) {
+      message.parentNode.removeChild(message);
+    }
   }
 
   function appendMessage(kind, text) {
@@ -383,7 +448,12 @@
       }
     });
 
+    activeProgressSource.addEventListener('ingestion-complete', function () {
+      setIngestionBusy(false);
+    });
+
     activeProgressSource.addEventListener('error', function (event) {
+      setIngestionBusy(false);
       try {
         var payload = JSON.parse(event.data);
         if (payload && payload.data && payload.data.error) {

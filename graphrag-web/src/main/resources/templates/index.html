@@ -22,46 +22,6 @@
       </div>
     </header>
     <main class="canvas" aria-label="Knowledge Graph canvas">
-      <div class="error-banner" id="error-banner" role="alert" hidden></div>
-      <div class="canvas-idle" id="canvas-idle">
-        <p class="eyebrow">Knowledge Graph — Resting</p>
-        <p class="subtitle">Watch a Knowledge Graph get built, clustered, and searched — the mechanics most GraphRAG tools keep hidden.</p>
-        <div class="upload-control">
-          <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) or PDF (.pdf) Corpus to get started</label>
-          <input type="file" id="corpus-file-input" multiple accept=".txt,.pdf">
-          <button type="button" id="demo-dataset-button" class="demo-dataset-button">Use the built-in Sherlock Holmes Demo Dataset</button>
-        </div>
-      </div>
-
-      <div id="graph-canvas" hidden aria-hidden="true"></div>
-
-      <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Resting</p>
-
-      <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
-        <label class="community-toggle" for="community-visualization-toggle">
-          <span class="community-toggle-label">Community formation view</span>
-          <span class="community-toggle-meta">Shows the clustering animation as communities form.</span>
-          <input id="community-visualization-toggle" type="checkbox" checked>
-          <span class="community-toggle-slider" aria-hidden="true"></span>
-        </label>
-      </div>
-
-      <div id="graph-legend" class="graph-legend" hidden aria-hidden="true"></div>
-
-      <div class="replay-scrubber" id="replay-scrubber" role="group" aria-label="Retrieval Trace replay controls" hidden>
-        <button type="button" class="replay-close" id="replay-close" aria-label="Close Replay">&times;</button>
-        <div class="replay-transport">
-          <button type="button" class="replay-transport-button" id="replay-step-back" aria-label="Step back">&#8249;</button>
-          <button type="button" class="replay-transport-button replay-play-pause" id="replay-play-pause" aria-label="Play" aria-pressed="false">&#9654;</button>
-          <button type="button" class="replay-transport-button" id="replay-step-forward" aria-label="Step forward">&#8250;</button>
-        </div>
-        <div class="replay-track" id="replay-tick-track" role="group" aria-label="Retrieval Trace steps"></div>
-        <div class="replay-meta" aria-live="polite">
-          <span class="replay-step-counter" id="replay-step-counter">00 / 00</span>
-          <span class="replay-caption" id="replay-caption">Nothing was touched for this answer.</span>
-        </div>
-      </div>
-
       <aside class="chat-panel" id="chat-panel" aria-label="Question chat" hidden>
         <div class="chat-head">
           <div class="mode-toggle" role="tablist" aria-label="Search mode">
@@ -76,6 +36,48 @@
           <button type="submit" class="send-button" aria-label="Submit question"></button>
         </form>
       </aside>
+
+      <div class="graph-stage">
+        <div class="error-banner" id="error-banner" role="alert" hidden></div>
+        <div class="canvas-idle" id="canvas-idle">
+          <p class="eyebrow">Knowledge Graph — Resting</p>
+          <p class="subtitle">Watch a Knowledge Graph get built, clustered, and searched — the mechanics most GraphRAG tools keep hidden.</p>
+          <div class="upload-control">
+            <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) or PDF (.pdf) Corpus to get started</label>
+            <input type="file" id="corpus-file-input" multiple accept=".txt,.pdf">
+            <button type="button" id="demo-dataset-button" class="demo-dataset-button">Use the built-in Sherlock Holmes Demo Dataset</button>
+          </div>
+        </div>
+
+        <div id="graph-canvas" hidden aria-hidden="true"></div>
+
+        <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Resting</p>
+
+        <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
+          <label class="community-toggle" for="community-visualization-toggle">
+            <span class="community-toggle-label">Community formation view</span>
+            <span class="community-toggle-meta">Shows the clustering animation as communities form.</span>
+            <input id="community-visualization-toggle" type="checkbox" checked>
+            <span class="community-toggle-slider" aria-hidden="true"></span>
+          </label>
+        </div>
+
+        <div id="graph-legend" class="graph-legend" hidden aria-hidden="true"></div>
+
+        <div class="replay-scrubber" id="replay-scrubber" role="group" aria-label="Retrieval Trace replay controls" hidden>
+          <button type="button" class="replay-close" id="replay-close" aria-label="Close Replay">&times;</button>
+          <div class="replay-transport">
+            <button type="button" class="replay-transport-button" id="replay-step-back" aria-label="Step back">&#8249;</button>
+            <button type="button" class="replay-transport-button replay-play-pause" id="replay-play-pause" aria-label="Play" aria-pressed="false">&#9654;</button>
+            <button type="button" class="replay-transport-button" id="replay-step-forward" aria-label="Step forward">&#8250;</button>
+          </div>
+          <div class="replay-track" id="replay-tick-track" role="group" aria-label="Retrieval Trace steps"></div>
+          <div class="replay-meta" aria-live="polite">
+            <span class="replay-step-counter" id="replay-step-counter">00 / 00</span>
+            <span class="replay-caption" id="replay-caption">Nothing was touched for this answer.</span>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>

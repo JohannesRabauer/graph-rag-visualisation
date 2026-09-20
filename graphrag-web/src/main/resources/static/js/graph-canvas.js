@@ -22,6 +22,11 @@
   // so registering before or after `init()` both work.
   var nodeTapCallback = null;
   var backgroundTapCallback = null;
+  // Roving-focus state for keyboard navigation (see `init`'s container
+  // keydown wiring below): the id of the node currently carrying the
+  // visual `.kbd-focus` ring, kept as module state so it survives between
+  // keydown events without re-querying the DOM each time.
+  var focusedNodeId = null;
 
   function graphContainer() {
     return document.getElementById('graph-canvas');
@@ -89,10 +94,28 @@
 
     communityLegendEntries = {};
     hullsVisible = true;
+    focusedNodeId = null;
     renderLegend();
 
     if (!container || typeof window.cytoscape === 'undefined') {
       return null;
+    }
+
+    // Canvas rendering has no native per-node DOM elements to give a
+    // screen reader/keyboard user, so the container itself becomes one
+    // big focusable, keyboard-operable region (a roving-focus pattern):
+    // Tab focuses the graph once, arrow keys step between nodes
+    // (Entities and Community hulls alike), Enter/Space "clicks" whatever
+    // is focused. Only wire the DOM listeners once per container element.
+    if (!container.hasAttribute('tabindex')) {
+      container.setAttribute('tabindex', '0');
+      container.setAttribute('role', 'application');
+      container.setAttribute(
+        'aria-label',
+        'Knowledge Graph. Use arrow keys to move between entities and communities, Enter to select.');
+      container.addEventListener('focus', handleContainerFocus);
+      container.addEventListener('blur', handleContainerBlur);
+      container.addEventListener('keydown', handleContainerKeydown);
     }
 
     cy = window.cytoscape({
@@ -227,17 +250,41 @@
             'line-color': readCssVar('--node-line', '#4B5563'),
             width: 1
           }
+        },
+        {
+          // Clicking (or Enter/Space-activating) a Community hull zooms the
+          // viewport to fit that community and marks it with a bold ring, so
+          // "which community is selected" is visible without relying on the
+          // legend alone.
+          selector: 'node.community-focused',
+          style: {
+            'border-width': 3.5,
+            'border-color': readCssVar('--accent', '#2563EB')
+          }
+        },
+        {
+          // Keyboard roving-focus ring (see `init`'s container keydown
+          // wiring): a dashed outline distinct from both the mouse-driven
+          // `.community-focused` ring and Replay's `.step-active` ring, so
+          // "keyboard focus" never reads as "selected"/"currently replaying".
+          selector: 'node.kbd-focus',
+          style: {
+            'border-style': 'dashed',
+            'border-width': 3,
+            'border-color': readCssVar('--ink-900', '#14181C')
+          }
         }
       ]
     });
 
     // Entity node clicks (Story 6.2): `.community-hull` compound nodes are
-    // skipped so only Entity nodes ever open the detail panel — a tap on a
-    // hull still matches the `node` selector below, so it must be excluded
-    // explicitly rather than relying on selector specificity.
+    // routed to `focusCommunity` instead of the Entity detail callback, so
+    // both node types are clickable/navigable, just to different effect.
     cy.on('tap', 'node', function (evt) {
       var node = evt.target;
+      setKeyboardFocus(node.id());
       if (node.hasClass('community-hull')) {
+        focusCommunity(communityIdFromParentId(node.id()));
         return;
       }
       if (nodeTapCallback) {
@@ -252,14 +299,71 @@
     // Background clicks: bound without a selector directly on `cy`, this
     // also receives bubbled taps on nodes/edges, so it must check
     // `evt.target === cy` (the standard Cytoscape idiom) to isolate an
-    // actual empty-canvas tap.
+    // actual empty-canvas tap. Clearing community focus + refitting the
+    // whole graph here is a built-in behavior (not gated on
+    // `backgroundTapCallback`, which only `explore.js` registers) so both
+    // pages get "tap empty space to reset the view" for free.
     cy.on('tap', function (evt) {
-      if (evt.target === cy && backgroundTapCallback) {
+      if (evt.target !== cy) {
+        return;
+      }
+      clearCommunityFocus();
+      if (backgroundTapCallback) {
         backgroundTapCallback();
       }
     });
 
     return cy;
+  }
+
+  // Extracts the raw communityId back out of a hull node's `community::`-
+  // prefixed Cytoscape id (the inverse of `addCommunity`'s `parentId`).
+  function communityIdFromParentId(parentId) {
+    var prefix = 'community::';
+    return String(parentId || '').indexOf(prefix) === 0
+      ? parentId.slice(prefix.length)
+      : parentId;
+  }
+
+  function clearCommunityFocus() {
+    if (!cy) {
+      return;
+    }
+    cy.nodes('.community-hull').removeClass('community-focused');
+    setLegendActiveCommunity(null);
+  }
+
+  // Zooms/fits the viewport to one Community's members and marks it as
+  // selected on both the canvas (bold ring) and the legend (active chip) —
+  // the shared behavior behind clicking a hull, activating it via keyboard,
+  // and clicking its legend entry (see `renderLegend`).
+  function focusCommunity(communityId) {
+    if (!cy || !communityId) {
+      return;
+    }
+    var hull = cy.getElementById('community::' + communityId);
+    if (!hull || hull.length === 0) {
+      return;
+    }
+    cy.nodes('.community-hull').removeClass('community-focused');
+    hull.addClass('community-focused');
+    setLegendActiveCommunity(communityId);
+    cy.animate(
+      { fit: { eles: hull.union(hull.descendants()), padding: 40 } },
+      { duration: 300 }
+    );
+  }
+
+  function setLegendActiveCommunity(communityId) {
+    var legend = legendContainer();
+    if (!legend) {
+      return;
+    }
+    Array.prototype.forEach.call(legend.querySelectorAll('.graph-legend-item'), function (item) {
+      var isActive = !!communityId && item.dataset.communityId === communityId;
+      item.classList.toggle('is-active', isActive);
+      item.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
   }
 
   function onNodeTap(callback) {
@@ -268,6 +372,117 @@
 
   function onBackgroundTap(callback) {
     backgroundTapCallback = typeof callback === 'function' ? callback : null;
+  }
+
+  // ---- keyboard navigation (roving focus across all nodes) ----
+  // Returns every node in a stable order (Cytoscape's own collection
+  // order, effectively insertion order) — Entities and Community hulls
+  // are both included, since both must be keyboard-reachable.
+  function orderedNodes() {
+    return cy ? cy.nodes().toArray() : [];
+  }
+
+  function setKeyboardFocus(nodeId) {
+    if (!cy) {
+      return;
+    }
+    if (focusedNodeId) {
+      var previous = cy.getElementById(focusedNodeId);
+      if (previous && previous.length > 0) {
+        previous.removeClass('kbd-focus');
+      }
+    }
+    focusedNodeId = nodeId || null;
+    if (focusedNodeId) {
+      var next = cy.getElementById(focusedNodeId);
+      if (next && next.length > 0) {
+        next.addClass('kbd-focus');
+        cy.animate({ center: { eles: next } }, { duration: 150 });
+      }
+    }
+  }
+
+  function moveKeyboardFocus(delta) {
+    var nodes = orderedNodes();
+    if (nodes.length === 0) {
+      return;
+    }
+    var currentIndex = focusedNodeId
+      ? nodes.findIndex(function (node) { return node.id() === focusedNodeId; })
+      : -1;
+    var nextIndex = currentIndex === -1
+      ? 0
+      : (currentIndex + delta + nodes.length) % nodes.length;
+    setKeyboardFocus(nodes[nextIndex].id());
+  }
+
+  // Enter/Space "clicks" whatever currently has keyboard focus — the same
+  // effect a mouse tap on that node would have (Entity detail callback, or
+  // `focusCommunity` for a hull).
+  function activateKeyboardFocus() {
+    if (!cy || !focusedNodeId) {
+      return;
+    }
+    var node = cy.getElementById(focusedNodeId);
+    if (!node || node.length === 0) {
+      return;
+    }
+    if (node.hasClass('community-hull')) {
+      focusCommunity(communityIdFromParentId(node.id()));
+      return;
+    }
+    if (nodeTapCallback) {
+      nodeTapCallback({
+        identity: node.id(),
+        name: node.data('name'),
+        type: node.data('type')
+      });
+    }
+  }
+
+  function handleContainerFocus() {
+    if (!focusedNodeId) {
+      moveKeyboardFocus(0);
+    }
+  }
+
+  function handleContainerBlur() {
+    setKeyboardFocus(null);
+  }
+
+  function handleContainerKeydown(event) {
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        event.preventDefault();
+        moveKeyboardFocus(1);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        event.preventDefault();
+        moveKeyboardFocus(-1);
+        break;
+      case 'Home':
+        event.preventDefault();
+        setKeyboardFocus(orderedNodes()[0] ? orderedNodes()[0].id() : null);
+        break;
+      case 'End':
+        var nodes = orderedNodes();
+        event.preventDefault();
+        setKeyboardFocus(nodes.length > 0 ? nodes[nodes.length - 1].id() : null);
+        break;
+      case 'Enter':
+      case ' ':
+      case 'Spacebar':
+        event.preventDefault();
+        activateKeyboardFocus();
+        break;
+      case 'Escape':
+        clearCommunityFocus();
+        break;
+      default:
+        break;
+    }
   }
 
   function ensureNode(identity, fallbackLabel) {
@@ -386,9 +601,20 @@
     communityIds.forEach(function (communityId) {
       var entry = communityLegendEntries[communityId];
 
-      var item = document.createElement('span');
+      // A legend chip is a second, always-visible way to reach a Community
+      // (`focusCommunity`) besides tapping its hull directly on the canvas
+      // — a real `<button>` so it is natively focusable/clickable/keyboard
+      // operable without any custom keydown wiring.
+      var item = document.createElement('button');
+      item.type = 'button';
       item.className = 'graph-legend-item';
       item.title = entry.fullSummary || entry.name;
+      item.setAttribute('aria-label', entry.fullSummary || entry.name);
+      item.setAttribute('aria-pressed', 'false');
+      item.dataset.communityId = communityId;
+      item.addEventListener('click', function () {
+        focusCommunity(communityId);
+      });
 
       var swatch = document.createElement('span');
       swatch.className = 'graph-legend-swatch';
@@ -526,6 +752,7 @@
     highlightStep: highlightStep,
     clearStepHighlights: clearStepHighlights,
     onNodeTap: onNodeTap,
-    onBackgroundTap: onBackgroundTap
+    onBackgroundTap: onBackgroundTap,
+    focusCommunity: focusCommunity
   };
 })();

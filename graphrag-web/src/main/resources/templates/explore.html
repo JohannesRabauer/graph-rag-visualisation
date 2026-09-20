@@ -22,39 +22,41 @@
       </div>
     </header>
     <main class="canvas" aria-label="Explore the full Knowledge Graph">
-      <div class="canvas-idle" id="explore-loading">
-        <p class="eyebrow">Knowledge Graph — Loading</p>
-        <p class="subtitle">Loading the Knowledge Graph…</p>
-      </div>
-
-      <div class="canvas-idle" id="explore-empty-state" hidden>
-        <p class="eyebrow" id="explore-empty-eyebrow">Knowledge Graph — Empty</p>
-        <p class="subtitle" id="explore-empty-message">
-          No Corpus has been ingested yet.
-          <a href="/">Go to the main screen</a> to upload a Corpus or load the built-in demo dataset.
-        </p>
-      </div>
-
-      <div id="graph-canvas" hidden aria-hidden="true"></div>
-
-      <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Explore</p>
-
-      <div id="graph-legend" class="graph-legend" hidden aria-hidden="true"></div>
-
-      <aside id="entity-detail-panel" class="node-detail-panel" aria-hidden="true">
-        <button type="button" id="entity-detail-close" class="node-detail-close" aria-label="Close entity details">×</button>
-        <p class="node-detail-eyebrow">Entity</p>
-        <h2 id="entity-detail-name" class="node-detail-name"></h2>
-        <p id="entity-detail-type" class="node-detail-type"></p>
-        <div class="node-detail-section">
-          <p class="node-detail-heading">Relationships</p>
-          <ul id="entity-detail-relationships" class="node-detail-relationships"></ul>
+      <div class="graph-stage">
+        <div class="canvas-idle" id="explore-loading">
+          <p class="eyebrow">Knowledge Graph — Loading</p>
+          <p class="subtitle">Loading the Knowledge Graph…</p>
         </div>
-        <div class="node-detail-section">
-          <p class="node-detail-heading">Tags</p>
-          <div id="entity-detail-tags" class="node-detail-tags"></div>
+
+        <div class="canvas-idle" id="explore-empty-state" hidden>
+          <p class="eyebrow" id="explore-empty-eyebrow">Knowledge Graph — Empty</p>
+          <p class="subtitle" id="explore-empty-message">
+            No Corpus has been ingested yet.
+            <a href="/">Go to the main screen</a> to upload a Corpus or load the built-in demo dataset.
+          </p>
         </div>
-      </aside>
+
+        <div id="graph-canvas" hidden aria-hidden="true"></div>
+
+        <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Explore</p>
+
+        <div id="graph-legend" class="graph-legend" hidden aria-hidden="true"></div>
+
+        <aside id="entity-detail-panel" class="node-detail-panel" aria-hidden="true">
+          <button type="button" id="entity-detail-close" class="node-detail-close" aria-label="Close entity details">×</button>
+          <p class="node-detail-eyebrow">Entity</p>
+          <h2 id="entity-detail-name" class="node-detail-name"></h2>
+          <p id="entity-detail-type" class="node-detail-type"></p>
+          <div class="node-detail-section">
+            <p class="node-detail-heading">Relationships</p>
+            <ul id="entity-detail-relationships" class="node-detail-relationships"></ul>
+          </div>
+          <div class="node-detail-section">
+            <p class="node-detail-heading">Tags</p>
+            <div id="entity-detail-tags" class="node-detail-tags"></div>
+          </div>
+        </aside>
+      </div>
     </main>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
