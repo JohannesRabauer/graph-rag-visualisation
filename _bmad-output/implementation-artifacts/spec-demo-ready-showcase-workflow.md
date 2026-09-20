@@ -94,11 +94,12 @@ baseline_commit: '39bd7917812bc2a0d4e994f6458c3c2a171dd2fd'
   - `graphrag-core/src/test/java/com/graphraglens/core/usecase/DetectCommunitiesTest.java`
   - `graphrag-core/src/test/java/com/graphraglens/core/usecase/ExtractEntitiesAndRelationshipsTest.java`
   - `graphrag-adapter-neo4j/src/test/java/com/graphraglens/adapter/neo4j/InMemoryGraphStoreAdapterTest.java`
-- Verification is blocked in this environment because JDK 25 is unavailable:
-- User accepted this temporary verification gap on 2026-09-20 to continue and merge; full JDK-25 validation is deferred to follow-up environment run.
-  - `mvn test` fails at enforcer (`GraphRAG Lens requires JDK 25 or newer`)
-  - `mvn -Denforcer.skip=true test` fails during compile (`release version 25 not supported`)
-  - `mvn -pl graphrag-web test` fails standalone dependency resolution without prior reactor install.
+- Verification was originally blocked because JDK 25 was unavailable:
+  - `mvn test` failed at enforcer (`GraphRAG Lens requires JDK 25 or newer`)
+  - `mvn -Denforcer.skip=true test` failed during compile (`release version 25 not supported`)
+  - `mvn -pl graphrag-web test` failed standalone dependency resolution without prior reactor install.
+  - User accepted this temporary verification gap on 2026-09-20 to continue and merge; full JDK-25 validation was deferred to a follow-up environment run.
+- Deferred validation completed on 2026-09-20 in an environment with JDK 25 installed (`openjdk-25-jdk-headless` 25.0.4+7): `mvn -B clean verify` succeeds, reactor `BUILD SUCCESS` across all 6 modules, 67/67 tests passing (0 failures, 0 errors, 0 skipped) — `graphrag-core` 18, `graphrag-adapter-neo4j` 3, `graphrag-adapter-langchain4j` 6, `graphrag-adapter-parsing` 7, `graphrag-web` 33. The verification gap is closed.
 
 ## Spec Change Log
 
