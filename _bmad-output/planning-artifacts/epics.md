@@ -32,9 +32,9 @@ FR12: System captures a structured, ordered Retrieval Trace (Entities, Relations
 FR13: User can play back a captured Retrieval Trace as a step-by-step visualization after the answer is generated, with controls to move forward and backward through the steps.
 FR14: The application and Neo4j can be started via a single Docker Compose command.
 FR15: The OpenAI API key is supplied via an environment variable at startup; no in-app configuration UI is required for v1.
-FR16: User can navigate to a dedicated Explore page showing the full Knowledge Graph, with pan and zoom, reached via a persistent link/tab from the main screen.
-FR17: User can click any Entity on the Explore page to see its connections (Relationships), details, and Tags.
-FR18 (v1.1): User can explicitly select DRIFT via the mode toggle; system runs a Community-summary pass, spawns targeted Local Search sub-questions, re-ranks, and synthesizes a final answer.
+FR16: The main screen's own graph canvas is pannable and zoomable at all times — no separate page or mode is needed to reach this capability. *(Updated 2026-09-20: originally a dedicated Explore page reached via a persistent link/tab; merged into the main screen since it duplicated a slightly more capable version of the same canvas behind a second page.)*
+FR17: User can click any Entity on the main screen's graph canvas, at any time, to see its connections (Relationships), details, and Tags.
+FR18 (v1.1): User can explicitly select DRIFT via the mode choice; system runs a Community-summary pass, spawns targeted Local Search sub-questions, re-ranks, and synthesizes a final answer.
 FR19 (v1.1): System chunks and embeds the ingested Corpus into a vector index, independent of Entity/Relationship extraction.
 FR20 (v1.1): User can trigger a Vector Baseline answer for a question already asked via GraphRAG, on demand via a "Compare with Vector Search" action — never automatic.
 FR21 (v1.1): The Vector Baseline's pipeline (chunking, embedding, query embedding, similarity ranking, synthesis) is captured as its own Vector Trace, replayable step-by-step with the same transport controls as the existing Retrieval Trace.
@@ -70,23 +70,23 @@ NFR4 (Provider flexibility): The LLM integration must not hardcode assumptions t
 
 UX-DR1: Implement the "Instrument" design token set exactly as specified in DESIGN.md — light-mode-only palette (paper/panel neutrals, `accent` blue for Local Search, `global` teal for Global Search, `active` warm color for "currently active"), system-sans UI typography with monospace reserved strictly for data/step labels.
 UX-DR2: Build the Chat panel component (left rail, 340px width, persistent question/answer thread).
-UX-DR3: Build the Local/Global Search mode toggle with an inline, plain-language explanatory hint that updates immediately when the mode changes.
+UX-DR3: Build the Local/Global/Drift Search mode choice (restyled 2026-09-20 from segmented tabs to a radio choice of colored dots + labels, positioned directly above the composer) with an inline, plain-language explanatory hint that updates immediately when the mode changes.
 UX-DR4: Build the Composer (text input + send button, plain placeholder copy).
 UX-DR5: Build the Graph canvas component (faint grid background, uppercase eyebrow state title, legend row listing visible Community names with color swatches).
 UX-DR6: Implement node/edge visual states: default node, active (currently-visited) node, previous-step node, default edge, traversed edge, upcoming/dashed edge.
-UX-DR7: Implement Community hulls (soft pale ellipses with monospace labels), shown on the main screen only when its toggle is ON, and always shown on the Explore page.
+UX-DR7: Implement Community hulls (soft pale ellipses with monospace labels), shown on the main screen's canvas whenever the community-visualization toggle is ON — the single toggle that governs this everywhere (updated 2026-09-20: there is no longer a separate always-on exploration view).
 UX-DR8: Build the Step badge overlay shown during Retrieval Trace Replay (step counter + traversed-relationship name).
 UX-DR9: Build the Retrieval Trace scrubber: transport buttons (step-back / play-pause / step-forward), a discrete per-step tick track, a step counter, and a plain-language caption of the current step.
 UX-DR10: Build the Corpus chip (app-bar pill naming the active Corpus and document count).
 UX-DR11: Build the Community-detection visualization toggle, defaulting ON for a fresh Corpus's first run.
 UX-DR12: Build the Error banner component for LLM-call or extraction failures (plain-language message, no icon glyphs beyond the warm-color cue).
-UX-DR13: Build the Node detail panel (Explore page, slides in from the right on node click; Entity heading, connections/Relationships, details, and Tags as chips).
+UX-DR13: Build the Node detail panel (main-screen graph canvas, slides in from the right on node click at any time; Entity heading, connections/Relationships, details, and Tags as chips; coexists with the Retrieval Trace scrubber — opening one never closes the other).
 UX-DR14: Implement the 5-color categorical Community palette as a best-effort, non-hard-gated colorblind-distinguishability goal.
 UX-DR15: Implement the single continuous main-screen Information Architecture — no gated setup wizard; the empty state doubles as the Corpus-upload/Demo-Dataset-selection screen.
-UX-DR16: Implement the Explore page as a second surface, reached via a persistent link/tab in the main screen's app bar.
-UX-DR17: Implement every State Pattern from EXPERIENCE.md: idle/empty, upload-rejected, ingestion-in-progress, community-detection-in-progress, LLM-call-failure, no-answer-found, populated/answered, and the Explore page's before-any-node-selected state.
+UX-DR16: *(Superseded 2026-09-20)* Originally specified a separate Explore page as a second surface, reached via a persistent link/tab. Merged into the main screen's own always-interactive canvas — see UX-DR5/UX-DR7/UX-DR13. There is exactly one surface for graph interaction now.
+UX-DR17: Implement every State Pattern from EXPERIENCE.md: idle/empty, upload-rejected, ingestion-in-progress, community-detection-in-progress, LLM-call-failure, no-answer-found, populated/answered, and the main screen's before-any-node-selected state.
 UX-DR18: Implement the Voice and Tone microcopy patterns exactly as specified (tutorial-clear language, Glossary terms named consistently every time, the idle-state differentiation subtitle).
-UX-DR19: Implement Interaction Primitives: click-a-node (Explore detail vs. main-canvas Replay highlight), immediate-effect toggle switches with no confirmation step, scrubber drag/step, and the equally-weighted upload-vs-Demo-Dataset choice.
+UX-DR19: Implement Interaction Primitives: click-a-node (main-canvas detail panel vs. Replay highlight), immediate-effect toggle switches with no confirmation step, scrubber drag/step, and the equally-weighted upload-vs-Demo-Dataset choice.
 UX-DR20: Implement the Accessibility Floor: basic contrast floor for text/labels, basic keyboard reachability for primary actions (submit question, toggle Local/Global, toggle community visualization, scrubber play/pause/step).
 UX-DR21: Implement the three Key Flows end-to-end as testable journeys: UJ-1 (Explaining GraphRAG live), UJ-2 (Setting up before a stream), UJ-3 (Freely exploring the Knowledge Graph).
 
@@ -145,7 +145,7 @@ After an answer arrives, users can scrub back and forth through exactly how it w
 **FRs covered:** FR12, FR13
 
 ### Epic 6: Graph Exploration
-Independent of any question, users can navigate to a dedicated page and freely pan, zoom, and click around the entire Knowledge Graph, with Communities always visible and a detail panel showing any Entity's connections, details, and Tags.
+Independent of any question, the main screen's own graph canvas is pannable, zoomable, and clickable at all times — Communities follow the same visualization toggle as the rest of the screen, and clicking any Entity opens a detail panel with its connections, details, and Tags, all without navigating to a separate page. *(Updated 2026-09-20: originally a dedicated Explore page; merged into the main screen — see epics.md's Epic 6 section below.)*
 **FRs covered:** FR16, FR17
 
 ### Epic 7: DRIFT Search *(v1.1)*
@@ -440,51 +440,55 @@ So that I can show, live, exactly how GraphRAG arrived at an answer (FR13).
 
 ## Epic 6: Graph Exploration
 
-Independent of any question, users can navigate to a dedicated page and freely pan, zoom, and click around the entire Knowledge Graph, with Communities always visible and a detail panel showing any Entity's connections, details, and Tags.
+*(Updated 2026-09-20: originally a dedicated Explore page reached via a persistent link/tab; merged into the main screen since it duplicated a slightly more capable version of the same canvas — pan/zoom plus a node-click detail panel — behind a second page and a second navigation step. Both stories below are rewritten to match; their intent, FR coverage, and read-only scope are otherwise unchanged.)*
 
-### Story 6.1: Explore the Full Knowledge Graph
+Independent of any question, the main screen's own graph canvas is pannable, zoomable, and clickable at all times — Communities follow the same visualization toggle as everywhere else on that screen, and clicking any Entity opens a detail panel with its connections, details, and Tags, all on the one surface.
+
+### Story 6.1: Explore the Knowledge Graph on the Main Screen
 
 As the creator,
-I want a dedicated page where I can freely pan and zoom the entire Knowledge Graph, with Communities always visible,
-So that I can browse the graph's actual structure, independent of any specific question (FR16).
+I want the main screen's own graph canvas to be pannable and zoomable at all times, with Communities visualized the same way as everywhere else on that screen,
+So that I can browse the graph's actual structure, independent of any specific question, with no separate page to navigate to (FR16).
 
 **Acceptance Criteria:**
 
-**Given** a Corpus has been ingested (Epic 2) and Communities detected (Epic 4)
-**When** I click the persistent Explore link/tab in the main screen's app bar (UX-DR16)
-**Then** the Explore page loads the full Knowledge Graph, queried via `graphrag-adapter-neo4j` (AD-2), rendered pannable and zoomable
-**And** Community hulls are always visible on this page — no toggle, unlike the main screen (UX-DR7, using the same colorblind-best-effort palette, UX-DR14)
-**And** if no Corpus has been ingested yet, the page shows a plain-language empty state pointing back to the main screen's ingestion entry point (UX-DR17)
+**Given** a Corpus has produced any graph, even a partial one mid-ingestion
+**When** I interact with the main screen's canvas
+**Then** it is pannable and zoomable at all times, queried via `graphrag-adapter-neo4j` (AD-2) as part of the graph the canvas already holds — no separate page, link, or navigation step is needed to reach this capability
+**And** Community hulls follow the same community-visualization toggle as the rest of the main screen (FR-7, UX-DR7) — there is no separate always-on exploration view
+**And** if no Corpus has been ingested yet, the canvas shows the main screen's own idle/empty state, rather than a blank or broken canvas
 
-### Story 6.2: Inspect an Entity's Details
+### Story 6.2: Inspect an Entity's Details on the Main Screen
 
 As the creator,
-I want to click any Entity on the Explore page to see its connections, details, and Tags,
-So that I can understand any part of the graph on demand, without asking a question (FR17).
+I want to click any Entity on the main screen's graph canvas, at any time, to see its connections, details, and Tags,
+So that I can understand any part of the graph on demand, without asking a question and without leaving the main screen (FR17).
 
 **Acceptance Criteria:**
 
-**Given** the Explore page (Story 6.1) is showing the Knowledge Graph
-**When** I click an Entity node
-**Then** a detail panel slides in from the right, showing that Entity's Relationships, details, and Tags as chips (UX-DR13)
-**And** clicking elsewhere on the canvas or the same node again closes the panel
+**Given** the main screen's graph canvas is showing any Knowledge Graph
+**When** I click an Entity node — during ingestion, mid-Replay, or idle
+**Then** a detail panel slides in from the right, showing that Entity's Relationships, type/details, and Tags as chips (UX-DR13)
+**And** clicking the same node again closes it; clicking a different node swaps the panel's contents directly, no separate close step needed
+**And** clicking a Community hull is a distinct action (focuses/fits that Community) and never opens or closes the detail panel
+**And** the panel coexists with the Retrieval Trace Replay scrubber on the same canvas — opening one never closes the other
 **And** editing an Entity, its Relationships, or its Tags is not possible — this is a read-only view for v1
 
 ## Epic 7: DRIFT Search *(v1.1)*
 
 A third query mode alongside Local and Global Search, added post-MVP via a sprint-change proposal. A Community-summary pass spawns targeted Local Search sub-questions, re-ranks them, and synthesizes an answer — replayed as a branching tree, not flattened, so the multi-stage shape stays visible.
 
-### Story 7.1: Add DRIFT to the Mode Toggle & Query Contract
+### Story 7.1: Add DRIFT to the Mode Choice & Query Contract
 
 As the creator,
-I want a third "Drift" position on the Local/Global mode toggle, with its own explanatory hint and color,
+I want a third "Drift" option on the Local/Global mode choice, with its own explanatory hint and color,
 So that DRIFT is selectable and demonstrable exactly like the other two modes (FR18, AD-18).
 
 **Acceptance Criteria:**
 
-**Given** the chat panel's mode toggle (Story 3.1)
+**Given** the mode choice directly above the composer (Story 3.1, restyled 2026-09-20 to a radio-style choice of colored dots + labels — `DESIGN.md` `components.mode-choice`, not the earlier segmented-tab `mode-toggle`)
 **When** I select Drift
-**Then** the toggle's active segment fills with the Drift tint/foreground (`{colors.drift-soft}`/`{colors.drift}` = Rose `#C0225F`, DESIGN.md `components.mode-toggle`)
+**Then** its dot fills and its label recolors to the Drift accent (`{colors.drift}` = Rose `#C0225F`, `components.mode-choice.active-drift-dot`/`active-drift-foreground`) — consistent with how Local and Global already render as filled dot + colored label, not a filled background segment
 **And** the inline hint updates to "DRIFT runs a community pass, spawns targeted sub-questions, then re-ranks and synthesizes."
 **And** the query request extends to `{"question": "...", "mode": "LOCAL" | "GLOBAL" | "DRIFT"}` (AD-18)
 
