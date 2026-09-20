@@ -23,14 +23,22 @@
     </header>
     <main class="canvas" aria-label="Knowledge Graph canvas">
       <aside class="chat-panel" id="chat-panel" aria-label="Question chat" hidden>
-        <div class="chat-head">
-          <div class="mode-toggle" role="tablist" aria-label="Search mode">
-            <button type="button" class="mode-button active" data-mode="LOCAL" aria-pressed="true">Local Search</button>
-            <button type="button" class="mode-button" data-mode="GLOBAL" aria-pressed="false">Global Search</button>
-          </div>
-          <div class="mode-hint" id="mode-hint">Local Search traverses specific Entities and Relationships around your question.</div>
-        </div>
         <div class="thread" id="chat-thread" aria-live="polite"></div>
+        <div class="composer-head">
+          <div class="mode-choice" role="radiogroup" aria-label="Search mode">
+            <label class="mode-choice-option">
+              <input type="radio" name="search-mode" value="LOCAL" checked>
+              <span class="mode-choice-dot" aria-hidden="true"></span>
+              <span class="mode-choice-label">Local Search</span>
+            </label>
+            <label class="mode-choice-option">
+              <input type="radio" name="search-mode" value="GLOBAL">
+              <span class="mode-choice-dot" aria-hidden="true"></span>
+              <span class="mode-choice-label">Global Search</span>
+            </label>
+          </div>
+          <p class="mode-hint" id="mode-hint">Local Search traverses specific Entities and Relationships around your question.</p>
+        </div>
         <form class="composer" id="chat-form">
           <input id="chat-input" name="question" type="text" placeholder="Ask a question about the Corpus…" aria-label="Ask a question about the Corpus">
           <button type="submit" class="send-button" aria-label="Submit question"></button>
@@ -62,10 +70,11 @@
 
         <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
           <label class="community-toggle" for="community-visualization-toggle">
-            <span class="community-toggle-label">Community formation view</span>
-            <span class="community-toggle-meta">Shows the clustering animation as communities form.</span>
-            <input id="community-visualization-toggle" type="checkbox" checked>
-            <span class="community-toggle-slider" aria-hidden="true"></span>
+            <input id="community-visualization-toggle" class="community-toggle-input" type="checkbox" checked>
+            <span class="community-toggle-text">
+              <span class="community-toggle-label">Community formation view</span>
+              <span class="community-toggle-meta">Visual only — shows the clustering animation as communities form. Detection itself always runs, checked or not.</span>
+            </span>
           </label>
         </div>
 

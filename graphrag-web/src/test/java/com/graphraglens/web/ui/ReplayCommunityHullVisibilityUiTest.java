@@ -30,15 +30,16 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         loadDemoDatasetAndWaitReady();
 
         // Turn the community-visualization toggle OFF before asking anything,
-        // so every hull starts hidden. The checkbox itself is visually
-        // replaced by its own <label>'s custom slider styling (instrument.css)
-        // and isn't the real click target for a user — click the label, same
-        // as a real click would land.
+        // so every hull starts hidden. Clicking the wrapping <label> (rather
+        // than the checkbox directly) exercises the same activation path a
+        // real click on the label's text would take.
         page.locator("label.community-toggle").click();
 
         // GLOBAL Search puts every Community on the trace (AnswerGlobalSearch
-        // always adds one COMMUNITY step per Community, matched or not).
-        page.locator("button.mode-button[data-mode='GLOBAL']").click();
+        // always adds one COMMUNITY step per Community, matched or not). The
+        // radio input itself is visually hidden in favor of its custom dot
+        // (instrument.css) — click the label, same as a real click would land.
+        page.locator("label.mode-choice-option:has(input[value='GLOBAL'])").click();
         page.locator("#chat-input").fill("Tell me about the corpus.");
         page.locator("#chat-form .send-button").click();
 
