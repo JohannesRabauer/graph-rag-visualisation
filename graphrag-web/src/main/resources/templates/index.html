@@ -15,9 +15,6 @@
         <h1 class="brand-title">GraphRAG Lens</h1>
       </div>
       <div class="app-bar-right">
-        <nav class="app-bar-nav" aria-label="Primary">
-          <a class="app-bar-link" href="/explore">Explore</a>
-        </nav>
         <div class="corpus-chip" id="corpus-chip" role="status" hidden></div>
       </div>
     </header>
@@ -93,6 +90,21 @@
             <span class="replay-caption" id="replay-caption">Nothing was touched for this answer.</span>
           </div>
         </div>
+
+        <aside id="entity-detail-panel" class="node-detail-panel" aria-hidden="true">
+          <button type="button" id="entity-detail-close" class="node-detail-close" aria-label="Close entity details">×</button>
+          <p class="node-detail-eyebrow">Entity</p>
+          <h2 id="entity-detail-name" class="node-detail-name"></h2>
+          <p id="entity-detail-type" class="node-detail-type"></p>
+          <div class="node-detail-section">
+            <p class="node-detail-heading">Relationships</p>
+            <ul id="entity-detail-relationships" class="node-detail-relationships"></ul>
+          </div>
+          <div class="node-detail-section">
+            <p class="node-detail-heading">Tags</p>
+            <div id="entity-detail-tags" class="node-detail-tags"></div>
+          </div>
+        </aside>
       </div>
     </main>
   </div>

@@ -841,6 +841,26 @@
     return hull.numericStyle('background-opacity');
   }
 
+  // Test-support only: the raw communityId (no `community::` prefix) the
+  // given Entity is currently parented under, i.e. which rendered hull it
+  // belongs to — reads Cytoscape's own compound-node structure directly
+  // rather than depending on any backend endpoint. Returns null if the
+  // Entity isn't rendered or isn't inside a community hull.
+  function communityIdForEntity(identity) {
+    if (!cy || !identity) {
+      return null;
+    }
+    var node = cy.getElementById(identity);
+    if (!node || node.length === 0) {
+      return null;
+    }
+    var parent = node.parent();
+    if (!parent || parent.length === 0) {
+      return null;
+    }
+    return communityIdFromParentId(parent.id());
+  }
+
   // Test-support only: whether a rendered element (node, hull, or edge —
   // Cytoscape ids are unique across all of them) currently carries a given
   // class. Generic on purpose, so it covers any future highlight class
@@ -867,6 +887,7 @@
     focusCommunity: focusCommunity,
     simulateTap: simulateTap,
     communityHullOpacity: communityHullOpacity,
+    communityIdForEntity: communityIdForEntity,
     elementHasClass: elementHasClass
   };
 })();

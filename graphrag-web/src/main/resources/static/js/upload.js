@@ -27,6 +27,20 @@
   var activeCorpusReady = false;
   var currentSearchMode = 'LOCAL';
 
+  // Entity detail panel (merged onto the main screen 2026-09-20 UX pass —
+  // formerly the separate Explore page's own component, Story 6.2, which
+  // fetched its graph in one bulk request). This screen builds its graph
+  // incrementally from SSE events instead, so relationships a node click
+  // needs to list are accumulated here as they arrive, not fetched.
+  var entityDetailPanel = document.getElementById('entity-detail-panel');
+  var entityDetailClose = document.getElementById('entity-detail-close');
+  var entityDetailName = document.getElementById('entity-detail-name');
+  var entityDetailType = document.getElementById('entity-detail-type');
+  var entityDetailRelationships = document.getElementById('entity-detail-relationships');
+  var entityDetailTags = document.getElementById('entity-detail-tags');
+  var selectedEntityIdentity = null;
+  var activeRelationships = [];
+
   if (!fileInput || !corpusChip || !errorBanner) {
     return;
   }
@@ -47,6 +61,113 @@
       }
     });
   });
+
+  if (entityDetailClose) {
+    entityDetailClose.addEventListener('click', function () {
+      closeEntityDetailPanel();
+    });
+  }
+
+  function closeEntityDetailPanel() {
+    selectedEntityIdentity = null;
+    if (!entityDetailPanel) {
+      return;
+    }
+    entityDetailPanel.classList.remove('is-open');
+    entityDetailPanel.setAttribute('aria-hidden', 'true');
+  }
+
+  // Builds one line per Relationship involving `identity`, matching on
+  // `sourceIdentity`/`targetIdentity` against `activeRelationships` (built
+  // up as `relationship-extracted` SSE events arrive — no separate fetch).
+  function relationshipLines(identity) {
+    var lines = [];
+    activeRelationships.forEach(function (relationship) {
+      var isSource = relationship.sourceIdentity === identity;
+      var isTarget = relationship.targetIdentity === identity;
+      if (!isSource && !isTarget) {
+        return;
+      }
+      var otherName = isSource ? relationship.target : relationship.source;
+      var relationshipType = relationship.type || 'related_to';
+      lines.push(isSource
+          ? '→ ' + relationshipType + ' → ' + otherName
+          : '← ' + relationshipType + ' ← ' + otherName);
+    });
+    return lines;
+  }
+
+  function renderEntityDetailRelationships(identity) {
+    if (!entityDetailRelationships) {
+      return;
+    }
+    entityDetailRelationships.textContent = '';
+    var lines = relationshipLines(identity);
+    if (lines.length === 0) {
+      var empty = document.createElement('li');
+      empty.className = 'node-detail-relationships-empty';
+      empty.textContent = 'No relationships';
+      entityDetailRelationships.appendChild(empty);
+      return;
+    }
+    lines.forEach(function (line) {
+      var item = document.createElement('li');
+      item.textContent = line;
+      entityDetailRelationships.appendChild(item);
+    });
+  }
+
+  function renderEntityDetailTags(type) {
+    if (!entityDetailTags) {
+      return;
+    }
+    entityDetailTags.textContent = '';
+    // Always exactly one chip — the Entity's own `type` value stands in for
+    // a Tag (human decision; no real Tag concept exists — see Design Notes).
+    var chip = document.createElement('span');
+    chip.className = 'node-detail-tag';
+    chip.textContent = type || 'Unknown';
+    entityDetailTags.appendChild(chip);
+  }
+
+  function openEntityDetailPanel(nodeData) {
+    if (!entityDetailPanel) {
+      return;
+    }
+    selectedEntityIdentity = nodeData.identity;
+    if (entityDetailName) {
+      entityDetailName.textContent = nodeData.name || nodeData.identity;
+    }
+    if (entityDetailType) {
+      entityDetailType.textContent = 'Type: ' + (nodeData.type || 'Unknown');
+    }
+    renderEntityDetailRelationships(nodeData.identity);
+    renderEntityDetailTags(nodeData.type);
+    entityDetailPanel.classList.add('is-open');
+    entityDetailPanel.setAttribute('aria-hidden', 'false');
+  }
+
+  // Registered once, module-level — GraphCanvas stores tap callbacks as
+  // module state, not re-wired per `init()` call, so this survives every
+  // corpus load without needing to be re-registered (graph-canvas.js).
+  if (window.GraphCanvas && typeof window.GraphCanvas.onNodeTap === 'function') {
+    window.GraphCanvas.onNodeTap(function (nodeData) {
+      if (!nodeData || !nodeData.identity) {
+        return;
+      }
+      if (selectedEntityIdentity === nodeData.identity) {
+        closeEntityDetailPanel();
+        return;
+      }
+      openEntityDetailPanel(nodeData);
+    });
+  }
+
+  if (window.GraphCanvas && typeof window.GraphCanvas.onBackgroundTap === 'function') {
+    window.GraphCanvas.onBackgroundTap(function () {
+      closeEntityDetailPanel();
+    });
+  }
 
   if (communityVisualizationToggle) {
     communityVisualizationToggle.addEventListener('change', function () {
@@ -246,6 +367,11 @@
     if (window.Replay) {
       window.Replay.close();
     }
+    // A detail panel open for the previous corpus's Entity would otherwise
+    // keep showing stale content (or a selectedEntityIdentity that no
+    // longer resolves to anything) once the canvas is rebuilt below.
+    closeEntityDetailPanel();
+    activeRelationships = [];
 
     var names = body && body.name ? body.name : (body.documentNames || []).join(', ');
     var count = body.documentCount || 0;
@@ -287,7 +413,11 @@
       setIngestionBusy(true);
     }
     if (window.GraphCanvas) {
-      window.GraphCanvas.init();
+      // Interactive (pan/zoom + node-click detail panel) since the former
+      // separate Explore page's canvas capabilities merged onto this one
+      // (2026-09-20 UX pass) — the main screen no longer defers those to a
+      // second page.
+      window.GraphCanvas.init({ interactive: true });
       window.GraphCanvas.setHullsVisible(true);
     }
     connectProgressStream(body && body.corpusId);
@@ -463,6 +593,11 @@
         if (data && window.GraphCanvas) {
           window.GraphCanvas.addRelationship(
             data.sourceIdentity, data.source, data.targetIdentity, data.target, data.type);
+          // Accumulated for the entity detail panel's relationship list —
+          // the main screen builds its graph incrementally from these SSE
+          // events rather than one bulk fetch, so there's nothing else to
+          // read a node's relationships from.
+          activeRelationships.push(data);
         }
       } catch (e) {
         console.warn('Invalid SSE relationship-extracted payload', e);
