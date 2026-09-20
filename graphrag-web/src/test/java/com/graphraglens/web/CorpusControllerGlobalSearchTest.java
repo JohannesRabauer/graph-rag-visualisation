@@ -2,12 +2,14 @@ package com.graphraglens.web;
 
 import com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter;
 import com.graphraglens.core.domain.Corpus;
+import com.graphraglens.core.domain.RetrievalTrace;
 import com.graphraglens.core.domain.UploadedDocument;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,9 +32,11 @@ class CorpusControllerGlobalSearchTest {
         CorpusStore corpusStore = new CorpusStore();
         Corpus corpus = new Corpus("corpus-1", List.of(new UploadedDocument("doc.txt", "Some content.")));
         corpusStore.put(corpus);
+        RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, null, new InMemoryGraphStoreAdapter());
+                null, corpusStore, List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
+                retrievalTraceStore);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 "corpus-1", Map.of("question", "What is this corpus about?", "mode", "GLOBAL"));
@@ -44,5 +48,29 @@ class CorpusControllerGlobalSearchTest {
         assertThat(body.get("noAnswer")).isEqualTo(true);
         assertThat(body).doesNotContainKey("answer");
         assertThat(body).doesNotContainKey("mode");
+
+        // The traceId returned above must already address a fetchable trace,
+        // never a 404 — "found nothing" is still a captured, zero-step trace
+        // (Story 5.1 AC2).
+        String traceId = (String) body.get("traceId");
+        Optional<RetrievalTrace> storedTrace = retrievalTraceStore.get(traceId);
+        assertThat(storedTrace).isPresent();
+        assertThat(storedTrace.get().steps()).isEmpty();
+
+        ResponseEntity<Map<String, Object>> traceResponse = controller.trace(traceId);
+        assertThat(traceResponse.getStatusCode().value()).isEqualTo(200);
+        assertThat(traceResponse.getBody()).containsEntry("traceId", traceId);
+        assertThat((List<?>) traceResponse.getBody().get("steps")).isEmpty();
+    }
+
+    @Test
+    void fetchingAnUnknownTraceIdThrowsIllegalArgumentExceptionThatMapsTo404() {
+        CorpusController controller = new CorpusController(
+                null, new CorpusStore(), List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
+                new RetrievalTraceStore());
+
+        assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                        () -> controller.trace("unknown-trace-id")))
+                .hasMessageContaining("unknown-trace-id");
     }
 }

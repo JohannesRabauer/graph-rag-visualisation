@@ -4,6 +4,7 @@ import com.graphraglens.core.domain.Community;
 import com.graphraglens.core.domain.CommunityMembership;
 import com.graphraglens.core.domain.Entity;
 import com.graphraglens.core.domain.Relationship;
+import com.graphraglens.core.domain.RetrievalStep;
 import com.graphraglens.core.port.GraphStorePort;
 import org.junit.jupiter.api.Test;
 
@@ -60,6 +61,29 @@ class AnswerGlobalSearchTest {
         assertNotNull(result.answer());
         assertTrue(result.answer().contains("photographs"));
         assertFalse(result.answer().contains("disguises"));
+    }
+
+    @Test
+    void reportsOneOrderedStepPerCommunityExaminedInIterationOrder() {
+        StubGraphStore graphStore = new StubGraphStore(List.of(
+                new Community("community-z", "This community centers on Baker Street and stray cats."),
+                new Community("community-a", "This community centers on Irene Adler and photographs.")));
+
+        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStore).answer("What did Irene Adler do to Holmes?");
+
+        assertEquals(2, result.steps().size());
+        assertEquals(RetrievalStep.Kind.COMMUNITY, result.steps().get(0).kind());
+        assertEquals("community-z", result.steps().get(0).identifier());
+        assertEquals(RetrievalStep.Kind.COMMUNITY, result.steps().get(1).kind());
+        assertEquals("community-a", result.steps().get(1).identifier());
+    }
+
+    @Test
+    void reportsZeroStepsWhenNoCommunitiesArePersistedYet() {
+        GlobalSearchAnswer result = new AnswerGlobalSearch(new StubGraphStore(List.of())).answer("Anything?");
+
+        assertNotNull(result.steps());
+        assertTrue(result.steps().isEmpty());
     }
 
     @Test

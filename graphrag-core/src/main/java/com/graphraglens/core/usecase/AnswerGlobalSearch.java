@@ -1,9 +1,12 @@
 package com.graphraglens.core.usecase;
 
 import com.graphraglens.core.domain.Community;
+import com.graphraglens.core.domain.RetrievalStep;
 import com.graphraglens.core.port.GraphStorePort;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -40,7 +43,9 @@ public class AnswerGlobalSearch {
         Set<String> tokens = KeywordMatcher.tokenize(question);
         Community best = null;
         int bestScore = -1;
+        List<RetrievalStep> steps = new ArrayList<>();
         for (Community community : communities) {
+            steps.add(new RetrievalStep(RetrievalStep.Kind.COMMUNITY, community.id(), community.summary()));
             int score = KeywordMatcher.score(community.summary(), tokens);
             if (score > bestScore
                     || (score == bestScore && best != null && community.id().compareTo(best.id()) < 0)) {
@@ -51,11 +56,12 @@ public class AnswerGlobalSearch {
 
         if (best != null && bestScore > 0) {
             return GlobalSearchAnswer.matched(
-                    "Across the corpus, the strongest signal is that " + best.summary());
+                    "Across the corpus, the strongest signal is that " + best.summary(), steps);
         }
 
         return GlobalSearchAnswer.matched(
                 "The corpus has Community summaries, but none of them clearly match that question yet. "
-                        + "Try asking about a named person, place, or event.");
+                        + "Try asking about a named person, place, or event.",
+                steps);
     }
 }

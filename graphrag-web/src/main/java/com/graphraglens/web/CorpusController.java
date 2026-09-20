@@ -4,6 +4,8 @@ import com.graphraglens.core.domain.Community;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.Entity;
 import com.graphraglens.core.domain.Relationship;
+import com.graphraglens.core.domain.RetrievalStep;
+import com.graphraglens.core.domain.RetrievalTrace;
 import com.graphraglens.core.domain.UnreadableDocumentException;
 import com.graphraglens.core.domain.UnsupportedFileTypeException;
 import com.graphraglens.core.domain.UploadedDocument;
@@ -30,6 +32,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -56,10 +60,12 @@ public class CorpusController {
     private final CorpusProgressService corpusProgressService;
     private final LlmPort llmPort;
     private final GraphStorePort graphStorePort;
+    private final RetrievalTraceStore retrievalTraceStore;
 
     public CorpusController(IngestCorpus ingestCorpus, CorpusStore corpusStore,
                            List<DocumentParserPort> documentParsers, DemoDatasetService demoDatasetService,
-                           CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort) {
+                           CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort,
+                           RetrievalTraceStore retrievalTraceStore) {
         this.ingestCorpus = ingestCorpus;
         this.corpusStore = corpusStore;
         this.documentParsers = documentParsers;
@@ -67,6 +73,7 @@ public class CorpusController {
         this.corpusProgressService = corpusProgressService;
         this.llmPort = llmPort;
         this.graphStorePort = graphStorePort;
+        this.retrievalTraceStore = retrievalTraceStore;
     }
 
     @GetMapping(value = "/api/corpora/{corpusId}/progress", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -127,32 +134,53 @@ public class CorpusController {
             return globalSearchResponse(question);
         }
 
-        String answer = buildAnswer(corpus, question);
+        LocalSearchResult result = buildAnswer(corpus, question);
+        String traceId = UUID.randomUUID().toString();
+        retrievalTraceStore.put(traceId, new RetrievalTrace(traceId, result.steps()));
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
-                "traceId", UUID.randomUUID().toString(),
-                "answer", answer,
+                "traceId", traceId,
+                "answer", result.answer(),
                 "mode", mode.toUpperCase(Locale.ROOT)));
     }
 
     private ResponseEntity<Map<String, Object>> globalSearchResponse(String question) {
         GlobalSearchAnswer result = new AnswerGlobalSearch(graphStorePort).answer(question);
+        String traceId = UUID.randomUUID().toString();
+        retrievalTraceStore.put(traceId, new RetrievalTrace(traceId, result.steps()));
 
         if (result.noAnswer()) {
             // AD-13's distinct no-answer shape — a normal outcome (Communities
             // not detected/summarized yet), never the generic {"error": ...} shape.
             return ResponseEntity.ok(Map.of(
                     "answerId", UUID.randomUUID().toString(),
-                    "traceId", UUID.randomUUID().toString(),
+                    "traceId", traceId,
                     "noAnswer", true,
                     "reason", result.reason()));
         }
 
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
-                "traceId", UUID.randomUUID().toString(),
+                "traceId", traceId,
                 "answer", result.answer(),
                 "mode", "GLOBAL"));
+    }
+
+    @GetMapping("/api/traces/{traceId}")
+    public ResponseEntity<Map<String, Object>> trace(@PathVariable("traceId") String traceId) {
+        RetrievalTrace trace = retrievalTraceStore.get(traceId)
+                .orElseThrow(() -> new IllegalArgumentException("No retrieval trace was found for id " + traceId));
+
+        return ResponseEntity.ok(Map.of(
+                "traceId", trace.traceId(),
+                "steps", trace.steps().stream().map(this::stepPayload).toList()));
+    }
+
+    private Map<String, Object> stepPayload(RetrievalStep step) {
+        return Map.of(
+                "kind", step.kind().name(),
+                "identifier", step.identifier(),
+                "label", step.label());
     }
 
     @ExceptionHandler(UnsupportedFileTypeException.class)
@@ -219,7 +247,7 @@ public class CorpusController {
                 "memberEntityIdentities", memberEntityIdentities);
     }
 
-    private String buildAnswer(Corpus corpus, String question) {
+    private LocalSearchResult buildAnswer(Corpus corpus, String question) {
         Set<String> tokens = KeywordMatcher.tokenize(question);
 
         for (var document : corpus.documents()) {
@@ -229,11 +257,14 @@ public class CorpusController {
             String content = document.content();
             String candidate = findBestSentence(content, tokens);
             if (candidate != null) {
-                return "Based on the local neighborhood in this corpus, " + candidate;
+                String answer = "Based on the local neighborhood in this corpus, " + candidate;
+                return new LocalSearchResult(answer, entityStepsNamedIn(candidate));
             }
         }
 
-        return "The loaded corpus does not contain a direct local match for that question. Try asking about a person, place, or event mentioned in the documents.";
+        return new LocalSearchResult(
+                "The loaded corpus does not contain a direct local match for that question. Try asking about a person, place, or event mentioned in the documents.",
+                List.of());
     }
 
     private String findBestSentence(String content, Set<String> tokens) {
@@ -248,6 +279,40 @@ public class CorpusController {
             }
         }
         return bestScore > 0 ? best : null;
+    }
+
+    /**
+     * Cross-references the matched sentence's text against the Entities that
+     * already exist in the graph (a best-effort match, since Local Search's
+     * underlying retrieval is plain-text sentence-matching, not a graph
+     * traversal — see this story's Design Notes). Steps are ordered by where
+     * each entity's name first appears in the sentence, not by
+     * {@code graphStorePort.entities()}'s iteration order.
+     */
+    private List<RetrievalStep> entityStepsNamedIn(String sentence) {
+        record NamedAt(int index, Entity entity) {
+        }
+
+        String lowerSentence = sentence.toLowerCase(Locale.ROOT);
+        List<NamedAt> matches = new ArrayList<>();
+        for (Entity entity : graphStorePort.entities()) {
+            if (entity == null || entity.name() == null || entity.name().isBlank()) {
+                continue;
+            }
+            int index = lowerSentence.indexOf(entity.name().toLowerCase(Locale.ROOT));
+            if (index >= 0) {
+                matches.add(new NamedAt(index, entity));
+            }
+        }
+
+        matches.sort(Comparator.comparingInt(NamedAt::index));
+        return matches.stream()
+                .map(match -> new RetrievalStep(
+                        RetrievalStep.Kind.ENTITY, match.entity().normalizedIdentity(), match.entity().name()))
+                .toList();
+    }
+
+    private record LocalSearchResult(String answer, List<RetrievalStep> steps) {
     }
 
     private Map<String, Object> corpusPayload(Corpus corpus) {

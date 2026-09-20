@@ -261,6 +261,80 @@ class CorpusControllerTest {
     }
 
     @Test
+    void localSearchTraceIsFetchableAndReportsTheNamedEntitiesInTheMatchedSentence() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "sherlock-trace.txt", "text/plain",
+                "Irene Adler outwitted Sherlock Holmes by stealing the photograph. Holmes admired her ingenuity."
+                        .getBytes(StandardCharsets.UTF_8));
+
+        String uploadBody = mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(uploadBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        String queryBody = mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
+                        .contentType("application/json")
+                        .content("{\"question\":\"Why was Irene Adler able to outwit Holmes?\",\"mode\":\"LOCAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String traceId = JsonPath.read(queryBody, "$.traceId");
+
+        mockMvc.perform(get("/api/traces/{traceId}", traceId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.traceId").value(traceId))
+                .andExpect(jsonPath("$.steps").isArray())
+                .andExpect(jsonPath("$.steps[0].kind").value("ENTITY"))
+                .andExpect(jsonPath("$.steps[*].label", org.hamcrest.Matchers.hasItem(
+                        org.hamcrest.Matchers.containsStringIgnoringCase("Irene Adler"))));
+    }
+
+    @Test
+    void localSearchNoMatchStillProducesAFetchableZeroStepTrace() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "no-match.txt", "text/plain",
+                "Irene Adler outwitted Sherlock Holmes by stealing the photograph.".getBytes(StandardCharsets.UTF_8));
+
+        String uploadBody = mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(uploadBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        String queryBody = mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
+                        .contentType("application/json")
+                        .content("{\"question\":\"zzqqxx nonexistent gibberish flimflam\",\"mode\":\"LOCAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String traceId = JsonPath.read(queryBody, "$.traceId");
+
+        mockMvc.perform(get("/api/traces/{traceId}", traceId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.traceId").value(traceId))
+                .andExpect(jsonPath("$.steps").isArray())
+                .andExpect(jsonPath("$.steps", org.hamcrest.Matchers.hasSize(0)));
+    }
+
+    @Test
+    void fetchingAnUnknownTraceIdReturns404WithAPlainLanguageError() throws Exception {
+        mockMvc.perform(get("/api/traces/{traceId}", "no-such-trace-id"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("no-such-trace-id")));
+    }
+
+    @Test
     void globalSearchAnswersFromACommunitySummaryOnceCommunitiesExist() throws Exception {
         String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
                 .andExpect(status().isCreated())
@@ -281,6 +355,36 @@ class CorpusControllerTest {
                 .andExpect(jsonPath("$.mode").value("GLOBAL"))
                 .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.containsString("Irene Adler")))
                 .andExpect(jsonPath("$.noAnswer").doesNotExist());
+    }
+
+    @Test
+    void globalSearchTraceIsFetchableAndHasOneStepPerCommunityExamined() throws Exception {
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        int communityCount = graphStorePort.communities().size();
+
+        String queryBody = mockMvc.perform(post("/api/corpora/{corpusId}/query", corpusId)
+                        .contentType("application/json")
+                        .content("{\"question\":\"What community centers on Irene Adler?\",\"mode\":\"GLOBAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String traceId = JsonPath.read(queryBody, "$.traceId");
+
+        mockMvc.perform(get("/api/traces/{traceId}", traceId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.traceId").value(traceId))
+                .andExpect(jsonPath("$.steps", org.hamcrest.Matchers.hasSize(communityCount)))
+                .andExpect(jsonPath("$.steps[0].kind").value("COMMUNITY"));
     }
 
     @Test
