@@ -233,6 +233,90 @@ class AnswerDriftSearchTest {
     }
 
     @Test
+    void interleavesEachBranchsOwnStepsBeneathItsSpawnPointEvenWhenBothBranchesGround() {
+        StubGraphStore graphStore = new StubGraphStore(
+                List.of(
+                        new Community("community-b", "This community centers on Sherlock Holmes and Irene Adler."),
+                        new Community("community-a", "This community centers on Dr Watson and Mary Morstan.")),
+                List.of(
+                        new Entity("Dr Watson", "Person"),
+                        new Entity("Mary Morstan", "Person"),
+                        new Entity("Sherlock Holmes", "Person"),
+                        new Entity("Irene Adler", "Person")),
+                List.of(
+                        new Relationship("Dr Watson", "Person", "MARRIED", "Mary Morstan", "Person"),
+                        new Relationship("Sherlock Holmes", "Person", "INVESTIGATES", "Irene Adler", "Person")));
+        LlmPort llmPort = new LlmPort() {
+            @Override
+            public GraphExtraction extract(com.graphraglens.core.domain.Corpus corpus) {
+                return new GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public List<String> deriveDriftSubQuestions(String question, Collection<Community> communities) {
+                return List.of(
+                        "What did Dr Watson do with Mary Morstan?",
+                        "What connects Sherlock Holmes to Irene Adler?");
+            }
+        };
+
+        DriftSearchAnswer result = new AnswerDriftSearch(graphStore, llmPort)
+                .answer("Tell me about Sherlock Holmes and Irene Adler");
+
+        // Both spawned branches ground locally, so this proves the branches'
+        // own steps stay interleaved beneath their own spawn point (rather
+        // than every spawn marker being grouped before any branch runs), and
+        // that the first grounded branch in spawn order wins synthesis even
+        // though the second branch also grounds.
+        assertEquals(List.of(
+                        RetrievalStep.Kind.COMMUNITY,
+                        RetrievalStep.Kind.COMMUNITY,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
+                        RetrievalStep.Kind.ENTITY,
+                        RetrievalStep.Kind.RELATIONSHIP,
+                        RetrievalStep.Kind.ENTITY,
+                        RetrievalStep.Kind.SUB_QUESTION_SPAWNED,
+                        RetrievalStep.Kind.ENTITY,
+                        RetrievalStep.Kind.RELATIONSHIP,
+                        RetrievalStep.Kind.ENTITY,
+                        RetrievalStep.Kind.SYNTHESIS),
+                result.steps().stream().map(RetrievalStep::kind).toList());
+        assertTrue(result.answer().contains("Dr Watson married Mary Morstan."));
+        assertFalse(result.answer().contains("Sherlock Holmes investigates Irene Adler."));
+    }
+
+    @Test
+    void recordsAnEmptyParentIdWhenMoreSubQuestionsAreSpawnedThanCandidateCommunities() {
+        StubGraphStore graphStore = new StubGraphStore(
+                List.of(new Community("community-1", "This community centers on Sherlock Holmes.")),
+                List.of(new Entity("Sherlock Holmes", "Person")),
+                List.of());
+        LlmPort llmPort = new LlmPort() {
+            @Override
+            public GraphExtraction extract(com.graphraglens.core.domain.Corpus corpus) {
+                return new GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public List<String> deriveDriftSubQuestions(String question, Collection<Community> communities) {
+                return List.of(
+                        "Tell me about Sherlock Holmes",
+                        "An extra sub-question with no matching candidate community");
+            }
+        };
+
+        DriftSearchAnswer result = new AnswerDriftSearch(graphStore, llmPort)
+                .answer("Tell me about Sherlock Holmes");
+
+        List<RetrievalStep> spawnSteps = result.steps().stream()
+                .filter(step -> step.kind() == RetrievalStep.Kind.SUB_QUESTION_SPAWNED)
+                .toList();
+        assertEquals(2, spawnSteps.size());
+        assertEquals("community-1", spawnSteps.get(0).identifier());
+        assertEquals("", spawnSteps.get(1).identifier());
+    }
+
+    @Test
     void usesCommunitySummaryTokensToDeriveAnswerableSubQuestions() {
         StubGraphStore graphStore = new StubGraphStore(
                 List.of(new Community("community-1", "This community centers on Irene Adler and disguises.")),

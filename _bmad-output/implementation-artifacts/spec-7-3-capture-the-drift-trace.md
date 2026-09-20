@@ -9,7 +9,21 @@ review_loop_iteration: 0 # incremented by step-04 before each review loopback
 followup_review_recommended: false # set by step-04 on status: done — true if the LLM decided another review pass is worthwhile
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The replay UI (replay.js's caption logic and graph-canvas.js's identifier resolver) has no
+      handling for the new SUB_QUESTION_SPAWNED/SYNTHESIS step kinds, so replaying a DRIFT trace
+      today mislabels them as "matched entity" and fails to resolve/highlight their Community id.
+    evidence: |-
+      Verified in graphrag-web/src/main/resources/static/js/replay.js (caption ternary falls
+      through to "matched entity" for any kind other than COMMUNITY/RELATIONSHIP) and
+      graph-canvas.js (identifier resolver only special-cases COMMUNITY, not the new kinds, which
+      also carry a Community id). Real and reproducible today, but epics.md's Story 7.4 AC owns
+      rendering the DRIFT trace as a branching tree in the replay UI, so this surface is that
+      story's scope, not 7.3's.
+    location: >-
+      graphrag-web/src/main/resources/static/js/replay.js, graphrag-web/src/main/resources/static/js/graph-canvas.js
+    severity: medium
 ---
 
 <intent-contract>
@@ -72,7 +86,21 @@ deferred: []
 
 ## Review Triage Log
 
-## Design Notes
+### 2026-09-20 — Review pass
+- verdicts: 12 findings — high 0, medium 5, low 1, false 3, maybe-false 0
+- findings:
+  - `[medium]` `patch` (blind-hunter) `AnswerDriftSearchTest.keepsCommunityStepsBeforeEverySpawnedLocalSearchStep` only ever gives one branch zero contributed steps, so it can't distinguish "each branch's own steps directly follow its own spawn step" from "all spawn markers grouped first" — added `interleavesEachBranchsOwnStepsBeneathItsSpawnPointEvenWhenBothBranchesGround`, which gives both branches non-empty local steps and asserts the full interleaved 11-step sequence.
+  - `[medium]` `patch` (blind-hunter) `tracesEveryBranchButSynthesizesFromTheFirstGroundedHop` only ever grounds one branch, so it can't prove "first grounded hop in spawn order wins" over a later-grounded branch — same new test above also asserts the synthesized answer reflects the first branch even though the second branch also grounds.
+  - `[medium]` `patch` (verification-gap, pre-verified) no test exercises two spawned branches that both emit non-empty `AnswerLocalSearch` steps, so a regression that dropped or reordered a non-winning branch's real steps would not be caught — same new test above closes this gap; action taken as described.
+  - `[low]` `patch` (blind-hunter) the documented `subQuestions.size() > candidates.size()` → `identifier = ""` fallback has zero test coverage — added `recordsAnEmptyParentIdWhenMoreSubQuestionsAreSpawnedThanCandidateCommunities`, asserting the extra spawn step's identifier is `""`.
+  - `[medium]` `defer` (blind-hunter) `replay.js`'s caption logic renders `SUB_QUESTION_SPAWNED`/`SYNTHESIS` steps with a generic "matched entity" caption since it has no branch for the new kinds — real and verified, but epics.md's own Story 7.4 AC ("the canvas renders the community-pass root, a fan of branch lines to each sub-question node...") assigns the replay-facing rendering of these step kinds to Story 7.4, so the intent itself (not just this spec's scope section) excludes it from 7.3.
+  - `[medium]` `defer` (blind-hunter) `graph-canvas.js`'s identifier-to-node resolution has no branch for `SUB_QUESTION_SPAWNED`/`SYNTHESIS`, so their community-id identifiers won't resolve/highlight correctly during replay — same root cause and same Story-7.4-owned surface as above; grouped with it.
+  - `[medium]` `defer` (edge-case-hunter) `replay.js:292-294`'s caption ternary has no case for `SUB_QUESTION_SPAWNED`/`SYNTHESIS`, falling through to "matched entity" — same finding as above from a different layer; grouped with it.
+  - `[medium]` `defer` (edge-case-hunter) `graph-canvas.js:655-660`'s identifier resolver only special-cases `COMMUNITY`, so `SUB_QUESTION_SPAWNED`/`SYNTHESIS` steps (which also carry a Community id) resolve/highlight incorrectly — same finding as above from a different layer; grouped with it.
+  - `[medium]` `defer` (verification-gap, pre-verified) no replay UI test opens a DRIFT trace and steps through `SUB_QUESTION_SPAWNED`/`SYNTHESIS` — same root cause as the replay findings above (Story 7.4's surface); grouped with them.
+  - `false` (blind-hunter) the spec's Design Notes/Never-boundary section is asserted to be incomplete documentation because it doesn't mention needing replay-UI updates — the spec's claim is only that `CorpusController`'s wire serialization is generic (verified true: `stepPayload`/`captureTrace` do handle any `Kind` generically via `.name()`); the spec never claims the replay UI needs no update, so this doesn't disprove anything the spec actually says, and its only possible "fix" would be editing this spec, which triage must never do.
+  - `false` (blind-hunter) `RetrievalStep`'s constructor trims `identifier`/`label`, so a `SUB_QUESTION_SPAWNED` step's `label` isn't a byte-exact copy of the spawned question text — this trimming predates this story (applies uniformly to every `Kind` since `RetrievalStep`'s introduction), is not introduced or changed by this diff, and the spec's "carrying its question text" requirement is satisfied by trimmed text; not a bad outcome this diff caused.
+  - `false` (edge-case-hunter) `AnswerDriftSearch` allegedly under-guards a null/empty `deriveDriftSubQuestions` result — verified: an empty list degrades gracefully to zero branches recorded and the existing fallback synthesis text, exactly as Story 7.2's behavior already worked; a null return would only NPE for a hand-written custom `LlmPort`, a pre-existing risk unrelated to and unchanged by this diff.
 
 **Why remove the early `break`, and why is this in Story 7.3's scope, not scope creep:** Story 7.2 shipped a "first grounded hop wins, and stops looking" optimization so the trace exactly matched the surfaced answer (its own review triage log even records this as an intentional fix). Epics.md's Story 7.3 AC requires "each sub-question's own Local Search steps are appended in order beneath it" for every spawned sub-question, and Story 7.4's AC requires the replay UI to render "a fan of branch lines to each sub-question node" — both are impossible if only the first grounded branch is ever traced. This story corrects that: the re-ranking *decision* (first grounded hop wins) is preserved exactly, but the *trace* now always reflects every branch that was spawned, which is what "capture the trace" in this story's title actually means.
 
@@ -83,3 +111,24 @@ deferred: []
 **Commands:**
 - `mvn -pl graphrag-core -am test -Dtest=AnswerDriftSearchTest` -- expected: all pass, including the updated step-sequence assertions and the new `SUB_QUESTION_SPAWNED` identifier/label test.
 - `mvn -pl graphrag-web -am test -Dtest=CorpusControllerDriftSearchTest,CorpusControllerTest,DriftModeChoiceUiTest` -- expected: all pass, including the updated `traceStepCount`/kind-sequence assertions.
+
+## Auto Run Result
+
+**Summary:** `AnswerDriftSearch` no longer stops at the first graph-grounded sub-question; it now evaluates every spawned sub-question, records a `SUB_QUESTION_SPAWNED` step (parent Community id + sub-question text) plus that branch's own Local Search steps for each one, then appends exactly one final `SYNTHESIS` step reflecting the first grounded hop in spawn order — the same re-ranking rule as Story 7.2, only the trace recording changed. `RetrievalStep.Kind` gained the two new values with no shape change; no `CorpusController`/wire-layer changes were needed since trace serialization already handles any `Kind` generically.
+
+**Files changed:**
+- `graphrag-core/src/main/java/com/graphraglens/core/domain/RetrievalStep.java` -- added `SUB_QUESTION_SPAWNED` and `SYNTHESIS` to the `Kind` enum; updated Javadoc.
+- `graphrag-core/src/main/java/com/graphraglens/core/usecase/AnswerDriftSearch.java` -- replaced the early-`break` loop with a two-pass design: spawn and trace every branch (`BranchAnswer` record), then pick the first grounded hop and append one `SYNTHESIS` step.
+- `graphrag-core/src/test/java/com/graphraglens/core/usecase/AnswerDriftSearchTest.java` -- updated 3 existing step-sequence assertions, renamed/rewrote 1 test to trace both branches, and added 3 new tests (1 for spawn identifier/label, 1 for multi-branch interleaving + first-wins under review, 1 for the `identifier = ""` fallback under review).
+- `graphrag-web/src/test/java/com/graphraglens/web/CorpusControllerDriftSearchTest.java` -- updated the expected `traceStepCount` (4 → 6) and kind sequence for the end-to-end DRIFT trace test.
+
+**Review findings breakdown (12 findings from blind-hunter, edge-case-hunter, verification-gap, intent-alignment):**
+- Patched (4 findings, grouped into 2 entries): no test proved every spawned branch keeps its own steps directly beneath its own spawn step, nor that the first-grounded-in-spawn-order rule beats a later-grounded branch, when both branches actually ground — closed with one new test giving both branches real local-search steps. Separately, the `subQuestions.size() > candidates.size()` → `identifier = ""` fallback had no coverage — closed with a dedicated test.
+- Deferred (5 findings, 1 entry, severity medium): the replay UI (`replay.js` caption logic, `graph-canvas.js` identifier resolution) has no handling for the two new step kinds, so replaying a DRIFT trace today mislabels/mis-highlights them. Real and verified, but epics.md's own Story 7.4 AC assigns replay-tree rendering to that story, so it's excluded by the intent itself, not just this spec's scope section.
+- Rejected (3 findings, verdict `false`): the "no UI work is needed" documentation claim only concerns wire serialization (true) and doesn't claim the replay UI needs nothing (its only fix would be a spec edit, which triage never applies); `RetrievalStep`'s pre-existing constructor trimming of `identifier`/`label` predates and is unchanged by this diff; the alleged missing null/empty-`subQuestions` guard already degrades gracefully via the existing Story 7.2 fallback path.
+
+**Follow-up review recommendation:** `false` — this is a first pass; only one grouped `medium` entry and one `low` entry were patched (no `high`, and fewer than two separate `medium` entries), so per the convergence rule no follow-up pass is warranted.
+
+**Verification performed:** `mvn -pl graphrag-core,graphrag-web -am test -Dtest=AnswerDriftSearchTest,CorpusControllerDriftSearchTest,CorpusControllerTest,DriftModeChoiceUiTest` — 44/44 passed (14 + 3 + 25 + 2), confirmed via `target/surefire-reports/*.txt`, after applying the two patch tests.
+
+**Residual risks:** the deferred replay-UI gap means a DRIFT trace replayed today (before Story 7.4 ships) will show misleading captions/highlighting for `SUB_QUESTION_SPAWNED`/`SYNTHESIS` steps — tracked in this spec's `deferred` frontmatter for Story 7.4 to pick up.
