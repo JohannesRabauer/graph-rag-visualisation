@@ -22,9 +22,14 @@
       </div>
     </header>
     <main class="canvas" aria-label="Explore the full Knowledge Graph">
+      <div class="canvas-idle" id="explore-loading">
+        <p class="eyebrow">Knowledge Graph — Loading</p>
+        <p class="subtitle">Loading the Knowledge Graph…</p>
+      </div>
+
       <div class="canvas-idle" id="explore-empty-state" hidden>
-        <p class="eyebrow">Knowledge Graph — Empty</p>
-        <p class="subtitle">
+        <p class="eyebrow" id="explore-empty-eyebrow">Knowledge Graph — Empty</p>
+        <p class="subtitle" id="explore-empty-message">
           No Corpus has been ingested yet.
           <a href="/">Go to the main screen</a> to upload a Corpus or load the built-in demo dataset.
         </p>

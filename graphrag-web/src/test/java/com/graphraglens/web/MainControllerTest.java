@@ -98,7 +98,9 @@ class MainControllerTest {
         assertThat(body).contains("instrument.css");
         assertThat(body).contains("id=\"graph-canvas\"");
         assertThat(body).contains("id=\"graph-legend\"");
+        assertThat(body).contains("id=\"explore-loading\"");
         assertThat(body).contains("id=\"explore-empty-state\"");
+        assertThat(body).contains("id=\"explore-empty-message\"");
         assertThat(body).contains("href=\"/\"");
         assertThat(body).contains("cytoscape@3.28.1");
         assertThat(body).contains("graph-canvas.js");

@@ -77,9 +77,9 @@ public class ExploreController {
 
     private Map<String, Object> relationshipPayload(Relationship relationship) {
         return Map.of(
-                "sourceIdentity", new Entity(relationship.source(), relationship.sourceType()).normalizedIdentity(),
+                "sourceIdentity", Entity.identityOf(relationship.source(), relationship.sourceType()),
                 "source", relationship.source(),
-                "targetIdentity", new Entity(relationship.target(), relationship.targetType()).normalizedIdentity(),
+                "targetIdentity", Entity.identityOf(relationship.target(), relationship.targetType()),
                 "target", relationship.target(),
                 "type", relationship.type());
     }
