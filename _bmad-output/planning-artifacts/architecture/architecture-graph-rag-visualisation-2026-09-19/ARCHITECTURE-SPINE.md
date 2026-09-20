@@ -7,7 +7,7 @@ paradigm: 'Hexagonal Architecture (Ports & Adapters)'
 scope: 'Whole system'
 status: final
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-20
 binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17]
 sources:
   - _bmad-output/planning-artifacts/briefs/brief-graph-rag-visualisation-2026-09-19/brief.md
@@ -130,17 +130,23 @@ graph TD
 - **Prevents:** An independently-built frontend and backend agreeing on *which* use case runs (Local vs. Global, AD from FR-9/FR-10) but not on the wire shape of the result — in particular, "no answer found" (a normal, expected outcome per FR-9/FR-10) being conflated with an actual LLM failure (FR-5's error state), since both would otherwise land on the same generic `{"error": ...}` shape.
 - **Rule:** A query is `POST /api/corpora/{corpusId}/query` with body `{"question": "...", "mode": "LOCAL" | "GLOBAL"}`. A successful answer responds `{"answerId": "...", "traceId": "...", "answer": "..."}`. A "no answer found" result (FR-9/FR-10 consequence) is a distinct, successful response shape — `{"answerId": "...", "traceId": "...", "noAnswer": true, "reason": "..."}` — never the generic error shape. An actual LLM-call failure during generation (FR-5's principle, extended per AD-6's Component Patterns note) uses the same `{"error": "<plain-language message>"}` shape as extraction failures, and is also emitted as an `error` event on that Corpus's AD-12 SSE stream so a still-open connection sees it without polling.
 
-### AD-14 — Query reads run against whatever is currently committed; no locking against in-flight ingestion
+### AD-14 — Query and Explore reads run against whatever is currently committed; no locking against in-flight ingestion
 
 - **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch`, `ExploreGraph` use cases; `graphrag-adapter-neo4j`; FR-8–FR-11, FR-16–FR-17.
-- **Prevents:** An implementer introducing a lock, queue, or "wait for ingestion to finish" gate on queries — which would silently contradict EXPERIENCE.md's explicit allowance for querying mid-ingestion (a deliberate "real, non-scripted" choice, not an oversight to guard against).
-- **Rule:** Every Entity/Relationship/Community write (AD-10, AD-11) commits in its own Neo4j transaction as soon as extracted/detected — never batched into one Corpus-wide transaction. A query never waits for or blocks on in-flight ingestion; it simply reads whatever is currently committed, which may be a partial graph. No additional locking or coordination is introduced between the write path and the read path.
+- **Prevents:** A read use case, once actually invoked, introducing a lock, queue, or wait against in-flight ingestion at the storage/read-path level. This is narrower than "a query is always accepted" — **reconciled 2026-09-20:** it originally read as a blanket guarantee that any query is always accepted regardless of Corpus state, which a later story reversed at the web layer (see AD-16). What this AD actually prevents, and still holds today, is the *use case itself* ever locking, queuing, or waiting on the write path once it runs.
+- **Rule:** Every Entity/Relationship/Community write (AD-10, AD-11) commits in its own Neo4j transaction as soon as extracted/detected — never batched into one Corpus-wide transaction. Once a read use case is invoked, it never waits for or blocks on in-flight ingestion; it simply reads whatever is currently committed, which may be a partial graph. No additional locking or coordination exists between the write path and the read path. `ExploreGraph` is never gated by Corpus workflow status (AD-16) — the Explore page always reads whatever currently exists, ready or not, matching its own "no Corpus ingested yet" empty-state design; only `AnswerLocalSearch`/`AnswerGlobalSearch` sit behind AD-16's web-layer gate.
 
 ### AD-15 — Frontend is Java-native: Thymeleaf shell, unbundled JS for the canvas
 
 - **Binds:** `graphrag-web`; the whole frontend delivery approach; overrides the earlier TypeScript+Vite assumption.
 - **Prevents:** A second build toolchain (Node/npm/a bundler) creeping into a project explicitly meant to stay Java-native; a contributor assuming a compile step exists for client JS when none does.
-- **Rule:** The page shell (layout, chat panel scaffolding, toggles, initial state) is server-rendered via Thymeleaf templates in `graphrag-web/src/main/resources/templates/`. Cytoscape.js and any other client-side JavaScript (the graph canvas, replay scrubber, SSE consumption) are plain, unbundled `.js` files under `graphrag-web/src/main/resources/static/js/` — vendored or CDN-loaded, never TypeScript, never passed through a bundler. There is no `frontend/` module, no `package.json`-driven build step anywhere in the project.
+- **Rule:** The page shell (layout, chat panel scaffolding, toggles, initial state) is server-rendered via Thymeleaf templates in `graphrag-web/src/main/resources/templates/`. Cytoscape.js and any other client-side JavaScript (the graph canvas, replay scrubber, SSE consumption) are plain, unbundled `.js` files under `graphrag-web/src/main/resources/static/js/` — vendored or CDN-loaded, never TypeScript, never passed through a bundler. There is no `frontend/` module, no `package.json`-driven build step anywhere in the project. **Test-only exception (added 2026-09-20):** `graphrag-web`'s test sources may depend on Playwright-Java (a Maven test-scope dependency; see `graphrag-web/pom.xml` and `src/test/java/.../ui/`) to drive a real headless browser for UI-behavior tests. Playwright-Java bundles a Node-based automation driver internally, but it is a test-runtime dependency invoked via `mvn test`, never an authoring or build step for the app's own JS — no `package.json`, no `npm install`, and no bundler is introduced into the shipped app or anywhere in the repository as a result.
+
+### AD-16 — Corpus workflow status gates Query at the web layer; Explore is never gated (added 2026-09-20)
+
+- **Binds:** `graphrag-web`'s `CorpusController`/`CorpusStore`; FR-8–FR-11.
+- **Prevents:** A presenter's LOCAL/GLOBAL question landing against a Corpus that hasn't finished ingesting (or that failed) and getting a confusing, partial, or misleading answer instead of a clear "still building" message mid-demo. This reverses this project's own original UX allowance — EXPERIENCE.md's now-superseded "queries proceed against a partial graph" decision, the same allowance AD-14 was originally written to protect (see AD-14's reconciliation note above) — a deliberate, accepted trade-off from the `spec-demo-ready-showcase-workflow.md` story, not an oversight.
+- **Rule:** `CorpusController.query()` checks `CorpusStore.status(corpusId)` *before* invoking either use case. A `BUILDING` or `FAILED` Corpus responds `409 Conflict` with a plain-language message, and neither `AnswerLocalSearch` nor `AnswerGlobalSearch` is invoked at all — no use case call, no read, no partial answer. This gate lives entirely in `graphrag-web`, above the use-case boundary AD-14 governs: once a read use case *is* invoked (Corpus is `READY`), it remains exactly as lock-free and non-blocking as AD-14 specifies. `ExploreGraph`/`GET /api/graph` has no equivalent gate and is unaffected — Explore was never in this story's scope and keeps reading whatever is currently committed, ready or not.
 
 ## Consistency Conventions
 
@@ -216,7 +222,7 @@ Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of
 | Document Ingestion (FR-1–FR-3) | `graphrag-adapter-parsing`, `IngestCorpus` use case | AD-9 |
 | Knowledge Graph Construction (FR-4–FR-5) | `IngestCorpus` use case, `LlmPort`, `graphrag-adapter-langchain4j` | AD-1, AD-3, AD-10 |
 | Community Detection & Visualization (FR-6–FR-7) | `DetectCommunities` use case, `graphrag-adapter-neo4j` (GDS Leiden) | AD-4, AD-6, AD-11 |
-| Query Interface (FR-8–FR-11) | `AnswerLocalSearch`, `AnswerGlobalSearch` use cases | AD-1, AD-3, AD-6, AD-11, AD-13, AD-14 |
+| Query Interface (FR-8–FR-11) | `AnswerLocalSearch`, `AnswerGlobalSearch` use cases | AD-1, AD-3, AD-6, AD-11, AD-13, AD-14, AD-16 |
 | Retrieval Trace & Playback (FR-12–FR-13) | Use cases (trace capture) + `graphrag-web` (in-memory store, replay API) | AD-5, AD-13 |
 | Setup & Deployment (FR-14–FR-15) | `docker-compose.yml`, `graphrag-web` config | AD-8, Consistency Conventions (config) |
 | Graph Exploration (FR-16–FR-17) | `ExploreGraph` use case, `graphrag-adapter-neo4j` | AD-1, AD-2, AD-11, AD-14 |
