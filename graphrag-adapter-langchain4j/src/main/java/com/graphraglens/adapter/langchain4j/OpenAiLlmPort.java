@@ -35,7 +35,8 @@ public class OpenAiLlmPort implements LlmPort {
 
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
 
-    private final ChatModel chatModel;
+    private final ChatModel jsonChatModel;
+    private final ChatModel textChatModel;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OpenAiLlmPort(String apiKey) {
@@ -46,13 +47,24 @@ public class OpenAiLlmPort implements LlmPort {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalArgumentException("OpenAI API key must not be blank");
         }
-        this.chatModel = OpenAiChatModel.builder()
+        String model = modelName == null || modelName.isBlank() ? DEFAULT_MODEL : modelName;
+        // Two models are needed because OpenAI rejects response_format=json_object
+        // unless the prompt itself contains the word "json" — the extraction
+        // prompt does, but the plain-sentence community summary prompt does not.
+        this.jsonChatModel = OpenAiChatModel.builder()
                 .apiKey(apiKey)
-                .modelName(modelName == null || modelName.isBlank() ? DEFAULT_MODEL : modelName)
+                .modelName(model)
                 .temperature(0.0)
                 .timeout(Duration.ofSeconds(60))
                 .maxRetries(0)
                 .responseFormat("json_object")
+                .build();
+        this.textChatModel = OpenAiChatModel.builder()
+                .apiKey(apiKey)
+                .modelName(model)
+                .temperature(0.0)
+                .timeout(Duration.ofSeconds(60))
+                .maxRetries(0)
                 .build();
     }
 
@@ -88,7 +100,7 @@ public class OpenAiLlmPort implements LlmPort {
 
         String response;
         try {
-            response = chatModel.chat(prompt);
+            response = jsonChatModel.chat(prompt);
         } catch (RuntimeException e) {
             throw new LlmCallFailedException("OpenAI extraction call failed", e);
         }
@@ -119,7 +131,7 @@ public class OpenAiLlmPort implements LlmPort {
                 """.formatted(names);
 
         try {
-            String summary = chatModel.chat(prompt);
+            String summary = textChatModel.chat(prompt);
             return summary == null || summary.isBlank()
                     ? "This community centers on " + names + "."
                     : summary.trim();
