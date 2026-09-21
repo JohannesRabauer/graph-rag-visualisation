@@ -1432,3 +1432,152 @@ body {
     width: 100%;
   }
 }
+
+/* ---- canvas tab bar (Story 8-3) ----
+   Sits at the top of .graph-stage; shows "Knowledge Graph" and "Vector
+   Space" tabs once a Corpus is loaded. The Vector Space tab button is
+   additionally hidden until the first vector comparison is triggered.
+   Follows the ARIA tabs pattern: role="tablist", role="tab",
+   aria-selected, tabindex roving.
+   When visible, overlays that are positioned absolute from top must clear
+   the 36px bar height — handled via :has() selectors below. */
+.canvas-tab-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  align-items: stretch;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.canvas-tab-bar[hidden] {
+  display: none;
+}
+
+.canvas-tab {
+  padding: 0 var(--space-4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-400);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s ease;
+}
+
+.canvas-tab[aria-selected="true"] {
+  color: var(--ink-900);
+  border-bottom-color: var(--ink-900);
+  background: var(--paper);
+}
+
+.canvas-tab:hover:not([aria-selected="true"]) {
+  color: var(--ink-600);
+}
+
+.canvas-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.canvas-tab[hidden] {
+  display: none;
+}
+
+/* Bump absolutely-positioned overlays down to clear the 36 px tab bar
+   when it is visible (i.e. the corpus is loaded). */
+.graph-stage:has(#canvas-tab-bar:not([hidden])) .graph-eyebrow {
+  top: calc(36px + var(--space-3));
+}
+
+.graph-stage:has(#canvas-tab-bar:not([hidden])) .community-toggle-wrap {
+  top: calc(36px + var(--space-3));
+}
+
+/* ---- compare CTA (Story 8-3) ----
+   Appears below the Replay CTA (or below answer text when no Replay CTA)
+   on every LOCAL / GLOBAL / DRIFT answer. Uses a dashed border to signal
+   "optional action" consistent with the existing .replay-cta. */
+.compare-cta {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+
+.compare-cta:hover {
+  color: var(--ink-900);
+  border-color: var(--ink-600);
+}
+
+.compare-cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.compare-cta:disabled,
+.compare-cta[aria-busy="true"] {
+  color: var(--ink-400);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+/* ---- vector space panel (Story 8-3) ----
+   Occupies the same slot as #graph-canvas; shown when the Vector Space
+   tab is active. Padded to clear the tab bar's 36px height. */
+.vector-space-panel {
+  position: absolute;
+  inset: 0;
+  padding: calc(36px + var(--space-6)) var(--space-6) var(--space-6);
+  overflow-y: auto;
+  background: var(--paper);
+}
+
+.vector-space-panel[hidden] {
+  display: none;
+}
+
+.vector-space-panel .graph-eyebrow {
+  position: static;
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+
+.vector-space-answer {
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+  margin-bottom: var(--space-4);
+  white-space: pre-wrap;
+}
+
+.vector-space-note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-400);
+  font-style: italic;
+}

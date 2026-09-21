@@ -22,6 +22,11 @@
   var workflowRecoveryActions = document.getElementById('workflow-recovery-actions');
   var workflowRetryButton = document.getElementById('workflow-retry-button');
   var workflowRestartButton = document.getElementById('workflow-restart-button');
+  var canvasTabBar = document.getElementById('canvas-tab-bar');
+  var tabKnowledgeGraph = document.getElementById('tab-knowledge-graph');
+  var tabVectorSpace = document.getElementById('tab-vector-space');
+  var vectorSpacePanel = document.getElementById('vector-space-panel');
+  var vectorSpaceAnswer = document.getElementById('vector-space-answer');
   var activeProgressSource = null;
   var activeCorpusId = null;
   var activeCorpusReady = false;
@@ -77,6 +82,150 @@
   if (entityDetailClose) {
     entityDetailClose.addEventListener('click', function () {
       closeEntityDetailPanel();
+    });
+  }
+
+  // Story 8-3: Compare CTA — delegated click handler.
+  // Works for every .compare-cta button upload.js appends later, without
+  // either needing to know about the other's timing (same pattern as
+  // replay.js's delegated .replay-cta handler).
+  document.addEventListener('click', function (event) {
+    var cta = event.target && event.target.closest ? event.target.closest('.compare-cta') : null;
+    if (!cta) {
+      return;
+    }
+    var answerMsg = cta.closest('.message.answer');
+    if (!answerMsg) {
+      return;
+    }
+    var question = answerMsg.dataset.question;
+    var corpusId = answerMsg.dataset.corpusId;
+    if (!question || !corpusId) {
+      return;
+    }
+
+    cta.disabled = true;
+    cta.setAttribute('aria-busy', 'true');
+    cta.textContent = 'Comparing\u2026';
+
+    fetch('/api/corpora/' + corpusId + '/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: question, mode: 'VECTOR' })
+    })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { ok: response.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          var answerText = result.body.answer || result.body.reason;
+          appendAnswer(answerText, result.body.mode || 'VECTOR',
+              result.body.traceId, result.body.traceStepCount, null);
+          revealVectorSpaceTab(answerText);
+        } else {
+          showErrorBanner(errorMessage(result.body));
+        }
+      })
+      .catch(function () {
+        showErrorBanner('The vector comparison could not be run. Please try again.');
+      })
+      .finally(function () {
+        cta.disabled = false;
+        cta.removeAttribute('aria-busy');
+        cta.textContent = '\u21BB Compare with Vector Search';
+      });
+  });
+
+  // Story 8-3: reveal the Vector Space tab and update the answer panel.
+  function revealVectorSpaceTab(answerText) {
+    if (tabVectorSpace) {
+      tabVectorSpace.removeAttribute('hidden');
+    }
+    if (vectorSpaceAnswer) {
+      vectorSpaceAnswer.textContent = answerText || '';
+    }
+    // Auto-switch to Vector Space tab so the user sees it immediately.
+    switchCanvasTab('vector-space');
+  }
+
+  // Story 8-3: tab switching.
+  function switchCanvasTab(which) {
+    var showVector = (which === 'vector-space');
+    if (tabKnowledgeGraph) {
+      tabKnowledgeGraph.setAttribute('aria-selected', showVector ? 'false' : 'true');
+      tabKnowledgeGraph.tabIndex = showVector ? -1 : 0;
+    }
+    if (tabVectorSpace) {
+      tabVectorSpace.setAttribute('aria-selected', showVector ? 'true' : 'false');
+      tabVectorSpace.tabIndex = showVector ? 0 : -1;
+    }
+    // graph-canvas, drift-tree, replay-scrubber, entity-detail-panel —
+    // all part of the Knowledge Graph tab surface.
+    var kgEls = [
+      document.getElementById('graph-canvas'),
+      document.getElementById('drift-tree'),
+      document.getElementById('graph-legend'),
+      document.getElementById('graph-eyebrow'),
+      document.getElementById('community-toggle-wrap'),
+      document.getElementById('replay-scrubber'),
+      document.getElementById('entity-detail-panel')
+    ];
+    kgEls.forEach(function (el) {
+      if (!el) {
+        return;
+      }
+      // Only toggle elements that are already visible (not ones that are
+      // hidden for their own reasons, e.g. canvas-idle or workflow-status).
+      if (showVector) {
+        if (!el.hidden) {
+          el.dataset.hiddenByTabSwitch = '1';
+          el.hidden = true;
+        }
+      } else {
+        if (el.dataset.hiddenByTabSwitch === '1') {
+          el.hidden = false;
+          delete el.dataset.hiddenByTabSwitch;
+        }
+      }
+    });
+    if (vectorSpacePanel) {
+      vectorSpacePanel.hidden = !showVector;
+    }
+  }
+
+  if (tabKnowledgeGraph) {
+    tabKnowledgeGraph.addEventListener('click', function () {
+      switchCanvasTab('knowledge-graph');
+    });
+    tabKnowledgeGraph.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowRight' && tabVectorSpace && !tabVectorSpace.hidden) {
+        event.preventDefault();
+        tabVectorSpace.focus();
+        switchCanvasTab('vector-space');
+      } else if (event.key === 'End' && tabVectorSpace && !tabVectorSpace.hidden) {
+        event.preventDefault();
+        tabVectorSpace.focus();
+        switchCanvasTab('vector-space');
+      }
+    });
+  }
+
+  if (tabVectorSpace) {
+    tabVectorSpace.addEventListener('click', function () {
+      switchCanvasTab('vector-space');
+    });
+    tabVectorSpace.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        tabKnowledgeGraph.focus();
+        switchCanvasTab('knowledge-graph');
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        tabKnowledgeGraph.focus();
+        switchCanvasTab('knowledge-graph');
+      }
     });
   }
 
@@ -244,7 +393,8 @@
                 result.body.answer || result.body.reason,
                 result.body.mode || requestedSearchMode,
                 result.body.traceId,
-                result.body.traceStepCount);
+                result.body.traceStepCount,
+                question);
           } else {
             showErrorBanner(errorMessage(result.body));
           }
@@ -420,6 +570,9 @@
       graphCanvasEl.hidden = false;
       graphCanvasEl.setAttribute('aria-hidden', 'false');
     }
+    if (canvasTabBar) {
+      canvasTabBar.hidden = false;
+    }
     if (graphEyebrow) {
       graphEyebrow.hidden = false;
       setIngestionBusy(true);
@@ -514,7 +667,7 @@
     chatThread.scrollTop = chatThread.scrollHeight;
   }
 
-  function appendAnswer(text, mode, traceId, traceStepCount) {
+  function appendAnswer(text, mode, traceId, traceStepCount, question) {
     var activeMode = mode || currentSearchMode;
     var answerText = text || 'No answer was returned.';
     if (!chatThread) {
@@ -523,6 +676,14 @@
     var message = document.createElement('div');
     message.className = 'message answer';
     message.dataset.mode = activeMode;
+    // Store question and corpusId so the Compare CTA handler can retrieve them
+    // without closing over stale values.
+    if (question) {
+      message.dataset.question = question;
+    }
+    if (activeCorpusId) {
+      message.dataset.corpusId = activeCorpusId;
+    }
 
     var tag = document.createElement('div');
     tag.className = 'answer-tag';
@@ -548,6 +709,16 @@
       replayCta.textContent =
           'Replay this answer\'s Retrieval Trace — ' + (traceStepCount || 0) + ' steps';
       message.appendChild(replayCta);
+    }
+
+    // Story 8-3: Compare CTA on LOCAL / GLOBAL / DRIFT answers only —
+    // never on VECTOR answers themselves (no nesting).
+    if (activeMode !== 'VECTOR' && question && activeCorpusId) {
+      var compareCta = document.createElement('button');
+      compareCta.type = 'button';
+      compareCta.className = 'compare-cta';
+      compareCta.textContent = '\u21BB Compare with Vector Search';
+      message.appendChild(compareCta);
     }
 
     chatThread.appendChild(message);

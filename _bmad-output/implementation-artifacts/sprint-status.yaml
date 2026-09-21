@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-19-2026 13:59
-last_updated: 09-20-2026 21:05
+last_updated: 09-20-2026 21:20
 project: graph-rag-visualisation
 project_key: NOKEY
 tracking_system: file-system
@@ -84,7 +84,7 @@ development_status:
   epic-8: in-progress
   8-1-build-the-vector-index-alongside-the-knowledge-graph: done
   8-2-implement-answervectorbaseline: review
-  8-3-trigger-the-vector-baseline-on-demand-from-an-answer: backlog
+  8-3-trigger-the-vector-baseline-on-demand-from-an-answer: in-progress
   8-4-capture-the-vector-trace: backlog
   8-5-render-the-embedding-space-and-replay-the-vector-trace: backlog
   epic-8-retrospective: optional
