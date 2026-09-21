@@ -120,7 +120,7 @@
       })
       .then(function (result) {
         if (result.ok) {
-          var answerText = result.body.answer || result.body.reason;
+          var answerText = result.body.answer || result.body.reason || 'No answer was returned.';
           appendAnswer(answerText, result.body.mode || 'VECTOR',
               result.body.traceId, result.body.traceStepCount, null);
           revealVectorSpaceTab(answerText);
@@ -140,14 +140,20 @@
 
   // Story 8-3: reveal the Vector Space tab and update the answer panel.
   function revealVectorSpaceTab(answerText) {
+    var wasHidden = !!(tabVectorSpace && tabVectorSpace.hidden);
     if (tabVectorSpace) {
       tabVectorSpace.removeAttribute('hidden');
     }
     if (vectorSpaceAnswer) {
       vectorSpaceAnswer.textContent = answerText || '';
     }
-    // Auto-switch to Vector Space tab so the user sees it immediately.
-    switchCanvasTab('vector-space');
+    // Auto-switch to Vector Space only the first time it is revealed — a
+    // helpful nudge so the user sees their first comparison land, without
+    // yanking them away from the Knowledge Graph tab on every subsequent
+    // comparison (e.g. one that resolves after the user switched back).
+    if (wasHidden) {
+      switchCanvasTab('vector-space');
+    }
   }
 
   // Story 8-3: tab switching.
@@ -228,6 +234,15 @@
       }
     });
   }
+
+  // Story 8-3: expose tab switching so other modules (replay.js) can bring
+  // the Knowledge Graph tab back into view when they open — the Knowledge
+  // Graph surface (graph-canvas, drift-tree, replay-scrubber) and the
+  // Vector Space panel must stay mutually exclusive regardless of which
+  // module triggers the transition.
+  window.CanvasTabs = {
+    switchTo: switchCanvasTab
+  };
 
   function closeEntityDetailPanel() {
     selectedEntityIdentity = null;

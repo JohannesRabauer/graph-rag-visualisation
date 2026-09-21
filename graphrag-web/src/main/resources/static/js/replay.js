@@ -145,6 +145,12 @@
   }
 
   function open() {
+    // Story 8-3: Knowledge Graph and Vector Space are mutually exclusive
+    // tabs — opening Replay always means the Knowledge Graph surface, so
+    // switch back to it first if the Vector Space tab is currently active.
+    if (window.CanvasTabs) {
+      window.CanvasTabs.switchTo('knowledge-graph');
+    }
     scrubber.hidden = false;
     if (graphEyebrow) {
       graphEyebrow.hidden = false;
@@ -308,6 +314,8 @@
     var verb = step.kind === 'COMMUNITY' ? 'examined community'
         : step.kind === 'RELATIONSHIP' ? 'traversed relationship'
         : step.kind === 'SUB_QUESTION_SPAWNED' ? 'spawned sub-question'
+        : step.kind === 'VECTOR_QUERY_EMBEDDED' ? 'embedded query'
+        : step.kind === 'VECTOR_CHUNK' ? 'retrieved chunk'
         : step.kind === 'SYNTHESIS' ? 'synthesized answer'
         : 'matched entity';
     return 'Step ' + (index + 1) + ' / ' + total + ' — ' + verb + ' ' + step.label;
