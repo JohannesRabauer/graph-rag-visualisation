@@ -89,3 +89,13 @@ development_status:
   8-5-render-the-embedding-space-and-replay-the-vector-trace: backlog
   epic-8-retrospective: optional
   epic-6-retrospective: optional
+
+  epic-9: backlog
+  9-1-add-a-demo-safe-offline-mode: backlog
+  9-2-improve-local-search-entity-matching-robustness: backlog
+  9-3-warn-on-or-persist-corpus-and-trace-state-across-restarts: backlog
+  9-4-add-entity-search-jump-to-node-on-the-graph-canvas: backlog
+  9-5-badge-the-vector-space-tab-as-in-progress: backlog
+  9-6-close-out-stories-still-marked-review: backlog
+  9-7-automate-demo-screenshot-capture-in-ci: backlog
+  epic-9-retrospective: optional

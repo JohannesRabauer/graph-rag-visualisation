@@ -605,3 +605,100 @@ So that "what got vectorized" and "what was retrieved" are literally visible, no
 **Then** corpus chunk dots render at their settled, ingestion-time 2D positions (Story 8.1) — switching tabs or asking another question never reshuffles this layout
 **And** Replay steps the query dot into the scatter, then highlights its top-k nearest chunks with connecting lines and similarity-score labels, using the same transport controls as the Retrieval Trace scrubber
 **And** the query dot reuses `{colors.active}` and hit-chunk highlights reuse `{colors.accent}` — no new color vocabulary is introduced for this view (DESIGN.md)
+
+## Epic 9: Demo Credibility & Presenter Safety Hardening
+
+Found during a code-and-content review while drafting the live demo script (`_bmad-output/planning-artifacts/demo-script-review.md` context, GitHub issues #TBD). None of these are new functional requirements from the PRD — they are hardening work that closes gaps between what a live presenter needs and what the app currently guarantees: one still-visible unfinished surface (the Vector Space tab), several live-demo failure modes with no safety net, and a couple of stories the sprint tracker never formally closed.
+**FRs covered:** none directly (hardens FR20–FR22 and NFR2/NFR3's existing intent)
+
+### Story 9.1: Add a Demo-Safe Offline Mode
+
+As the presenter,
+I want an explicit, opt-in way to load a pre-baked corpus (graph, communities, and traces) without making live OpenAI calls,
+So that a flaky network or an API rate limit can't take down a live demo, without violating the app's "never silently fall back" principle (NFR2).
+
+**Acceptance Criteria:**
+
+**Given** the empty state
+**When** I choose the offline/demo-safe option instead of Upload or the live Demo Dataset
+**Then** a pre-baked Sherlock Holmes graph, its communities/summaries, and a small set of pre-captured Retrieval Traces load without any live LLM or embedding call
+**And** the option is visually and copy-wise distinct from the live Demo Dataset option, so it is never mistaken for a live run
+**And** Local, Global, DRIFT, and Vector Baseline queries against this pre-baked corpus are disabled or clearly marked as replay-only, never silently answered by a live call
+
+### Story 9.2: Improve Local Search Entity-Matching Robustness
+
+As the creator,
+I want `AnswerLocalSearch`'s entity matching to tolerate minor phrasing differences and to surface which entities it matched,
+So that a slightly-off question phrasing doesn't silently fall through to "no answer found" mid-demo (hardens FR9).
+
+**Acceptance Criteria:**
+
+**Given** a question that references an entity by a close-but-not-exact form of its extracted name
+**When** `AnswerLocalSearch` runs
+**Then** matching tolerates common variations (case, partial name, simple synonyms) before falling back to "no answer found"
+**And** the response or trace exposes which entity/entities were matched from the question, so a presenter can see why an answer did or didn't ground
+
+### Story 9.3: Warn on or Persist Corpus and Trace State Across Restarts
+
+As the creator,
+I want either persisted corpus/trace state or a clear warning that a restart clears it,
+So that an app restart mid-stream doesn't look like a data-loss bug (hardens NFR3).
+
+**Acceptance Criteria:**
+
+**Given** `CorpusStore` and `RetrievalTraceStore` hold only in-memory state
+**When** the `app` container restarts
+**Then** either that state survives the restart, or the UI/README explicitly documents that a restart clears corpora and traces (Neo4j's own graph data aside)
+**And** this is documented in the README's running instructions, not only in code comments
+
+### Story 9.4: Add Entity Search / Jump-to-Node on the Graph Canvas
+
+As the creator,
+I want to search for an entity by name and have the canvas pan/zoom/highlight it,
+So that I can point directly at a specific character or concept instead of hunting for it visually on a dense graph (hardens FR16/FR17).
+
+**Acceptance Criteria:**
+
+**Given** the main screen's graph canvas is showing any Knowledge Graph
+**When** I type a name-prefix into a new entity-search control
+**Then** matching entities are listed, and selecting one pans/zooms the canvas to center it and briefly highlights it
+**And** this control is reachable via keyboard alone (accessibility floor, UX-DR20)
+
+### Story 9.5: Badge the Vector Space Tab as In Progress
+
+As the creator,
+I want the Vector Space tab to visibly signal that its scatter/replay is still being built,
+So that a viewer gets the same honest signal a developer reading the code already gets, rather than discovering it mid-demo (hardens NFR2's honesty principle for UI, not just backend errors).
+
+**Acceptance Criteria:**
+
+**Given** Stories 8.4 and 8.5 are not yet done
+**When** the Vector Space tab is shown
+**Then** it carries a small, plain-language "in progress" badge or note near the eyebrow, distinct from the Error banner pattern
+**And** the badge disappears automatically once Stories 8.4/8.5 ship, with no separate cleanup story needed
+
+### Story 9.6: Close Out Stories Still Marked "review"
+
+As the team,
+we want a final verification pass on every story still tagged `review` in the sprint tracker (2.1, 2.3, 4.3, 4.4, 5.1, 5.2, 6.1, 6.2),
+So that "done" in the tracker actually matches what a live demo depends on.
+
+**Acceptance Criteria:**
+
+**Given** the sprint tracker lists these stories as `review`
+**When** each is re-verified against its own acceptance criteria on the current `main`
+**Then** it is moved to `done`, or its remaining gap is filed as its own story
+**And** no story a presenter's script depends on is left indefinitely in `review`
+
+### Story 9.7: Automate Demo Screenshot Capture in CI
+
+As the team,
+we want the existing UI test harness extended to capture the demo script's named screenshot moments as build artifacts,
+So that the demo script's screenshots stay current for free as the UI evolves, instead of a manual re-capture pass every time.
+
+**Acceptance Criteria:**
+
+**Given** the existing UI tests (`DriftModeChoiceUiTest`, `DriftTreeReplayUiTest`, `MainScreenDetailPanelUiTest`, `ReplayCommunityHullVisibilityUiTest`, `ReplayRelationshipEdgeHighlightUiTest`, `VectorBaselineTriggerUiTest`)
+**When** the suite runs in CI
+**Then** each named demo-script moment (SCR-1 through SCR-12) is captured as a screenshot artifact, named to match this document's shot list
+**And** these artifacts are retrievable from the CI run without re-running the app manually
