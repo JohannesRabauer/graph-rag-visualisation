@@ -857,13 +857,21 @@
       return;
     }
     if (state === 'READY') {
+      // Once ready, the graph-eyebrow's own "Knowledge Graph — Live" label
+      // (top-left) already carries this visually — showing this banner too
+      // would float a second status box over the canvas/legend/toggle with
+      // nothing to visually anchor it to. Keep the announcement for
+      // screen-reader users (this element is `aria-live="polite"`) without
+      // rendering a floating box on top of live graph content.
       workflowStatus.hidden = false;
+      workflowStatus.classList.add('workflow-status--announce-only');
       workflowStatusText.textContent = 'Knowledge Graph — Ready. Ask a LOCAL, GLOBAL, or DRIFT question now.';
       if (workflowRecoveryActions) {
         workflowRecoveryActions.hidden = true;
       }
       return;
     }
+    workflowStatus.classList.remove('workflow-status--announce-only');
     if (state === 'FAILED') {
       workflowStatus.hidden = false;
       workflowStatusText.textContent = failureMessage || 'Knowledge Graph build failed. Retry stream or restart with a new corpus.';
