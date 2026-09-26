@@ -36,6 +36,30 @@
     return document.getElementById('graph-legend');
   }
 
+  function emptyStateContainer() {
+    return document.getElementById('graph-canvas-empty');
+  }
+
+  // Shows/hides the "nothing to see" placeholder over #graph-canvas. Passing
+  // no text (or an empty one) hides it — called once the first Entity or
+  // Community actually renders, so the placeholder never lingers over real
+  // graph content.
+  function setEmptyState(message) {
+    var el = emptyStateContainer();
+    if (!el) {
+      return;
+    }
+    if (message) {
+      el.textContent = message;
+      el.hidden = false;
+      el.setAttribute('aria-hidden', 'false');
+    } else {
+      el.hidden = true;
+      el.setAttribute('aria-hidden', 'true');
+      el.textContent = '';
+    }
+  }
+
   function readCssVar(name, fallback) {
     var value = getComputedStyle(document.documentElement).getPropertyValue(name);
     value = value ? value.trim() : '';
@@ -98,8 +122,17 @@
     renderLegend();
 
     if (!container || typeof window.cytoscape === 'undefined') {
+      // No silent blank grid: Cytoscape failed to load (e.g. its CDN script
+      // was blocked or slow) — say so instead of leaving the canvas looking
+      // broken with no explanation.
+      setEmptyState('Knowledge graph view could not load in this browser session — try reloading the page.');
       return null;
     }
+
+    // Starts empty until the first Entity/Community streams in — see
+    // addEntity/addCommunity below, which clear this the moment either one
+    // renders.
+    setEmptyState('Nothing to see yet — entities will appear here as they’re extracted.');
 
     // Canvas rendering has no native per-node DOM elements to give a
     // screen reader/keyboard user, so the container itself becomes one
@@ -515,6 +548,7 @@
     if (!cy || !identity) {
       return;
     }
+    setEmptyState(null);
     var label = name || identity;
     var node = cy.getElementById(identity);
     if (node && node.length > 0) {
@@ -556,6 +590,7 @@
     if (!cy || !communityId) {
       return;
     }
+    setEmptyState(null);
     var colors = communityColors(communityId);
     var parentId = 'community::' + communityId;
 

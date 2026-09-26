@@ -249,6 +249,34 @@ body {
   display: none;
 }
 
+/* ---- graph canvas empty state ----
+   Shown over #graph-canvas whenever there is nothing to draw — either
+   Cytoscape itself failed to load (graph-canvas.js `init` falls back to
+   this instead of leaving the grid blank with no explanation) or the
+   corpus genuinely produced zero Entities so far. Centered like the idle
+   state's own subtitle, but non-interactive so it never blocks clicks/taps
+   on the canvas beneath it once nodes do arrive. */
+.graph-canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 var(--space-8);
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-400);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.graph-canvas-empty[hidden] {
+  display: none;
+}
+
 /* ---- graph legend ----
    DESIGN.md `components.graph-canvas`: "a legend row lists visible
    Community names with color swatches" whenever hulls are shown. A row of
@@ -342,6 +370,89 @@ body {
 
 .graph-eyebrow[hidden] {
   display: none;
+}
+
+/* ---- workflow status banner ----
+   Announces the Building/Ready/Failed state (upload.js
+   `renderWorkflowStatus`). Previously unstyled, it fell back to being an
+   in-flow child of `.graph-stage`'s centering flexbox — i.e. dead center
+   over the canvas, on top of whatever Entities/Community chips had
+   already rendered there. Anchored here as its own slim banner instead,
+   clear of the eyebrow (top-left), the Community toggle (top-right), and
+   the legend (bottom-left), so it never overlaps live graph content. */
+.workflow-status {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  width: calc(100% - var(--space-8) * 2);
+  max-width: 420px;
+  padding: var(--space-2) var(--space-4);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+  text-align: center;
+}
+
+.workflow-status[hidden] {
+  display: none;
+}
+
+.graph-stage:has(#canvas-tab-bar:not([hidden])) .workflow-status {
+  top: calc(36px + var(--space-3));
+}
+
+/* Ready state: keep the `aria-live="polite"` announcement for screen
+   readers without rendering a visible box (see upload.js
+   `renderWorkflowStatus`'s READY branch) — the standard visually-hidden
+   clip technique, overriding every geometry/paint property the base
+   `.workflow-status` rule above sets. */
+.workflow-status.workflow-status--announce-only {
+  position: absolute;
+  top: auto;
+  left: auto;
+  transform: none;
+  width: 1px;
+  max-width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+}
+
+#workflow-recovery-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+#workflow-recovery-actions[hidden] {
+  display: none;
+}
+
+#workflow-recovery-actions button {
+  padding: var(--space-1) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+
+#workflow-recovery-actions button:hover {
+  border-color: var(--ink-400);
 }
 
 @keyframes instrument-spin {
