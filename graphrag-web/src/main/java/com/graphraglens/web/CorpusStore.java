@@ -4,6 +4,7 @@ import com.graphraglens.core.domain.Corpus;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -25,10 +26,28 @@ public class CorpusStore {
 
     private final ConcurrentHashMap<String, Corpus> corpora = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CorpusWorkflowStatus> statuses = new ConcurrentHashMap<>();
+    private final Set<String> offlineCorpusIds = ConcurrentHashMap.newKeySet();
 
     public void put(Corpus corpus) {
         corpora.put(corpus.id(), corpus);
         statuses.put(corpus.id(), CorpusWorkflowStatus.BUILDING);
+    }
+
+    /**
+     * Marks a corpus as built entirely through the demo-safe offline path
+     * (Story 9.1) — its own deterministic LLM/embedding stubs, never the
+     * app's normally-configured ports, regardless of whether
+     * {@code OPENAI_API_KEY} is set. Query-time blocks on this alone, so a
+     * live call can never leak in through the query path either.
+     */
+    public void markOffline(String corpusId) {
+        if (corpusId != null && !corpusId.isBlank()) {
+            offlineCorpusIds.add(corpusId);
+        }
+    }
+
+    public boolean isOffline(String corpusId) {
+        return corpusId != null && offlineCorpusIds.contains(corpusId);
     }
 
     public Optional<Corpus> get(String id) {

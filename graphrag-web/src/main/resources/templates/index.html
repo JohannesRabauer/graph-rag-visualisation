@@ -41,6 +41,9 @@
           </div>
           <p class="mode-hint" id="mode-hint">Local Search traverses specific Entities and Relationships around your question.</p>
         </div>
+        <p class="composer-offline-note" id="composer-offline-note" hidden>
+          This is the offline demo — its questions are pre-recorded, not live. Load a live corpus to ask your own.
+        </p>
         <form class="composer" id="chat-form">
           <input id="chat-input" name="question" type="text" placeholder="Ask a question about the Corpus…" aria-label="Ask a question about the Corpus">
           <button type="submit" class="send-button" aria-label="Submit question"></button>
@@ -60,6 +63,10 @@
             <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) or PDF (.pdf) Corpus to get started</label>
             <input type="file" id="corpus-file-input" multiple accept=".txt,.pdf">
             <button type="button" id="demo-dataset-button" class="demo-dataset-button">Use the built-in Sherlock Holmes Demo Dataset</button>
+            <button type="button" id="demo-offline-button" class="demo-offline-button">
+              <span class="demo-offline-badge">Offline</span>
+              Use the Offline Demo — no API calls
+            </button>
           </div>
         </div>
 

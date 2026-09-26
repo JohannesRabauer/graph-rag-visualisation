@@ -1,5 +1,7 @@
 package com.graphraglens.web;
 
+import com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort;
+import com.graphraglens.adapter.langchain4j.LangChain4jLlmPort;
 import com.graphraglens.core.domain.Community;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.EmbeddedChunk;
@@ -11,6 +13,7 @@ import com.graphraglens.core.domain.UnreadableDocumentException;
 import com.graphraglens.core.domain.UnsupportedFileTypeException;
 import com.graphraglens.core.domain.UploadedDocument;
 import com.graphraglens.core.port.DocumentParserPort;
+import com.graphraglens.core.port.EmbeddingPort;
 import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
 import com.graphraglens.core.port.VectorStorePort;
@@ -65,6 +68,9 @@ public class CorpusController {
             "The graph is still building for this corpus. Wait for “Knowledge Graph — Ready”, then ask your question.";
     private static final String GRAPH_FAILED_MESSAGE =
             "Graph construction failed for this corpus. Upload again or use the demo dataset to restart.";
+    private static final String OFFLINE_QUERY_BLOCKED_MESSAGE =
+            "This is the offline demo corpus — its questions are pre-recorded, not live. Load a live corpus "
+                    + "(upload your own, or the live Demo Dataset) to ask your own question.";
 
     private final IngestCorpus ingestCorpus;
     private final CorpusStore corpusStore;
@@ -150,6 +156,30 @@ public class CorpusController {
         return ResponseEntity.status(HttpStatus.CREATED).body(corpusPayload(corpus));
     }
 
+    /**
+     * Story 9.1: a demo-safe offline mode. Builds the same Sherlock Holmes
+     * corpus, but always through the deterministic offline LLM/embedding
+     * stubs ({@link LangChain4jLlmPort}/{@link LangChain4jEmbeddingPort}'s
+     * own no-arg constructors) — never the app's normally-configured
+     * {@link #llmPort}/embedding ports, regardless of whether
+     * {@code OPENAI_API_KEY} is set. Querying this corpus is blocked
+     * entirely ({@link #OFFLINE_QUERY_BLOCKED_MESSAGE}) so a live call can
+     * never leak in through the query path either — a presenter can still
+     * watch the graph build, explore communities, and inspect Entities,
+     * just never ask it a fresh question.
+     */
+    @PostMapping("/api/corpora/demo-offline")
+    public ResponseEntity<Map<String, Object>> useOfflineDemoDataset() {
+        Corpus corpus = demoDatasetService.createOfflineSherlockCorpus();
+        corpusStore.put(corpus);
+        corpusStore.markOffline(corpus.id());
+        corpusProgressService.emit(corpus.id(), "ingestion-started",
+                Map.of("message", "Knowledge graph construction started for " + corpus.name()));
+        startKnowledgeGraphConstruction(corpus, new LangChain4jLlmPort());
+        startVectorIndexConstruction(corpus, new ConstructVectorIndex(new LangChain4jEmbeddingPort(), vectorStorePort));
+        return ResponseEntity.status(HttpStatus.CREATED).body(corpusPayload(corpus, true));
+    }
+
     @PostMapping("/api/corpora/{corpusId}/query")
     public ResponseEntity<Map<String, Object>> query(
             @PathVariable("corpusId") String corpusId,
@@ -172,6 +202,9 @@ public class CorpusController {
 
         Corpus corpus = corpusStore.get(corpusId)
                 .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        if (corpusStore.isOffline(corpus.id())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", OFFLINE_QUERY_BLOCKED_MESSAGE));
+        }
         CorpusStore.CorpusWorkflowStatus workflowStatus = corpusStore.status(corpus.id());
         if (workflowStatus == CorpusStore.CorpusWorkflowStatus.BUILDING) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_BUILDING_MESSAGE));
@@ -317,14 +350,18 @@ public class CorpusController {
     }
 
     private void startKnowledgeGraphConstruction(Corpus corpus) {
+        startKnowledgeGraphConstruction(corpus, llmPort);
+    }
+
+    private void startKnowledgeGraphConstruction(Corpus corpus, LlmPort llmPortToUse) {
         CompletableFuture.runAsync(() -> {
             try {
-                new BuildKnowledgeGraph(llmPort, graphStorePort).run(corpus,
+                new BuildKnowledgeGraph(llmPortToUse, graphStorePort).run(corpus,
                         entity -> corpusProgressService.emit(corpus.id(), "entity-extracted",
                                 entityEventPayload(entity)),
                         relationship -> corpusProgressService.emit(corpus.id(), "relationship-extracted",
                                 relationshipEventPayload(relationship)));
-                new DetectCommunities(graphStorePort, llmPort).run(corpus,
+                new DetectCommunities(graphStorePort, llmPortToUse).run(corpus,
                         (community, memberEntityIdentities) -> corpusProgressService.emit(corpus.id(), "community-detected",
                                 communityEventPayload(community, memberEntityIdentities)));
                 corpusStore.markReady(corpus.id());
@@ -339,9 +376,13 @@ public class CorpusController {
     }
 
     private void startVectorIndexConstruction(Corpus corpus) {
+        startVectorIndexConstruction(corpus, constructVectorIndex);
+    }
+
+    private void startVectorIndexConstruction(Corpus corpus, ConstructVectorIndex constructVectorIndexToUse) {
         CompletableFuture.runAsync(() -> {
             try {
-                constructVectorIndex.run(corpus);
+                constructVectorIndexToUse.run(corpus);
             } catch (Exception ex) {
                 LOG.warn("Vector index construction failed for corpus {} — this does not affect knowledge graph construction.",
                         corpus.id(), ex);
@@ -373,11 +414,16 @@ public class CorpusController {
     }
 
     private Map<String, Object> corpusPayload(Corpus corpus) {
+        return corpusPayload(corpus, false);
+    }
+
+    private Map<String, Object> corpusPayload(Corpus corpus, boolean offline) {
         return Map.of(
                 "corpusId", corpus.id(),
                 "name", corpus.name(),
                 "documentNames", corpus.documentNames(),
-                "documentCount", corpus.documentCount());
+                "documentCount", corpus.documentCount(),
+                "offline", offline);
     }
 
     private UploadedDocument toUploadedDocument(MultipartFile file) {

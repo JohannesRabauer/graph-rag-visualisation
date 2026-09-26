@@ -154,6 +154,58 @@ class CorpusControllerTest {
     }
 
     @Test
+    void usingTheOfflineDemoDatasetReturns201WithDistinctNameOfflineFlagAndBuildsToReady() throws Exception {
+        String responseBody = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Sherlock Holmes — Offline Demo (no API calls)"))
+                .andExpect(jsonPath("$.documentCount").value(3))
+                .andExpect(jsonPath("$.offline").value(true))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+        assertThat(corpusStore.isOffline(corpusId)).isTrue();
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+        assertThat(corpusStore.status(corpusId)).isEqualTo(CorpusStore.CorpusWorkflowStatus.READY);
+    }
+
+    @Test
+    void theLiveDemoDatasetIsNeverMarkedOffline() throws Exception {
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.offline").value(false))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+        assertThat(corpusStore.isOffline(corpusId)).isFalse();
+    }
+
+    @Test
+    void queryingTheOfflineDemoCorpusIsAlwaysBlockedEvenOnceReady() throws Exception {
+        String responseBody = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+        assertThat(corpusStore.status(corpusId)).isEqualTo(CorpusStore.CorpusWorkflowStatus.READY);
+
+        mockMvc.perform(post("/api/corpora/" + corpusId + "/query")
+                        .contentType("application/json")
+                        .content("{\"question\":\"Who is Irene Adler?\",\"mode\":\"LOCAL\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("pre-recorded")));
+    }
+
+    @Test
     void aVectorIndexConstructionFailureDoesNotAffectKnowledgeGraphConstructionOrCorpusProgressEvents() throws Exception {
         doThrow(new RuntimeException("embedding boom")).when(constructVectorIndex).run(any());
 

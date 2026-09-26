@@ -1220,6 +1220,71 @@ body {
   cursor: not-allowed;
 }
 
+/* ---- offline demo button (Story 9.1) ----
+   Deliberately styled to read as distinct from the live Demo Dataset
+   button above (dashed border, muted ink, no accent color) — never to be
+   mistaken for a live run. */
+.demo-offline-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-600);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.demo-offline-button:hover {
+  background: var(--chrome);
+  border-color: var(--ink-400);
+}
+
+.demo-offline-button:focus-visible {
+  outline: 2px solid var(--ink-400);
+  outline-offset: 2px;
+}
+
+.demo-offline-button:disabled,
+.demo-offline-button[aria-busy="true"] {
+  border-color: var(--line);
+  color: var(--ink-400);
+  cursor: not-allowed;
+}
+
+.demo-offline-badge {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--chrome);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+
+.composer-offline-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-400);
+  font-style: italic;
+  border-top: 1px solid var(--line);
+}
+
+.composer-offline-note[hidden] {
+  display: none;
+}
+
 /* ---- corpus chip ----
    DESIGN.md `components.corpus-chip`: pill in the app bar naming the
    active Corpus and document count, monospace, with a small neutral

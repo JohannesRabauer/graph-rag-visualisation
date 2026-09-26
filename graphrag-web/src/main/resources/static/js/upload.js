@@ -3,6 +3,8 @@
 
   var fileInput = document.getElementById('corpus-file-input');
   var demoButton = document.getElementById('demo-dataset-button');
+  var demoOfflineButton = document.getElementById('demo-offline-button');
+  var composerOfflineNote = document.getElementById('composer-offline-note');
   var corpusChip = document.getElementById('corpus-chip');
   var errorBanner = document.getElementById('error-banner');
   var canvasIdle = document.getElementById('canvas-idle');
@@ -30,6 +32,7 @@
   var activeProgressSource = null;
   var activeCorpusId = null;
   var activeCorpusReady = false;
+  var activeCorpusOffline = false;
   var currentSearchMode = 'LOCAL';
 
   // Entity detail panel (merged onto the main screen 2026-09-20 UX pass —
@@ -369,6 +372,11 @@
         showErrorBanner('Choose a corpus before asking a question.');
         return;
       }
+      if (activeCorpusOffline) {
+        showErrorBanner('This is the offline demo corpus — its questions are pre-recorded, not live. '
+            + 'Load a live corpus to ask your own.');
+        return;
+      }
       if (!activeCorpusReady) {
         showErrorBanner('The graph is still building. Wait for “Knowledge Graph — Ready” before submitting.');
         renderWorkflowStatus('BUILDING');
@@ -437,6 +445,9 @@
       demoButton.disabled = true;
       demoButton.setAttribute('aria-busy', 'true');
       demoButton.textContent = 'Loading demo dataset…';
+      if (demoOfflineButton) {
+        demoOfflineButton.disabled = true;
+      }
 
       fetch('/api/corpora/demo', {
         method: 'POST'
@@ -461,6 +472,52 @@
           demoButton.disabled = false;
           demoButton.removeAttribute('aria-busy');
           demoButton.textContent = demoButtonDefaultLabel;
+          if (demoOfflineButton) {
+            demoOfflineButton.disabled = false;
+          }
+        });
+    });
+  }
+
+  // Story 9.1: the offline demo — same shape as the live Demo Dataset
+  // button, a different endpoint. Left as plain disabled/aria-busy state
+  // rather than swapping textContent, since this button's label has its
+  // own "Offline" badge markup that a text swap would destroy.
+  if (demoOfflineButton) {
+    demoOfflineButton.addEventListener('click', function () {
+      hideErrorBanner();
+      fileInput.disabled = true;
+      demoOfflineButton.disabled = true;
+      demoOfflineButton.setAttribute('aria-busy', 'true');
+      if (demoButton) {
+        demoButton.disabled = true;
+      }
+
+      fetch('/api/corpora/demo-offline', {
+        method: 'POST'
+      })
+        .then(function (response) {
+          return response.json().then(function (body) {
+            return { ok: response.ok, body: body };
+          });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            showCorpusChip(result.body);
+          } else {
+            showErrorBanner(errorMessage(result.body));
+          }
+        })
+        .catch(function () {
+          showErrorBanner('The offline demo could not be loaded. Please try again.');
+        })
+        .finally(function () {
+          fileInput.disabled = false;
+          demoOfflineButton.disabled = false;
+          demoOfflineButton.removeAttribute('aria-busy');
+          if (demoButton) {
+            demoButton.disabled = false;
+          }
         });
     });
   }
@@ -480,6 +537,9 @@
     fileInput.disabled = true;
     if (demoButton) {
       demoButton.disabled = true;
+    }
+    if (demoOfflineButton) {
+      demoOfflineButton.disabled = true;
     }
 
     fetch('/api/corpora', {
@@ -506,6 +566,9 @@
         fileInput.disabled = false;
         if (demoButton) {
           demoButton.disabled = false;
+        }
+        if (demoOfflineButton) {
+          demoOfflineButton.disabled = false;
         }
       });
   });
@@ -554,6 +617,22 @@
     // longer resolves to anything) once the canvas is rebuilt below.
     closeEntityDetailPanel();
     activeRelationships = [];
+
+    // Story 9.1: the offline demo corpus never accepts a new question — the
+    // note replaces the composer placeholder for the whole time it's active.
+    activeCorpusOffline = !!(body && body.offline);
+    if (composerOfflineNote) {
+      composerOfflineNote.hidden = !activeCorpusOffline;
+    }
+    if (chatInput) {
+      chatInput.disabled = activeCorpusOffline;
+      chatInput.placeholder = activeCorpusOffline
+          ? 'Questions are pre-recorded for the offline demo'
+          : 'Ask a question about the Corpus…';
+    }
+    if (sendButton) {
+      sendButton.disabled = activeCorpusOffline;
+    }
 
     var names = body && body.name ? body.name : (body.documentNames || []).join(', ');
     var count = body.documentCount || 0;
