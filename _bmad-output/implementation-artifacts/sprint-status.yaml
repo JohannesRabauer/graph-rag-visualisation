@@ -42,10 +42,10 @@ development_status:
 
   epic-1-retrospective: optional
 
-  epic-2: in-progress
-  2-1-upload-a-plain-text-corpus: review
+  epic-2: done
+  2-1-upload-a-plain-text-corpus: done
   2-2-upload-a-pdf-corpus: done
-  2-3-use-the-built-in-demo-dataset: review
+  2-3-use-the-built-in-demo-dataset: done
   2-4-extract-entities-and-relationships-into-the-knowledge-graph: done
   2-5-show-live-ingestion-progress: done
   2-6-surface-extraction-failures-visibly: done
@@ -57,24 +57,24 @@ development_status:
   3-3-render-the-final-answer-in-chat: done
   epic-3-retrospective: optional
 
-  epic-4: in-progress
+  epic-4: done
   4-1-detect-communities-in-the-knowledge-graph: done
   4-2-generate-and-persist-community-summaries: done
-  4-3-toggle-community-formation-visualization: review
-  4-4-answer-via-global-search: review
+  4-3-toggle-community-formation-visualization: done
+  4-4-answer-via-global-search: done
   epic-4-retrospective: optional
 
-  epic-5: in-progress
-  5-1-capture-the-retrieval-trace: review
-  5-2-replay-the-retrieval-trace: review
+  epic-5: done
+  5-1-capture-the-retrieval-trace: done
+  5-2-replay-the-retrieval-trace: done
   epic-5-retrospective: optional
 
-  epic-6: in-progress
-  6-1-explore-the-full-knowledge-graph: review
-  6-2-inspect-an-entity-s-details: review
+  epic-6: done
+  6-1-explore-the-full-knowledge-graph: done
+  6-2-inspect-an-entity-s-details: done
   epic-6-retrospective: optional
 
-  epic-7: in-progress
+  epic-7: done
   7-1-add-drift-to-the-mode-toggle-and-query-contract: done
   7-2-implement-answerdriftsearch: done
   7-3-capture-the-drift-trace: done
@@ -96,6 +96,6 @@ development_status:
   9-3-warn-on-or-persist-corpus-and-trace-state-across-restarts: done
   9-4-add-entity-search-jump-to-node-on-the-graph-canvas: done
   9-5-badge-the-vector-space-tab-as-in-progress: done # superseded — moot once 8.4/8.5 shipped
-  9-6-close-out-stories-still-marked-review: backlog
+  9-6-close-out-stories-still-marked-review: done
   9-7-automate-demo-screenshot-capture-in-ci: backlog
   epic-9-retrospective: optional
