@@ -90,12 +90,12 @@ development_status:
   epic-8-retrospective: optional
   epic-6-retrospective: optional
 
-  epic-9: in-progress
+  epic-9: done
   9-1-add-a-demo-safe-offline-mode: done
   9-2-improve-local-search-entity-matching-robustness: done
   9-3-warn-on-or-persist-corpus-and-trace-state-across-restarts: done
   9-4-add-entity-search-jump-to-node-on-the-graph-canvas: done
   9-5-badge-the-vector-space-tab-as-in-progress: done # superseded — moot once 8.4/8.5 shipped
   9-6-close-out-stories-still-marked-review: done
-  9-7-automate-demo-screenshot-capture-in-ci: backlog
+  9-7-automate-demo-screenshot-capture-in-ci: done
   epic-9-retrospective: optional

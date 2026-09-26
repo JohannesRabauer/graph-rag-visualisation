@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      # Speeds up repeated runs — Playwright's Java driver auto-downloads
+      # Chromium on its own first Playwright.create() call (UiTestSupport)
+      # when it isn't already cached here.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('graphrag-web/pom.xml') }}
+
+      - name: Build and test (all modules, incl. Playwright UI tests)
+        run: mvn -B clean install
+
+      # Story 9.7: the demo script's own named screenshot moments
+      # (SCR-1..SCR-12, DemoScriptScreenshotsUiTest), captured as a build
+      # artifact — retrievable from the Actions run without re-running the
+      # app manually. `if: always()` so a later assertion failure in that
+      # test still surfaces whatever shots were captured before it failed.
+      - name: Upload demo script screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-script-screenshots
+          path: graphrag-web/target/demo-screenshots/
+          if-no-files-found: warn
+          retention-days: 30
