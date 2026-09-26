@@ -110,6 +110,22 @@ class AnswerLocalSearchTest {
     }
 
     @Test
+    void aMinorTypoInTheQuestionStillFindsTheEntityInsteadOfFallingThroughToNoMatch() {
+        // Story 9.2: "Shelock" (missing an 'r') must still resolve to the
+        // "Sherlock Holmes" Entity via KeywordMatcher's fuzzy fallback,
+        // rather than a presenter hitting a "no answer found" on a minor
+        // phrasing slip mid-demo.
+        StubGraphStore graphStore = new StubGraphStore(
+                List.of(new Entity("Sherlock Holmes", "Person")),
+                List.of());
+
+        LocalSearchAnswer result = new AnswerLocalSearch(graphStore).answer("Where is Shelock right now?", null);
+
+        assertEquals(1, result.steps().size());
+        assertTrue(result.answer().contains("Sherlock Holmes"));
+    }
+
+    @Test
     void corpusScopedAnswerReadsOnlyTheRequestedCorpusGraph() {
         ScopedStubGraphStore graphStore = new ScopedStubGraphStore(Map.of(
                 "corpus-a", List.of(new Entity("Irene Adler", "Person")),
