@@ -318,6 +318,19 @@
             'border-width': 3,
             'border-color': readCssVar('--ink-900', '#14181C')
           }
+        },
+        {
+          // Story 9.4's entity-search "jump to" pulse — a brief accent ring
+          // distinct from Replay's `.step-active` (warm/active color), so a
+          // jump never reads as "this is what a trace touched".
+          selector: 'node.entity-search-hit:not(.community-hull)',
+          style: {
+            'border-color': readCssVar('--accent', '#2563EB'),
+            'border-width': 3,
+            width: 26,
+            height: 26,
+            'z-index': 11
+          }
         }
       ]
     });
@@ -397,6 +410,64 @@
       { fit: { eles: hull.union(hull.descendants()), padding: 40 } },
       { duration: 300 }
     );
+  }
+
+  var entitySearchHitTimer = null;
+
+  // Story 9.4: name-prefix search over every real (non-placeholder,
+  // non-hull) Entity node currently on the canvas — used by
+  // entity-search.js's own dropdown, kept here since only graph-canvas.js
+  // has direct Cytoscape access to the live node set.
+  function searchEntities(prefix) {
+    if (!cy || !prefix) {
+      return [];
+    }
+    var needle = String(prefix).toLowerCase();
+    var results = [];
+    cy.nodes().forEach(function (node) {
+      if (node.hasClass('community-hull') || node.data('placeholder')) {
+        return;
+      }
+      var name = node.data('name') || node.data('label') || '';
+      if (name.toLowerCase().indexOf(needle) !== 0) {
+        return;
+      }
+      results.push({ identity: node.id(), name: name, type: node.data('type') || '' });
+    });
+    return results;
+  }
+
+  // Pans/zooms to center one Entity and briefly highlights it, then opens
+  // its detail panel exactly as a direct click would (same
+  // `nodeTapCallback`) — "jump to" is deliberately just a scripted version
+  // of clicking the node yourself, not a separate interaction to learn.
+  function focusEntity(identity) {
+    if (!cy || !identity) {
+      return;
+    }
+    var node = cy.getElementById(identity);
+    if (!node || node.length === 0 || node.hasClass('community-hull')) {
+      return;
+    }
+    setKeyboardFocus(node.id());
+    cy.animate({ center: { eles: node }, zoom: Math.max(cy.zoom(), 1.5) }, { duration: 300 });
+
+    node.addClass('entity-search-hit');
+    if (entitySearchHitTimer) {
+      window.clearTimeout(entitySearchHitTimer);
+    }
+    entitySearchHitTimer = window.setTimeout(function () {
+      node.removeClass('entity-search-hit');
+      entitySearchHitTimer = null;
+    }, 1500);
+
+    if (nodeTapCallback) {
+      nodeTapCallback({
+        identity: node.id(),
+        name: node.data('name'),
+        type: node.data('type')
+      });
+    }
   }
 
   function setLegendActiveCommunity(communityId) {
@@ -931,6 +1002,8 @@
     onNodeTap: onNodeTap,
     onBackgroundTap: onBackgroundTap,
     focusCommunity: focusCommunity,
+    searchEntities: searchEntities,
+    focusEntity: focusEntity,
     simulateTap: simulateTap,
     communityHullOpacity: communityHullOpacity,
     communityIdForEntity: communityIdForEntity,

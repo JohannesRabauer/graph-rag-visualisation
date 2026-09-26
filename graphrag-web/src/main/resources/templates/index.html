@@ -55,6 +55,14 @@
           <button type="button" class="canvas-tab" id="tab-knowledge-graph" role="tab" aria-selected="true" tabindex="0">Knowledge Graph</button>
           <button type="button" class="canvas-tab" id="tab-vector-space" role="tab" aria-selected="false" tabindex="-1" hidden>Vector Space</button>
         </div>
+
+        <div class="entity-search" id="entity-search" hidden>
+          <input type="text" id="entity-search-input" class="entity-search-input"
+                 placeholder="Jump to an Entity by name…" aria-label="Search Entities by name"
+                 autocomplete="off" role="combobox" aria-expanded="false" aria-controls="entity-search-results">
+          <ul class="entity-search-results" id="entity-search-results" role="listbox"
+              aria-label="Matching Entities" hidden></ul>
+        </div>
         <div class="error-banner" id="error-banner" role="alert" hidden></div>
         <div class="canvas-idle" id="canvas-idle">
           <p class="eyebrow">Knowledge Graph — Resting</p>
@@ -143,6 +151,7 @@
   </div>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
   <script th:src="@{/js/graph-canvas.js}" src="/js/graph-canvas.js"></script>
+  <script th:src="@{/js/entity-search.js}" src="/js/entity-search.js"></script>
   <script th:src="@{/js/drift-tree.js}" src="/js/drift-tree.js"></script>
   <script th:src="@{/js/vector-space.js}" src="/js/vector-space.js"></script>
   <script th:src="@{/js/replay.js}" src="/js/replay.js"></script>

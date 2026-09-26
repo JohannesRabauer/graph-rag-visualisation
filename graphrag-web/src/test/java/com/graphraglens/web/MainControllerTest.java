@@ -97,6 +97,20 @@ class MainControllerTest {
     }
 
     @Test
+    void rendersTheEntitySearchControl() throws Exception {
+        String body = mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body).contains("id=\"entity-search\"");
+        assertThat(body).contains("id=\"entity-search-input\"");
+        assertThat(body).contains("id=\"entity-search-results\"");
+        assertThat(body).contains("entity-search.js");
+    }
+
+    @Test
     void mainScreenHasNoSeparateExplorePageLeftToLinkTo() throws Exception {
         String body = mockMvc.perform(get("/"))
                 .andExpect(status().isOk())

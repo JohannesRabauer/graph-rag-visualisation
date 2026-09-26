@@ -184,7 +184,8 @@
       document.getElementById('graph-eyebrow'),
       document.getElementById('community-toggle-wrap'),
       document.getElementById('replay-scrubber'),
-      document.getElementById('entity-detail-panel')
+      document.getElementById('entity-detail-panel'),
+      document.getElementById('entity-search')
     ];
     kgEls.forEach(function (el) {
       if (!el) {
@@ -671,6 +672,10 @@
     }
     if (canvasTabBar) {
       canvasTabBar.hidden = false;
+    }
+    var entitySearchEl = document.getElementById('entity-search');
+    if (entitySearchEl) {
+      entitySearchEl.hidden = false;
     }
     if (graphEyebrow) {
       graphEyebrow.hidden = false;
