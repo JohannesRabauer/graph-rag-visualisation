@@ -1285,6 +1285,19 @@ body {
   display: none;
 }
 
+/* ---- state-durability note (Story 9.3) ----
+   Same small-print treatment as .vector-space-note — a plain-language
+   caveat, not an alarm; corpora/traces are in-memory only. */
+.state-durability-note {
+  margin: var(--space-4) 0 0;
+  max-width: 32em;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-400);
+  font-style: italic;
+}
+
 /* ---- corpus chip ----
    DESIGN.md `components.corpus-chip`: pill in the app bar naming the
    active Corpus and document count, monospace, with a small neutral

@@ -82,6 +82,21 @@ class MainControllerTest {
     }
 
     @Test
+    void rendersTheOfflineDemoOptionAndTheStateDurabilityNote() throws Exception {
+        String body = mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body).contains("id=\"demo-offline-button\"");
+        assertThat(body).contains("Use the Offline Demo");
+        assertThat(body).contains("id=\"composer-offline-note\"");
+        assertThat(body).contains("state-durability-note");
+        assertThat(body).contains("restarting it clears them");
+    }
+
+    @Test
     void mainScreenHasNoSeparateExplorePageLeftToLinkTo() throws Exception {
         String body = mockMvc.perform(get("/"))
                 .andExpect(status().isOk())

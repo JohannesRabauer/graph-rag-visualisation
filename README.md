@@ -41,3 +41,14 @@ Caveat: `NEO4J_AUTH`/the Neo4j password is only applied when Neo4j's data
 volume is first created. If you change it after the first run, also run
 `docker compose down -v` first — otherwise the running database keeps its
 original credentials and silently diverges from `docker-compose.yml`.
+
+Caveat: restarting the `app` container clears every Corpus's workflow state
+and every captured Retrieval Trace — both live only in the `app` process's
+own memory (`CorpusStore`/`RetrievalTraceStore`), never on disk, matching
+this project's single-user/local-only scope (NFR3). This is independent of
+Neo4j's own data volume, which *does* persist across an `app` restart — so
+after restarting, the underlying graph data may still be in Neo4j, but the
+app itself no longer has a Corpus pointed at it, any in-flight ingestion
+progress, or any trace to replay. Re-ingest (upload again, or the Demo
+Dataset) to pick back up. If you're mid-demo, restarting is equivalent to
+starting over from the empty state.
