@@ -664,7 +664,9 @@ So that I can point directly at a specific character or concept instead of hunti
 **Then** matching entities are listed, and selecting one pans/zooms the canvas to center it and briefly highlights it
 **And** this control is reachable via keyboard alone (accessibility floor, UX-DR20)
 
-### Story 9.5: Badge the Vector Space Tab as In Progress
+### Story 9.5: Badge the Vector Space Tab as In Progress *(Superseded 2026-09-26 — moot: Stories 8.4/8.5 shipped)*
+
+Stories 8.4 and 8.5 both shipped in full (the Vector Trace is captured and the embedding-space scatter/replay is rendered — see Epic 8), so this story's own acceptance criteria ("the badge disappears automatically once Stories 8.4/8.5 ship, with no separate cleanup story needed") is satisfied by never needing the badge in the first place. No badge was built; the Vector Space tab's placeholder copy was replaced by the real feature instead.
 
 As the creator,
 I want the Vector Space tab to visibly signal that its scatter/replay is still being built,
