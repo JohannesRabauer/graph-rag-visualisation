@@ -95,11 +95,16 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
         page.locator("#chat-input").fill("Tell me about Irene Adler.");
         page.locator("#chat-form .send-button").click();
 
-        Locator replayCta = page.locator(".replay-cta").last();
+        // Scoped to the LOCAL answer specifically — a bare ".replay-cta"
+        // locator would re-resolve to the VECTOR answer's own Replay CTA
+        // once Compare adds it below (Story 8.5's own trace also renders
+        // one), since Playwright locators re-query at click time.
+        Locator localAnswer = page.locator(".message.answer[data-mode='LOCAL']").last();
+        Locator replayCta = localAnswer.locator(".replay-cta");
         assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
 
         // Trigger a comparison — auto-switches to Vector Space on first reveal.
-        page.locator(".message.answer").last().locator(".compare-cta").click();
+        localAnswer.locator(".compare-cta").click();
         assertThat(page.locator(".message.answer[data-mode='VECTOR']").last())
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
         assertThat(page.locator("#vector-space-panel")).isVisible();
