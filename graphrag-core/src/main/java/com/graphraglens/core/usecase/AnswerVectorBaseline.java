@@ -4,6 +4,7 @@ import com.graphraglens.core.domain.Chunk;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.EmbeddedChunk;
 import com.graphraglens.core.domain.GraphExtraction;
+import com.graphraglens.core.domain.ProjectionModel;
 import com.graphraglens.core.domain.RetrievalStep;
 import com.graphraglens.core.port.EmbeddingPort;
 import com.graphraglens.core.port.LlmPort;
@@ -14,6 +15,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Answers a question using a deliberately plain vector-similarity baseline.
@@ -82,7 +84,12 @@ public class AnswerVectorBaseline {
         String synthesized = llmPort.synthesizeFromChunks(question, topChunks);
         steps.add(new RetrievalStep(RetrievalStep.Kind.SYNTHESIS, "", synthesized));
 
-        return VectorBaselineAnswer.matched(synthesized, steps);
+        Optional<ProjectionModel> projectionModel = vectorStorePort.projectionModel(corpusId);
+        double[] queryProjection = projectionModel
+                .map(model -> TwoDProjection.project(model, queryEmbedding))
+                .orElse(new double[]{0.0, 0.0});
+
+        return VectorBaselineAnswer.matched(synthesized, steps, queryProjection);
     }
 
     /**

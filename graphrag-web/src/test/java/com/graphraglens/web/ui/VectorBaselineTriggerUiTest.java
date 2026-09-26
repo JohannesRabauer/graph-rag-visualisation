@@ -224,4 +224,33 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
         assertThat(caption).not().containsText("matched entity");
         assertThat(caption).containsText("embedded query");
     }
+
+    @Test
+    void vectorSpaceScatterRendersCorpusChunksAndTheQueryDotDuringReplay() {
+        loadDemoDatasetAndWaitReady();
+
+        page.locator("#chat-input").fill("Tell me about Irene Adler.");
+        page.locator("#chat-form .send-button").click();
+        assertThat(page.locator(".replay-cta").last())
+                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+
+        page.locator(".message.answer").last().locator(".compare-cta").click();
+        Locator vectorAnswer = page.locator(".message.answer[data-mode='VECTOR']").last();
+        assertThat(vectorAnswer).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
+
+        // Story 8.5: the corpus's chunk scatter renders as soon as the tab is
+        // revealed — no Replay needed to see the settled layout.
+        assertThat(page.locator(".vector-space-chunk-dot").first())
+                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(10000));
+
+        // Replaying the VECTOR answer plots the query dot and highlights its
+        // top-k retrieved chunks with connecting hit lines.
+        vectorAnswer.locator(".replay-cta").click();
+        page.locator("#replay-step-forward").click();
+
+        assertThat(page.locator(".vector-space-query-dot"))
+                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(10000));
+        assertThat(page.locator(".vector-space-hit-line").first()).isVisible();
+        assertThat(page.locator(".vector-space-chunk-dot.is-hit").first()).isVisible();
+    }
 }

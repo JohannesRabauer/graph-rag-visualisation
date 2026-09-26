@@ -3,6 +3,7 @@ package com.graphraglens.core.usecase;
 import com.graphraglens.core.domain.Chunk;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.EmbeddedChunk;
+import com.graphraglens.core.domain.ProjectionModel;
 import com.graphraglens.core.domain.UploadedDocument;
 import com.graphraglens.core.port.EmbeddingPort;
 import com.graphraglens.core.port.VectorStorePort;
@@ -32,13 +33,19 @@ public class ConstructVectorIndex {
         List<float[]> embeddings = chunks.stream()
                 .map(chunk -> embeddingPort.embed(chunk.text()))
                 .toList();
-        double[][] projections = TwoDProjection.project(embeddings);
+        // Fit once, here, over the corpus's own chunk embeddings — this is the
+        // model persisted so a later query embedding (AnswerVectorBaseline)
+        // can land in this same settled 2D space without ever recomputing
+        // or reshuffling the corpus's own layout (Story 8.5).
+        ProjectionModel projectionModel = TwoDProjection.fit(embeddings);
+        double[][] projections = TwoDProjection.projectAll(projectionModel, embeddings);
 
         List<EmbeddedChunk> embeddedChunks = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
             embeddedChunks.add(new EmbeddedChunk(chunks.get(i), embeddings.get(i), projections[i]));
         }
         vectorStorePort.persistChunks(corpus.id(), embeddedChunks);
+        vectorStorePort.persistProjectionModel(corpus.id(), projectionModel);
         return embeddedChunks;
     }
 

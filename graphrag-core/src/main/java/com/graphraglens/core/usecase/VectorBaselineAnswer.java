@@ -17,21 +17,33 @@ import java.util.List;
  * one {@code VECTOR_QUERY_EMBEDDED} step, then up to k {@code VECTOR_CHUNK}
  * steps in descending similarity order, then one {@code SYNTHESIS} step.
  * Empty when no chunks are available ({@code noChunks == true}).
+ *
+ * <p>{@code queryProjection} is the query embedding's own 2D position in the
+ * corpus's already-settled projection (Story 8.5) — {@code {0.0, 0.0}} when
+ * no projection model exists yet for the corpus.
  */
-public record VectorBaselineAnswer(boolean noChunks, String answer, String reason, List<RetrievalStep> steps) {
+public record VectorBaselineAnswer(boolean noChunks, String answer, String reason, List<RetrievalStep> steps,
+                                    double[] queryProjection) {
 
     public VectorBaselineAnswer {
         steps = steps == null ? List.of() : List.copyOf(steps);
+        queryProjection = queryProjection == null || queryProjection.length != 2
+                ? new double[]{0.0, 0.0} : queryProjection.clone();
     }
 
-    public static VectorBaselineAnswer matched(String answer, List<RetrievalStep> steps) {
-        return new VectorBaselineAnswer(false, answer, null, steps);
+    @Override
+    public double[] queryProjection() {
+        return queryProjection.clone();
+    }
+
+    public static VectorBaselineAnswer matched(String answer, List<RetrievalStep> steps, double[] queryProjection) {
+        return new VectorBaselineAnswer(false, answer, null, steps, queryProjection);
     }
 
     public static VectorBaselineAnswer noChunksYet() {
         return new VectorBaselineAnswer(true, null,
                 "The vector index for this corpus is not ready yet — it may still be building alongside "
                         + "the knowledge graph. Try again once ingestion completes.",
-                List.of());
+                List.of(), null);
     }
 }

@@ -1692,3 +1692,63 @@ body {
   color: var(--ink-400);
   font-style: italic;
 }
+
+/* ---- vector space scatter (Story 8.5) ----
+   Corpus chunks at their settled 2D projection, plus the query dot and
+   its top-k hit lines/labels drawn live during Replay of a VECTOR trace. */
+.vector-space-scatter-wrap {
+  position: relative;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.vector-space-scatter {
+  display: block;
+  width: 100%;
+  height: 320px;
+}
+
+.vector-space-chunk-dot {
+  fill: var(--ink-400);
+  opacity: 0.55;
+}
+
+.vector-space-chunk-dot.is-hit {
+  fill: var(--accent);
+  opacity: 1;
+}
+
+.vector-space-query-dot {
+  fill: var(--active);
+  stroke: var(--panel);
+  stroke-width: 1.5;
+}
+
+.vector-space-hit-line {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.vector-space-hit-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--ink-600);
+}
+
+.vector-space-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--space-4);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-400);
+}

@@ -2,6 +2,7 @@ package com.graphraglens.core.usecase;
 
 import com.graphraglens.core.domain.Chunk;
 import com.graphraglens.core.domain.EmbeddedChunk;
+import com.graphraglens.core.domain.ProjectionModel;
 import com.graphraglens.core.domain.RetrievalStep;
 import com.graphraglens.core.port.EmbeddingPort;
 import com.graphraglens.core.port.VectorStorePort;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -51,6 +53,26 @@ class AnswerVectorBaselineTest {
         return new VectorStorePort() {
             @Override
             public void persistChunks(String corpusId, Collection<EmbeddedChunk> c) {
+            }
+        };
+    }
+
+    /** Vector store that returns the given chunks and a fitted projection model for any corpusId. */
+    private static VectorStorePort storeWithModel(ProjectionModel model, EmbeddedChunk... chunks) {
+        List<EmbeddedChunk> list = List.of(chunks);
+        return new VectorStorePort() {
+            @Override
+            public void persistChunks(String corpusId, Collection<EmbeddedChunk> c) {
+            }
+
+            @Override
+            public Collection<EmbeddedChunk> chunks(String corpusId) {
+                return list;
+            }
+
+            @Override
+            public Optional<ProjectionModel> projectionModel(String corpusId) {
+                return Optional.of(model);
             }
         };
     }
@@ -212,6 +234,32 @@ class AnswerVectorBaselineTest {
         assertFalse(result.noChunks());
         assertNotNull(result.answer());
         assertFalse(result.answer().isBlank());
+    }
+
+    @Test
+    void queryProjectionDefaultsToOriginWhenNoProjectionModelExistsForTheCorpus() {
+        EmbeddedChunk chunk = ec("chunk-0", 1f, 0f);
+        VectorBaselineAnswer result = new AnswerVectorBaseline(
+                fixedEmbedding(1f, 0f), storeWith(chunk), null)
+                .answer("What?", "corpus-1");
+
+        assertEquals(0.0, result.queryProjection()[0]);
+        assertEquals(0.0, result.queryProjection()[1]);
+    }
+
+    @Test
+    void queryProjectionIsComputedFromThePersistedProjectionModelWhenOneExists() {
+        List<float[]> corpusEmbeddings = List.of(new float[]{1.0f, 0.0f}, new float[]{5.0f, 0.0f});
+        ProjectionModel model = TwoDProjection.fit(corpusEmbeddings);
+        EmbeddedChunk chunk = ec("chunk-0", 1f, 0f);
+
+        VectorBaselineAnswer result = new AnswerVectorBaseline(
+                fixedEmbedding(3.0f, 0f), storeWithModel(model, chunk), null)
+                .answer("What?", "corpus-1");
+
+        double[] expected = TwoDProjection.project(model, new float[]{3.0f, 0f});
+        assertEquals(expected[0], result.queryProjection()[0], 1.0e-9);
+        assertEquals(expected[1], result.queryProjection()[1], 1.0e-9);
     }
 
     @Test

@@ -38,7 +38,7 @@ class CorpusControllerDriftSearchTest {
                 new Relationship("Sherlock Holmes", "Person", "INVESTIGATES", "Irene Adler", "Person")));
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null);
+                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "What connects Sherlock Holmes to Irene Adler?", "mode", "DRIFT"));
@@ -74,7 +74,7 @@ class CorpusControllerDriftSearchTest {
 
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null);
+                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "zzqqxx nonsense gibberish flimflam", "mode", "DRIFT"));
@@ -116,7 +116,7 @@ class CorpusControllerDriftSearchTest {
         graphStore.persistEntities(secondCorpus.id(), List.of(new Entity("Professor Moriarty", "Person")));
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, new RetrievalTraceStore(), null, null);
+                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 firstCorpus.id(), Map.of("question", "Tell me about Irene Adler", "mode", "DRIFT"));

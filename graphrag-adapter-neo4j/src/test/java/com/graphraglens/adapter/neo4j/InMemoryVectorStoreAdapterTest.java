@@ -2,10 +2,13 @@ package com.graphraglens.adapter.neo4j;
 
 import com.graphraglens.core.domain.Chunk;
 import com.graphraglens.core.domain.EmbeddedChunk;
+import com.graphraglens.core.domain.ProjectionModel;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -50,6 +53,32 @@ class InMemoryVectorStoreAdapterTest {
         assertDoesNotThrow(() -> adapter.persistChunks(null, List.of(embeddedChunk("corpus-a", 0, "alpha"))));
         assertDoesNotThrow(() -> adapter.persistChunks(" ", List.of(embeddedChunk("corpus-a", 0, "alpha"))));
         assertDoesNotThrow(() -> adapter.persistChunks("corpus-a", null));
+    }
+
+    @Test
+    void persistsAndReadsBackTheProjectionModelScopedByCorpusId() {
+        InMemoryVectorStoreAdapter adapter = new InMemoryVectorStoreAdapter();
+        ProjectionModel model = new ProjectionModel(new double[]{1.0, 2.0}, new double[]{0.6, 0.8}, new double[]{-0.8, 0.6});
+
+        adapter.persistProjectionModel("corpus-a", model);
+
+        Optional<ProjectionModel> stored = adapter.projectionModel("corpus-a");
+        assertTrue(stored.isPresent());
+        assertArrayEquals(model.mean(), stored.get().mean());
+        assertArrayEquals(model.pc1(), stored.get().pc1());
+        assertArrayEquals(model.pc2(), stored.get().pc2());
+        assertTrue(adapter.projectionModel("corpus-b").isEmpty());
+    }
+
+    @Test
+    void ignoresNullOrBlankCorpusIdAndNullModelForPersistProjectionModel() {
+        InMemoryVectorStoreAdapter adapter = new InMemoryVectorStoreAdapter();
+        ProjectionModel model = new ProjectionModel(new double[]{1.0}, new double[]{1.0}, new double[]{0.0});
+
+        assertDoesNotThrow(() -> adapter.persistProjectionModel(null, model));
+        assertDoesNotThrow(() -> adapter.persistProjectionModel(" ", model));
+        assertDoesNotThrow(() -> adapter.persistProjectionModel("corpus-a", null));
+        assertTrue(adapter.projectionModel("corpus-a").isEmpty());
     }
 
     private static EmbeddedChunk embeddedChunk(String corpusId, int ordinal, String text) {

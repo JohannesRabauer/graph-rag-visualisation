@@ -34,6 +34,8 @@
   var dragging = false;
   var requestSeq = 0;
   var loadError = false;
+  var isVectorTrace = false;
+  var queryProjection = null;
 
   // Delegated so it keeps working for every Replay CTA `upload.js` appends
   // later, without either file needing to know about the other's timing.
@@ -42,7 +44,18 @@
     if (!cta) {
       return;
     }
-    openReplay(cta.dataset.traceId);
+    // Story 8.5: a VECTOR answer's Replay CTA also carries its query's own
+    // 2D projection (stashed by upload.js from the query response) — the
+    // trace steps themselves only carry chunk ids/scores, not coordinates.
+    var projection = null;
+    if (cta.dataset.queryProjection) {
+      try {
+        projection = JSON.parse(cta.dataset.queryProjection);
+      } catch (e) {
+        projection = null;
+      }
+    }
+    openReplay(cta.dataset.traceId, projection);
   });
 
   if (closeButton) {
@@ -82,12 +95,13 @@
     });
   }
 
-  function openReplay(traceId) {
+  function openReplay(traceId, projection) {
     if (!traceId) {
       return;
     }
     stopPlayback();
     hideFetchError();
+    queryProjection = projection;
 
     // Guards against an out-of-order response: if a second Replay CTA is
     // clicked before this fetch resolves, only the most recently requested
@@ -111,6 +125,7 @@
         loadError = false;
         steps = (result.body && result.body.steps) || [];
         currentIndex = 0;
+        isVectorTrace = steps.length > 0 && steps[0].kind === 'VECTOR_QUERY_EMBEDDED';
         if (window.DriftTree) {
           window.DriftTree.build(steps);
         }
@@ -145,14 +160,15 @@
   }
 
   function open() {
-    // Story 8-3: Knowledge Graph and Vector Space are mutually exclusive
-    // tabs — opening Replay always means the Knowledge Graph surface, so
-    // switch back to it first if the Vector Space tab is currently active.
+    // Story 8-3/8.5: Knowledge Graph and Vector Space are mutually exclusive
+    // tabs. A VECTOR trace's Replay opens on the Vector Space surface (its
+    // scatter, not the graph canvas); every other trace kind still forces
+    // the Knowledge Graph tab, as before.
     if (window.CanvasTabs) {
-      window.CanvasTabs.switchTo('knowledge-graph');
+      window.CanvasTabs.switchTo(isVectorTrace ? 'vector-space' : 'knowledge-graph');
     }
     scrubber.hidden = false;
-    if (graphEyebrow) {
+    if (!isVectorTrace && graphEyebrow) {
       graphEyebrow.hidden = false;
       graphEyebrow.textContent = REPLAYING_EYEBROW_TEXT;
     }
@@ -169,6 +185,9 @@
     }
     if (window.GraphCanvas) {
       window.GraphCanvas.clearStepHighlights();
+    }
+    if (window.VectorSpace) {
+      window.VectorSpace.clear();
     }
   }
 
@@ -279,6 +298,17 @@
     updateCounterAndCaption();
     updateTicks();
     updateTransportState();
+
+    if (isVectorTrace) {
+      if (window.VectorSpace) {
+        if (steps.length === 0) {
+          window.VectorSpace.clear();
+        } else {
+          window.VectorSpace.highlightStep(steps, currentIndex, queryProjection);
+        }
+      }
+      return;
+    }
 
     if (window.GraphCanvas) {
       if (steps.length === 0) {

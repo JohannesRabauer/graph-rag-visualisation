@@ -91,7 +91,15 @@
         <div id="vector-space-panel" class="vector-space-panel" role="tabpanel" aria-labelledby="tab-vector-space" hidden>
           <p class="graph-eyebrow">Vector Space — answer ready</p>
           <div id="vector-space-answer" class="vector-space-answer"></div>
-          <p class="vector-space-note">The embedding-space scatter plot and step-by-step trace replay will appear here in a later story.</p>
+          <div id="vector-space-scatter-wrap" class="vector-space-scatter-wrap">
+            <svg id="vector-space-scatter" class="vector-space-scatter" viewBox="0 0 600 400"
+                 preserveAspectRatio="xMidYMid meet" role="img"
+                 aria-label="2D scatter of the corpus's chunk embeddings"></svg>
+            <p class="vector-space-empty" id="vector-space-empty" hidden>
+              The vector index for this corpus has no chunks to plot yet.
+            </p>
+          </div>
+          <p class="vector-space-note">Corpus chunks sit at their settled, ingestion-time positions. Replay a Vector Search answer to see the query land and its top matches highlight.</p>
         </div>
 
         <div class="replay-scrubber" id="replay-scrubber" role="group" aria-label="Retrieval Trace replay controls" hidden>
@@ -128,6 +136,7 @@
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
   <script th:src="@{/js/graph-canvas.js}" src="/js/graph-canvas.js"></script>
   <script th:src="@{/js/drift-tree.js}" src="/js/drift-tree.js"></script>
+  <script th:src="@{/js/vector-space.js}" src="/js/vector-space.js"></script>
   <script th:src="@{/js/replay.js}" src="/js/replay.js"></script>
   <script th:src="@{/js/upload.js}" src="/js/upload.js"></script>
 </body>

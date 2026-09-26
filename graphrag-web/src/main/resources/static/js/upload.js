@@ -122,7 +122,7 @@
         if (result.ok) {
           var answerText = result.body.answer || result.body.reason || 'No answer was returned.';
           appendAnswer(answerText, result.body.mode || 'VECTOR',
-              result.body.traceId, result.body.traceStepCount, null);
+              result.body.traceId, result.body.traceStepCount, null, result.body.queryProjection);
           revealVectorSpaceTab(answerText);
         } else {
           showErrorBanner(errorMessage(result.body));
@@ -146,6 +146,11 @@
     }
     if (vectorSpaceAnswer) {
       vectorSpaceAnswer.textContent = answerText || '';
+    }
+    // Story 8.5: fetch the corpus's settled chunk-scatter positions once —
+    // VectorSpace.init() itself no-ops on a repeat call for the same corpus.
+    if (window.VectorSpace && activeCorpusId) {
+      window.VectorSpace.init(activeCorpusId);
     }
     // Auto-switch to Vector Space only the first time it is revealed — a
     // helpful nudge so the user sees their first comparison land, without
@@ -682,7 +687,7 @@
     chatThread.scrollTop = chatThread.scrollHeight;
   }
 
-  function appendAnswer(text, mode, traceId, traceStepCount, question) {
+  function appendAnswer(text, mode, traceId, traceStepCount, question, queryProjection) {
     var activeMode = mode || currentSearchMode;
     var answerText = text || 'No answer was returned.';
     if (!chatThread) {
@@ -721,6 +726,13 @@
       replayCta.className = 'replay-cta';
       replayCta.dataset.traceId = traceId;
       replayCta.dataset.stepCount = String(traceStepCount || 0);
+      // Story 8.5: a VECTOR answer's Replay CTA also carries the query's own
+      // 2D projection — the trace steps themselves only carry chunk
+      // ids/scores, not coordinates, so replay.js reads this back off the
+      // button it clicked rather than needing a second fetch.
+      if (activeMode === 'VECTOR' && queryProjection) {
+        replayCta.dataset.queryProjection = JSON.stringify(queryProjection);
+      }
       replayCta.textContent =
           'Replay this answer\'s Retrieval Trace — ' + (traceStepCount || 0) + ' steps';
       message.appendChild(replayCta);

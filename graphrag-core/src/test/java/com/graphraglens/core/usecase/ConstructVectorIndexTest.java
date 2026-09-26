@@ -3,6 +3,7 @@ package com.graphraglens.core.usecase;
 import com.graphraglens.core.domain.Chunk;
 import com.graphraglens.core.domain.Corpus;
 import com.graphraglens.core.domain.EmbeddedChunk;
+import com.graphraglens.core.domain.ProjectionModel;
 import com.graphraglens.core.domain.UploadedDocument;
 import com.graphraglens.core.port.EmbeddingPort;
 import com.graphraglens.core.port.VectorStorePort;
@@ -166,14 +167,38 @@ class ConstructVectorIndexTest {
         }
     }
 
+    @Test
+    void persistsTheFittedProjectionModelAlongsideTheChunksSoAQueryCanBeProjectedLater() {
+        RecordingEmbeddingPort embeddingPort = new RecordingEmbeddingPort(Map.of(
+                "alpha chunk", new float[]{10.0f, 0.0f},
+                "beta chunk", new float[]{-10.0f, 0.0f}));
+        RecordingVectorStore vectorStore = new RecordingVectorStore();
+
+        new ConstructVectorIndex(embeddingPort, vectorStore).run(
+                new Corpus("corpus-model", List.of(
+                        new UploadedDocument("a.txt", "alpha chunk"),
+                        new UploadedDocument("b.txt", "beta chunk"))));
+
+        assertEquals("corpus-model", vectorStore.lastModelCorpusId);
+        assertTrue(vectorStore.persistedModel.mean().length > 0);
+    }
+
     private static final class RecordingVectorStore implements VectorStorePort {
         private final List<EmbeddedChunk> persisted = new ArrayList<>();
         private String lastCorpusId;
+        private ProjectionModel persistedModel;
+        private String lastModelCorpusId;
 
         @Override
         public void persistChunks(String corpusId, Collection<EmbeddedChunk> chunks) {
             lastCorpusId = corpusId;
             persisted.addAll(chunks);
+        }
+
+        @Override
+        public void persistProjectionModel(String corpusId, ProjectionModel model) {
+            lastModelCorpusId = corpusId;
+            persistedModel = model;
         }
     }
 }

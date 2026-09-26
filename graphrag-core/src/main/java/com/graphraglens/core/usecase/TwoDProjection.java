@@ -1,5 +1,7 @@
 package com.graphraglens.core.usecase;
 
+import com.graphraglens.core.domain.ProjectionModel;
+
 import java.util.List;
 
 final class TwoDProjection {
@@ -10,31 +12,86 @@ final class TwoDProjection {
     private TwoDProjection() {
     }
 
+    /**
+     * Fits a 2D PCA model over {@code vectors} and projects them with it in
+     * one step — the batch-only convenience this class originally offered.
+     */
     static double[][] project(List<float[]> vectors) {
+        ProjectionModel model = fit(vectors);
+        return projectAll(model, vectors);
+    }
+
+    /**
+     * Fits (mean + first two principal components) but does not project —
+     * kept and persisted so a later, single out-of-band vector (a query
+     * embedding) can be placed into this same settled space via
+     * {@link #project(ProjectionModel, float[])} without ever recomputing
+     * or reshuffling the batch's own layout.
+     */
+    static ProjectionModel fit(List<float[]> vectors) {
         int n = vectors == null ? 0 : vectors.size();
         if (n == 0) {
-            return new double[0][2];
-        }
-        if (n == 1) {
-            return new double[][]{{0.0, 0.0}};
+            return new ProjectionModel(new double[0], new double[0], new double[0]);
         }
 
         int d = vectors.getFirst().length;
-        double[][] centered = center(vectors, n, d);
+        double[] means = means(vectors, n, d);
+        if (n == 1) {
+            return new ProjectionModel(means, new double[d], new double[d]);
+        }
+
+        double[][] centered = centerWithMeans(vectors, means, n, d);
         double[] pc1 = principalComponent(centered, n, d, seed(d, 1));
         double[] scores1 = scores(centered, pc1, n, d);
         double[][] deflated = deflate(centered, pc1, scores1, n, d);
         double[] pc2 = principalComponent(deflated, n, d, seed(d, 2));
-        double[] scores2 = scores(deflated, pc2, n, d);
+        return new ProjectionModel(means, pc1, pc2);
+    }
 
+    /** Applies an already-fitted model to a batch of vectors. */
+    static double[][] projectAll(ProjectionModel model, List<float[]> vectors) {
+        int n = vectors == null ? 0 : vectors.size();
         double[][] result = new double[n][2];
         for (int i = 0; i < n; i++) {
-            result[i] = new double[]{scores1[i], scores2[i]};
+            result[i] = project(model, vectors.get(i));
         }
         return result;
     }
 
-    private static double[][] center(List<float[]> vectors, int n, int d) {
+    /**
+     * Applies an already-fitted model to a single vector — the mechanism a
+     * query embedding uses to land in the corpus's settled 2D scatter.
+     * Degrades to {@code {0.0, 0.0}} instead of NaN/Infinity, same as the
+     * batch path.
+     */
+    static double[] project(ProjectionModel model, float[] vector) {
+        if (model == null || vector == null || model.mean().length == 0) {
+            return new double[]{0.0, 0.0};
+        }
+        double[] mean = model.mean();
+        int d = Math.min(vector.length, mean.length);
+        double[] centered = new double[d];
+        for (int j = 0; j < d; j++) {
+            centered[j] = vector[j] - mean[j];
+        }
+        return new double[]{
+                componentScore(centered, model.pc1(), d),
+                componentScore(centered, model.pc2(), d)
+        };
+    }
+
+    private static double componentScore(double[] centered, double[] component, int d) {
+        if (component == null || component.length == 0 || norm(component) <= EPSILON) {
+            return 0.0;
+        }
+        double sum = 0.0;
+        for (int j = 0; j < d; j++) {
+            sum += centered[j] * component[j];
+        }
+        return Double.isFinite(sum) ? sum : 0.0;
+    }
+
+    private static double[] means(List<float[]> vectors, int n, int d) {
         double[] means = new double[d];
         for (float[] vector : vectors) {
             for (int j = 0; j < d; j++) {
@@ -44,7 +101,10 @@ final class TwoDProjection {
         for (int j = 0; j < d; j++) {
             means[j] /= n;
         }
+        return means;
+    }
 
+    private static double[][] centerWithMeans(List<float[]> vectors, double[] means, int n, int d) {
         double[][] centered = new double[n][d];
         for (int i = 0; i < n; i++) {
             float[] vector = vectors.get(i);

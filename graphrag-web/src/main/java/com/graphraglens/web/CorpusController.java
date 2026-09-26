@@ -2,6 +2,7 @@ package com.graphraglens.web;
 
 import com.graphraglens.core.domain.Community;
 import com.graphraglens.core.domain.Corpus;
+import com.graphraglens.core.domain.EmbeddedChunk;
 import com.graphraglens.core.domain.Entity;
 import com.graphraglens.core.domain.Relationship;
 import com.graphraglens.core.domain.RetrievalStep;
@@ -12,6 +13,7 @@ import com.graphraglens.core.domain.UploadedDocument;
 import com.graphraglens.core.port.DocumentParserPort;
 import com.graphraglens.core.port.GraphStorePort;
 import com.graphraglens.core.port.LlmPort;
+import com.graphraglens.core.port.VectorStorePort;
 import com.graphraglens.core.usecase.AnswerVectorBaseline;
 import com.graphraglens.core.usecase.AnswerGlobalSearch;
 import com.graphraglens.core.usecase.AnswerLocalSearch;
@@ -40,6 +42,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -73,12 +76,13 @@ public class CorpusController {
     private final RetrievalTraceStore retrievalTraceStore;
     private final ConstructVectorIndex constructVectorIndex;
     private final AnswerVectorBaseline answerVectorBaseline;
+    private final VectorStorePort vectorStorePort;
 
     public CorpusController(IngestCorpus ingestCorpus, CorpusStore corpusStore,
                            List<DocumentParserPort> documentParsers, DemoDatasetService demoDatasetService,
                            CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort,
                            RetrievalTraceStore retrievalTraceStore, ConstructVectorIndex constructVectorIndex,
-                           AnswerVectorBaseline answerVectorBaseline) {
+                           AnswerVectorBaseline answerVectorBaseline, VectorStorePort vectorStorePort) {
         this.ingestCorpus = ingestCorpus;
         this.corpusStore = corpusStore;
         this.documentParsers = documentParsers;
@@ -89,6 +93,24 @@ public class CorpusController {
         this.retrievalTraceStore = retrievalTraceStore;
         this.constructVectorIndex = constructVectorIndex;
         this.answerVectorBaseline = answerVectorBaseline;
+        this.vectorStorePort = vectorStorePort;
+    }
+
+    /**
+     * Story 8.5: the corpus's chunk embeddings at their settled, ingestion-time
+     * 2D positions (Story 8.1) — fetched once by the Vector Space tab and
+     * cached client-side, since this layout never changes after ingestion.
+     */
+    @GetMapping("/api/corpora/{corpusId}/vector-space")
+    public ResponseEntity<Map<String, Object>> vectorSpace(@PathVariable("corpusId") String corpusId) {
+        Collection<EmbeddedChunk> chunks = vectorStorePort.chunks(corpusId);
+        List<Map<String, Object>> chunkPayload = chunks.stream()
+                .map(ec -> Map.<String, Object>of(
+                        "id", ec.chunk().id(),
+                        "x", ec.projection().length > 0 ? ec.projection()[0] : 0.0,
+                        "y", ec.projection().length > 1 ? ec.projection()[1] : 0.0))
+                .toList();
+        return ResponseEntity.ok(Map.of("corpusId", corpusId, "chunks", chunkPayload));
     }
 
     @GetMapping(value = "/api/corpora/{corpusId}/progress", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -240,7 +262,8 @@ public class CorpusController {
                 "traceId", traceId,
                 "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
-                "mode", "VECTOR"));
+                "mode", "VECTOR",
+                "queryProjection", List.of(result.queryProjection()[0], result.queryProjection()[1])));
     }
 
     /**
