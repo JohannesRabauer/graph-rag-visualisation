@@ -7,8 +7,19 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Port for persisting and querying a corpus's embedded chunks and its fitted
+ * 2D projection model.
+ */
 public interface VectorStorePort {
 
+    /**
+     * Persists a corpus's embedded chunks.
+     *
+     * @param corpusId the corpus the chunks belong to; never null
+     * @param chunks   the embedded chunks (text chunk + embedding vector +
+     *                 2D projection) to persist for that corpus; never null
+     */
     void persistChunks(String corpusId, Collection<EmbeddedChunk> chunks);
 
     default Collection<EmbeddedChunk> chunks(String corpusId) {

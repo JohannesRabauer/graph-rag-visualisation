@@ -11,6 +11,11 @@ import io.graphrag.core.port.VectorStorePort;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Chunks a corpus's documents, embeds each chunk, fits a 2D projection over
+ * the batch, and persists the embedded chunks and the fitted projection
+ * model via the configured {@link VectorStorePort}.
+ */
 public class ConstructVectorIndex {
 
     private static final int CHUNK_SIZE = 500;

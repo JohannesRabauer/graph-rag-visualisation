@@ -13,7 +13,7 @@ project along Hexagonal Architecture boundaries.
 
 | Module | Purpose |
 | --- | --- |
-| `graphrag-core` | Framework-free hexagonal core. Domain model and port interfaces (`GraphStorePort`, `LlmPort`, `DocumentParserPort`). No dependency on Spring, the Neo4j Java Driver, or LangChain4j. |
+| [`graphrag-core`](graphrag-core/README.md) | Framework-free hexagonal core. Domain model and port interfaces (`GraphStorePort`, `LlmPort`, `DocumentParserPort`). No dependency on Spring, the Neo4j Java Driver, or LangChain4j. See its own [README](graphrag-core/README.md) for the port contracts and a standalone usage example. |
 | `graphrag-adapter-neo4j` | Adapter stub for the future Neo4j graph-store implementation of `GraphStorePort`. |
 | `graphrag-adapter-langchain4j` | Adapter stub for the future LangChain4j implementation of `LlmPort`. |
 | `graphrag-adapter-parsing` | Adapter stub for the future PDF/text parsing implementation of `DocumentParserPort`. |

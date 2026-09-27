@@ -4,6 +4,11 @@ import io.graphrag.core.domain.ProjectionModel;
 
 import java.util.List;
 
+/**
+ * Fits and applies a simple 2D PCA projection over embedding vectors, so a
+ * corpus's chunk embeddings (and later, individual query embeddings) can be
+ * placed into the same settled 2D scatter for visualization.
+ */
 final class TwoDProjection {
 
     private static final int ITERATIONS = 30;
