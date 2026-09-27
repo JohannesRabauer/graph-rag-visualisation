@@ -25,6 +25,20 @@
   var graphEyebrow = document.getElementById('graph-eyebrow');
 
   if (!scrubber || !stepBackButton || !playPauseButton || !stepForwardButton) {
+    var missing = [];
+    if (!scrubber) {
+      missing.push('#replay-scrubber');
+    }
+    if (!stepBackButton) {
+      missing.push('#replay-step-back');
+    }
+    if (!playPauseButton) {
+      missing.push('#replay-play-pause');
+    }
+    if (!stepForwardButton) {
+      missing.push('#replay-step-forward');
+    }
+    console.error('[replay] missing required DOM element(s): ' + missing.join(', '));
     return;
   }
 
