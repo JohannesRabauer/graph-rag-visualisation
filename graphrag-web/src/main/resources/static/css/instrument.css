@@ -54,6 +54,23 @@
   --community-9-label: #85994A;
   --community-10: #FCE6F5;
   --community-10-label: #B9569E;
+  /* --- entity type colors (spec-10-3) ---
+     Deliberately a deeper/dustier tint band than the Community hulls'
+     light pastels above, so the two categorical color languages read as
+     visually distinct even where hue ranges loosely overlap — see the
+     spec's Design Notes. */
+  --entity-type-1: #7A8C6B;
+  --entity-type-1-label: #4F5C42;
+  --entity-type-2: #5F7385;
+  --entity-type-2-label: #3C4A58;
+  --entity-type-3: #8C6B7A;
+  --entity-type-3-label: #5C4650;
+  --entity-type-4: #A68A5B;
+  --entity-type-4-label: #7A6238;
+  --entity-type-5: #A66B58;
+  --entity-type-5-label: #7A4A3A;
+  --entity-type-6: #7A5F8C;
+  --entity-type-6-label: #4F3E5C;
 
   /* --- typography --- */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -824,6 +841,55 @@ body {
   max-width: 220px;
 }
 
+/* Entity type color-coding toggle (spec-10-3) — copied verbatim from
+   `.community-toggle*` above (same markup/CSS pattern, new class names):
+   a real checkbox inside a label, no custom JS needed for keyboard
+   operability. */
+.entity-type-toggle-wrap[hidden] {
+  display: none;
+}
+
+.entity-type-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+
+.entity-type-toggle-input {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.entity-type-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.entity-type-toggle-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.entity-type-toggle-meta {
+  color: var(--ink-400);
+  max-width: 220px;
+}
+
 /* DESIGN.md `components.chat-panel`: a 340px docked left rail (border-
    right, panel background) beside the graph — not a floating card
    centered on top of it (the previous layout obscured the Knowledge Graph
@@ -1572,6 +1638,7 @@ body {
 .node-detail-tag {
   padding: var(--space-1) var(--space-2);
   background: var(--chrome);
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
   font-family: var(--font-mono);
   font-size: var(--font-mono-size);
@@ -1677,6 +1744,10 @@ body {
   }
 
   .community-toggle-meta {
+    display: none;
+  }
+
+  .entity-type-toggle-meta {
     display: none;
   }
 

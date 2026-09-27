@@ -17,6 +17,8 @@
   var modeHint = document.getElementById('mode-hint');
   var communityToggleWrap = document.getElementById('community-toggle-wrap');
   var communityVisualizationToggle = document.getElementById('community-visualization-toggle');
+  var entityTypeToggleWrap = document.getElementById('entity-type-toggle-wrap');
+  var entityTypeColorToggle = document.getElementById('entity-type-color-toggle');
   var graphCanvasEl = document.getElementById('graph-canvas');
   var graphEyebrow = document.getElementById('graph-eyebrow');
   var workflowStatus = document.getElementById('workflow-status');
@@ -47,6 +49,11 @@
   var entityDetailRelationships = document.getElementById('entity-detail-relationships');
   var entityDetailTags = document.getElementById('entity-detail-tags');
   var selectedEntityIdentity = null;
+  // Story 10.3: the currently-open Entity's `type`, kept alongside
+  // `selectedEntityIdentity` so a live toggle change can re-run
+  // `renderEntityDetailTags` for the already-open panel without needing to
+  // re-look-up the Entity's data.
+  var selectedEntityType = null;
   var activeRelationships = [];
 
   if (!fileInput || !corpusChip || !errorBanner) {
@@ -183,6 +190,7 @@
       document.getElementById('graph-legend'),
       document.getElementById('graph-eyebrow'),
       document.getElementById('community-toggle-wrap'),
+      document.getElementById('entity-type-toggle-wrap'),
       document.getElementById('replay-scrubber'),
       document.getElementById('entity-detail-panel'),
       document.getElementById('entity-search')
@@ -255,6 +263,7 @@
 
   function closeEntityDetailPanel() {
     selectedEntityIdentity = null;
+    selectedEntityType = null;
     if (!entityDetailPanel) {
       return;
     }
@@ -312,6 +321,29 @@
     var chip = document.createElement('span');
     chip.className = 'node-detail-tag';
     chip.textContent = type || 'Unknown';
+    // Story 10.3: color the chip to match its Entity's canvas node — same
+    // deterministic-hash color, from the single source of truth
+    // (`window.GraphCanvas.entityTypeColors`), only when the toggle is ON.
+    // Guarded on a truthy `type`: a placeholder node (`ensureNode`) has no
+    // type yet and its canvas node is never touched by `addEntity`, so
+    // coloring the chip from a hash of "" here would break chip/node
+    // parity — falls through to the neutral style instead, matching the
+    // node's own untouched neutral rendering.
+    // Text color is deliberately left at `.node-detail-tag`'s neutral
+    // `--ink-900` (never set to `colors.labelColor`) — that pairing's
+    // contrast against the deeper/dustier fill tokens is too low to read.
+    if (type && entityTypeColorToggle && entityTypeColorToggle.checked && window.GraphCanvas) {
+      var colors = window.GraphCanvas.entityTypeColors(type);
+      if (colors) {
+        chip.style.background = colors.fill;
+        chip.style.borderColor = colors.labelColor;
+        chip.style.color = '';
+      }
+    } else {
+      chip.style.background = '';
+      chip.style.borderColor = '';
+      chip.style.color = '';
+    }
     entityDetailTags.appendChild(chip);
   }
 
@@ -320,6 +352,7 @@
       return;
     }
     selectedEntityIdentity = nodeData.identity;
+    selectedEntityType = nodeData.type;
     if (entityDetailName) {
       entityDetailName.textContent = nodeData.name || nodeData.identity;
     }
@@ -362,6 +395,22 @@
       // overlay and its fold-in animation are toggle-controlled.
       if (window.GraphCanvas) {
         window.GraphCanvas.setHullsVisible(communityVisualizationToggle.checked);
+      }
+    });
+  }
+
+  if (entityTypeColorToggle) {
+    entityTypeColorToggle.addEventListener('change', function () {
+      // Story 10.3: also client-side rendering only, same convention as
+      // the community-visualization toggle above. Recolors every already-
+      // rendered node immediately, and re-renders the open panel's Tag
+      // chip (if any) so it doesn't need to be re-opened to reflect the
+      // new state.
+      if (window.GraphCanvas) {
+        window.GraphCanvas.setEntityTypeColoringEnabled(entityTypeColorToggle.checked);
+      }
+      if (selectedEntityIdentity) {
+        renderEntityDetailTags(selectedEntityType);
       }
     });
   }
@@ -666,6 +715,12 @@
     if (communityVisualizationToggle) {
       communityVisualizationToggle.checked = true;
     }
+    if (entityTypeToggleWrap) {
+      entityTypeToggleWrap.hidden = false;
+    }
+    if (entityTypeColorToggle) {
+      entityTypeColorToggle.checked = true;
+    }
     if (graphCanvasEl) {
       graphCanvasEl.hidden = false;
       graphCanvasEl.setAttribute('aria-hidden', 'false');
@@ -688,6 +743,7 @@
       // second page.
       window.GraphCanvas.init({ interactive: true });
       window.GraphCanvas.setHullsVisible(true);
+      window.GraphCanvas.setEntityTypeColoringEnabled(true);
     }
     connectProgressStream(body && body.corpusId);
   }
