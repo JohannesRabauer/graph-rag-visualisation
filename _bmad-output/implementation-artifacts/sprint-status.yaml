@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-19-2026 13:59
-last_updated: 09-20-2026 21:20
+last_updated: 09-27-2026 04:48
 project: graph-rag-visualisation
 project_key: NOKEY
 tracking_system: file-system
@@ -39,7 +39,6 @@ development_status:
   1-1-project-skeleton-module-boundaries: done
   1-2-one-command-local-environment: done
   1-3-empty-state-main-screen: done
-
   epic-1-retrospective: optional
 
   epic-2: done
@@ -70,12 +69,12 @@ development_status:
   epic-5-retrospective: optional
 
   epic-6: done
-  6-1-explore-the-full-knowledge-graph: done
-  6-2-inspect-an-entity-s-details: done
+  6-1-explore-the-knowledge-graph-on-the-main-screen: done
+  6-2-inspect-an-entity-s-details-on-the-main-screen: done
   epic-6-retrospective: optional
 
   epic-7: done
-  7-1-add-drift-to-the-mode-toggle-and-query-contract: done
+  7-1-add-drift-to-the-mode-choice-query-contract: done
   7-2-implement-answerdriftsearch: done
   7-3-capture-the-drift-trace: done
   7-4-replay-the-drift-trace-as-a-branching-tree: done
@@ -88,14 +87,21 @@ development_status:
   8-4-capture-the-vector-trace: done
   8-5-render-the-embedding-space-and-replay-the-vector-trace: done
   epic-8-retrospective: optional
-  epic-6-retrospective: optional
 
   epic-9: done
   9-1-add-a-demo-safe-offline-mode: done
   9-2-improve-local-search-entity-matching-robustness: done
   9-3-warn-on-or-persist-corpus-and-trace-state-across-restarts: done
   9-4-add-entity-search-jump-to-node-on-the-graph-canvas: done
-  9-5-badge-the-vector-space-tab-as-in-progress: done # superseded — moot once 8.4/8.5 shipped
+  9-5-badge-the-vector-space-tab-as-in-progress-superseded-2026-09: done
   9-6-close-out-stories-still-marked-review: done
   9-7-automate-demo-screenshot-capture-in-ci: done
   epic-9-retrospective: optional
+
+  epic-10: backlog
+  10-1-fix-entity-search-community-toggle-visual-overlap: backlog
+  10-2-fix-the-progress-stream-s-false-disconnected-banner: backlog
+  10-3-color-code-entity-tags-by-type-toggleable: backlog
+  10-4-allow-loading-a-new-corpus-after-one-is-already-active: backlog
+  10-5-audit-graphrag-core-s-reusability-as-a-standalone-library: backlog
+  epic-10-retrospective: optional

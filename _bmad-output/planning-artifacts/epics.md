@@ -704,3 +704,84 @@ So that the demo script's screenshots stay current for free as the UI evolves, i
 **When** the suite runs in CI
 **Then** each named demo-script moment (SCR-1 through SCR-12) is captured as a screenshot artifact, named to match this document's shot list
 **And** these artifacts are retrievable from the CI run without re-running the app manually
+
+## Epic 10: Live-Demo UX Fixes & Library Reusability Audit
+
+Found via direct user feedback while using the app (two real bugs), two feature requests, and one audit request — filed as GitHub issues #20-#24. Not a themed epic the way 1-9 are; a grab-bag of independent, user-reported items grouped here only for sprint tracking.
+**FRs covered:** none directly (bug fixes and hardening against existing FR16/FR17/FR9/FR10 UX; #24 is a documentation/audit deliverable, not a user-facing FR)
+
+### Story 10.1: Fix Entity Search / Community Toggle Visual Overlap
+
+As the creator,
+I want the entity-search box and the community-visualization toggle to never overlap,
+So that both controls are always fully visible and clickable independently (GitHub #20).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus is loaded and the Knowledge Graph canvas is showing
+**When** both `#entity-search` and `#community-toggle-wrap` are visible
+**Then** their rendered bounding boxes never overlap, at any supported viewport width
+**And** each control remains independently clickable — a click never lands ambiguously on the other
+
+**Design Notes:** Root cause is CSS positioning (`instrument.css`): both anchor `position: absolute` to the same top-right corner (`.entity-search` at `top: 46px`, `.community-toggle-wrap` at `top: var(--space-3)`), with `.entity-search` at a higher `z-index` (5 vs 2). Fix by stacking vertically with real measured spacing or moving one to a different corner — verify against actual rendered heights, not eyeballed constants.
+
+### Story 10.2: Fix the Progress Stream's False "Disconnected" Banner
+
+As the creator,
+I want the progress-stream error banner to never appear after ingestion has already completed successfully,
+So that a normal, expected stream-timeout is never mistaken for a real, unrecoverable failure mid-demo (GitHub #21).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus has reached `READY` (ingestion-complete already received)
+**When** the underlying SSE connection subsequently closes (timeout or otherwise)
+**Then** the "progress stream disconnected" banner is not shown, since there is nothing actually wrong
+**And** a genuine disconnect during an in-progress (`BUILDING`) ingestion still shows the existing recovery banner/actions
+
+**Design Notes:** Root cause is `CorpusProgressService.register()`'s hardcoded `new SseEmitter(30_000L)` — a fixed 30-second timeout with nothing ever calling `emitter.complete()` after `ingestion-complete`, so every stream eventually times out and fires the browser's `EventSource.onerror`, which unconditionally shows the banner (`upload.js`) with no auto-clear. Fix via either: (a) server-side `emitter.complete()` right after a terminal event, and/or (b) client-side, suppress the banner once `activeCorpusReady` is already true.
+
+### Story 10.3: Color-Code Entity Tags by Type, Toggleable
+
+As the creator,
+I want Entity Tags to be color-coded by type, with a toggle to turn that on or off,
+So that entities of different types are visually distinguishable at a glance (GitHub #22).
+
+**Acceptance Criteria:**
+
+**Given** a fresh Corpus's first run
+**When** the main screen loads
+**Then** the Tag color-coding toggle defaults to ON (resolved 2026-09-27 — matches the Community-visualization toggle's own default-ON pattern)
+**Given** the entity detail panel is open for any Entity
+**When** the Tag color-coding toggle is ON
+**Then** the Tag chip's color is assigned deterministically per distinct type value (same type always renders the same color, across Entities and across sessions)
+**And** the same type-color also applies to that Entity's node fill/border on the graph canvas itself (resolved 2026-09-27 — scope extends to the canvas, not just the Tag chip; must be reconciled visually with the existing community-hull and Replay-state colors so none of the three color languages become ambiguous together)
+**And** when the toggle is OFF, every Tag chip and every graph node reverts to the current flat neutral style
+**And** the toggle is reachable and operable via keyboard alone (existing accessibility floor, UX-DR20)
+
+### Story 10.4: Allow Loading a New Corpus After One Is Already Active
+
+As the creator,
+I want to load a different Corpus (upload, live Demo Dataset, or Offline Demo) at any point in the session,
+So that I'm not forced into a full page reload to start over (GitHub #23).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus is already active (any workflow state: BUILDING, READY, or FAILED)
+**When** I trigger loading a new Corpus
+**Then** any open EventSource/Replay is closed, the graph canvas resets to empty, chat thread/mode state resets, and the upload/demo-dataset controls become reachable again — all without a full page reload
+**And** the existing "Start over with a new corpus" button (`#workflow-restart-button`), confirmed to currently be a no-op beyond refocusing a hidden file input, either becomes this real affordance or is replaced by one
+**And** triggering it first shows a confirmation step ("Loading a new Corpus will discard the current one — continue?") before anything is torn down (resolved 2026-09-27 — switching is destructive to the current graph/trace/chat state, so it is not treated as an immediate-effect action the way UX-DR19's toggles are)
+
+### Story 10.5: Audit graphrag-core's Reusability as a Standalone Library
+
+As the team,
+we want a thorough, evidence-based audit of whether `graphrag-core` is genuinely usable by another project — not just architecturally separable — covering documentation, naming, and actual publishability,
+So that "usable for other projects" is a verified fact, not an assumption (GitHub #24).
+
+**Acceptance Criteria:**
+
+**Given** the current state of `graphrag-core` (framework-free, enforced by `maven-enforcer-plugin`, but with no module README, no `package-info.java`, inconsistent Javadoc depth, and no publishing setup)
+**When** the audit runs
+**Then** it produces a findings list (confirmed-solid vs. actually-missing) and a prioritized, concrete punch list
+**And** judgment calls it cannot make unilaterally (the `com.graphraglens` branding vs. a generic library identity; whether "reusable" requires actually publishing the artifact) are surfaced as explicit open questions for {user_name}, not decided silently
+**And** any resulting work is filed as its own follow-up story/issue once those questions are answered — this story's own scope is the audit and punch list, not the fixes themselves
