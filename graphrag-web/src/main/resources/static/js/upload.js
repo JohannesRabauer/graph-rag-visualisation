@@ -932,7 +932,9 @@
     });
 
     activeProgressSource.onerror = function () {
-      showErrorBanner('The progress stream disconnected. You can reconnect it or start over with a new corpus.');
+      if (!activeCorpusReady) {
+        showErrorBanner('The progress stream disconnected. You can reconnect it or start over with a new corpus.');
+      }
       activeProgressSource.close();
       activeProgressSource = null;
     };
