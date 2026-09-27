@@ -1,6 +1,6 @@
 package com.graphraglens.web;
 
-import com.graphraglens.core.domain.RetrievalTrace;
+import io.graphrag.core.domain.RetrievalTrace;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;

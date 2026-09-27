@@ -1,10 +1,10 @@
 package com.graphraglens.web;
 
-import com.graphraglens.core.domain.Corpus;
-import com.graphraglens.core.domain.GraphExtraction;
-import com.graphraglens.core.port.GraphStorePort;
-import com.graphraglens.core.port.LlmPort;
-import com.graphraglens.core.usecase.ConstructVectorIndex;
+import io.graphrag.core.domain.Corpus;
+import io.graphrag.core.domain.GraphExtraction;
+import io.graphrag.core.port.GraphStorePort;
+import io.graphrag.core.port.LlmPort;
+import io.graphrag.core.usecase.ConstructVectorIndex;
 import com.jayway.jsonpath.JsonPath;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -418,7 +418,7 @@ class CorpusControllerTest {
     @Test
     void queryingBeforeIngestionCompletesReturnsConflictWithReadinessGuidance() throws Exception {
         CorpusStore isolatedCorpusStore = new CorpusStore();
-        Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        Corpus corpus = new Corpus("building-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         CorpusController controller = new CorpusController(
                 null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
@@ -433,7 +433,7 @@ class CorpusControllerTest {
     @Test
     void driftQueryWhileGraphIsStillBuildingReturnsTheExistingConflictResponse() {
         CorpusStore isolatedCorpusStore = new CorpusStore();
-        Corpus corpus = new Corpus("building-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        Corpus corpus = new Corpus("building-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         CorpusController controller = new CorpusController(
                 null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
@@ -449,7 +449,7 @@ class CorpusControllerTest {
     @Test
     void queryingAfterFailedIngestionReturnsConflictWithFailureGuidance() {
         CorpusStore isolatedCorpusStore = new CorpusStore();
-        Corpus corpus = new Corpus("failed-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        Corpus corpus = new Corpus("failed-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markFailed(corpus.id());
         CorpusController controller = new CorpusController(
@@ -465,8 +465,8 @@ class CorpusControllerTest {
     @Test
     void localSearchReadsOnlyGraphDataFromTheSelectedCorpus() {
         CorpusStore isolatedCorpusStore = new CorpusStore();
-        Corpus corpusA = new Corpus("corpus-a", List.of(new com.graphraglens.core.domain.UploadedDocument("a.txt", "A")));
-        Corpus corpusB = new Corpus("corpus-b", List.of(new com.graphraglens.core.domain.UploadedDocument("b.txt", "B")));
+        Corpus corpusA = new Corpus("corpus-a", List.of(new io.graphrag.core.domain.UploadedDocument("a.txt", "A")));
+        Corpus corpusB = new Corpus("corpus-b", List.of(new io.graphrag.core.domain.UploadedDocument("b.txt", "B")));
         isolatedCorpusStore.put(corpusA);
         isolatedCorpusStore.put(corpusB);
         isolatedCorpusStore.markReady(corpusA.id());
@@ -474,8 +474,8 @@ class CorpusControllerTest {
 
         com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter scopedGraphStore =
                 new com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter();
-        scopedGraphStore.persistEntities(corpusA.id(), List.of(new com.graphraglens.core.domain.Entity("Irene Adler", "Person")));
-        scopedGraphStore.persistEntities(corpusB.id(), List.of(new com.graphraglens.core.domain.Entity("Professor Moriarty", "Person")));
+        scopedGraphStore.persistEntities(corpusA.id(), List.of(new io.graphrag.core.domain.Entity("Irene Adler", "Person")));
+        scopedGraphStore.persistEntities(corpusB.id(), List.of(new io.graphrag.core.domain.Entity("Professor Moriarty", "Person")));
 
         CorpusController controller = new CorpusController(
                 null, isolatedCorpusStore, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore(), null, null, null);
@@ -606,7 +606,7 @@ class CorpusControllerTest {
     @Test
     void driftSearchReturnsTheDistinctNoAnswerShapeWhenNoCommunitiesExistYet() {
         CorpusStore isolatedCorpusStore = new CorpusStore();
-        Corpus corpus = new Corpus("ready-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        Corpus corpus = new Corpus("ready-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
@@ -637,7 +637,7 @@ class CorpusControllerTest {
     @Test
     void unrecognizedModesListDriftInTheValidationError() {
         CorpusStore isolatedCorpusStore = new CorpusStore();
-        Corpus corpus = new Corpus("ready-corpus", List.of(new com.graphraglens.core.domain.UploadedDocument("doc.txt", "content")));
+        Corpus corpus = new Corpus("ready-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusStore.put(corpus);
         isolatedCorpusStore.markReady(corpus.id());
         CorpusController controller = new CorpusController(

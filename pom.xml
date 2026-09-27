@@ -29,6 +29,10 @@
     <maven.compiler.release>${java.version}</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- graphrag-core is released independently under its own io.graphrag
+         groupId/version; this property lets dependents track its version
+         from one place instead of four synchronized literals. -->
+    <graphrag-core.version>1.0.0</graphrag-core.version>
   </properties>
 
   <build>

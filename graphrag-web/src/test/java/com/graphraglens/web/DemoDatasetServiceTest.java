@@ -1,6 +1,6 @@
 package com.graphraglens.web;
 
-import com.graphraglens.core.domain.Corpus;
+import io.graphrag.core.domain.Corpus;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

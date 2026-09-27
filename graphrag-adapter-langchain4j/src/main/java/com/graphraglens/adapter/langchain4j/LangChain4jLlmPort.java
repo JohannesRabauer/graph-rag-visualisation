@@ -1,11 +1,11 @@
 package com.graphraglens.adapter.langchain4j;
 
-import com.graphraglens.core.domain.Corpus;
-import com.graphraglens.core.domain.Entity;
-import com.graphraglens.core.domain.GraphExtraction;
-import com.graphraglens.core.domain.Relationship;
-import com.graphraglens.core.domain.UploadedDocument;
-import com.graphraglens.core.port.LlmPort;
+import io.graphrag.core.domain.Corpus;
+import io.graphrag.core.domain.Entity;
+import io.graphrag.core.domain.GraphExtraction;
+import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.UploadedDocument;
+import io.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

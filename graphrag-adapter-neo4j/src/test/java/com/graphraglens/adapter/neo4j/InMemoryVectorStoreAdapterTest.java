@@ -1,8 +1,8 @@
 package com.graphraglens.adapter.neo4j;
 
-import com.graphraglens.core.domain.Chunk;
-import com.graphraglens.core.domain.EmbeddedChunk;
-import com.graphraglens.core.domain.ProjectionModel;
+import io.graphrag.core.domain.Chunk;
+import io.graphrag.core.domain.EmbeddedChunk;
+import io.graphrag.core.domain.ProjectionModel;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

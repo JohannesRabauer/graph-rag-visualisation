@@ -1,6 +1,6 @@
 package com.graphraglens.adapter.langchain4j;
 
-import com.graphraglens.core.domain.GraphExtraction;
+import io.graphrag.core.domain.GraphExtraction;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

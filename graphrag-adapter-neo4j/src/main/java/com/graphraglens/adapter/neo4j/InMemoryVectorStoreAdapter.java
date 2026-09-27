@@ -1,8 +1,8 @@
 package com.graphraglens.adapter.neo4j;
 
-import com.graphraglens.core.domain.EmbeddedChunk;
-import com.graphraglens.core.domain.ProjectionModel;
-import com.graphraglens.core.port.VectorStorePort;
+import io.graphrag.core.domain.EmbeddedChunk;
+import io.graphrag.core.domain.ProjectionModel;
+import io.graphrag.core.port.VectorStorePort;
 
 import java.util.Collection;
 import java.util.Collections;
