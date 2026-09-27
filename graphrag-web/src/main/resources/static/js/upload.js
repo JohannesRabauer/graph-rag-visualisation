@@ -448,6 +448,7 @@
       var pendingMessage = appendPendingMessage();
 
       var requestedSearchMode = currentSearchMode;
+      var requestedCorpusId = activeCorpusId;
 
       fetch('/api/corpora/' + activeCorpusId + '/query', {
         method: 'POST',
@@ -460,6 +461,12 @@
           });
         })
         .then(function (result) {
+          // Stale response guard: a restart-and-confirm (or a second Corpus
+          // load) while this fetch was in flight must not append its answer
+          // into a thread that has since been reset or moved on.
+          if (requestedCorpusId !== activeCorpusId) {
+            return;
+          }
           if (result.ok) {
             // A "no Communities yet" response has no `answer`, only a
             // plain-language `reason` (AD-13's distinct noAnswer shape) —
@@ -478,6 +485,9 @@
           }
         })
         .catch(function () {
+          if (requestedCorpusId !== activeCorpusId) {
+            return;
+          }
           showErrorBanner('The question could not be answered. Please try again.');
         })
         .finally(function () {
@@ -640,11 +650,133 @@
 
   if (workflowRestartButton) {
     workflowRestartButton.addEventListener('click', function () {
-      hideErrorBanner();
-      if (fileInput) {
-        fileInput.focus();
+      if (!window.confirm('Loading a new Corpus will discard the current one — continue?')) {
+        return;
       }
+      resetToIdleState();
     });
+  }
+
+  // spec-10-4 (GitHub #23): tears down every piece of active-corpus state
+  // `showCorpusChip` turns on, then re-reveals #canvas-idle — the mirror
+  // image of `showCorpusChip` below. After this runs, the existing,
+  // unmodified upload/demo-dataset handlers just work again for a second
+  // Corpus, since they already call `showCorpusChip` unconditionally on
+  // success.
+  function resetToIdleState() {
+    hideErrorBanner();
+
+    if (activeProgressSource) {
+      activeProgressSource.close();
+      activeProgressSource = null;
+    }
+    if (window.Replay) {
+      window.Replay.close();
+    }
+    closeEntityDetailPanel();
+    activeRelationships = [];
+
+    activeCorpusId = null;
+    activeCorpusReady = false;
+    activeCorpusOffline = false;
+
+    setModeHint('LOCAL');
+    modeInputs.forEach(function (input) {
+      input.checked = (input.value === 'LOCAL');
+    });
+
+    if (chatThread) {
+      chatThread.textContent = '';
+    }
+    if (chatInput) {
+      chatInput.value = '';
+      chatInput.disabled = false;
+      chatInput.placeholder = 'Ask a question about the Corpus…';
+    }
+    if (sendButton) {
+      sendButton.disabled = false;
+    }
+    if (composerOfflineNote) {
+      composerOfflineNote.hidden = true;
+    }
+
+    // switchCanvasTab('knowledge-graph') must run BEFORE the explicit hides
+    // below: if Vector Space was ever revealed this session, its own
+    // cleanup un-hides (`el.hidden = false`) any element still carrying
+    // `dataset.hiddenByTabSwitch` from that earlier switch — running it
+    // after would silently undo the hides this function is about to apply.
+    switchCanvasTab('knowledge-graph');
+    if (tabVectorSpace) {
+      tabVectorSpace.setAttribute('hidden', '');
+    }
+    if (vectorSpacePanel) {
+      vectorSpacePanel.hidden = true;
+    }
+    if (vectorSpaceAnswer) {
+      vectorSpaceAnswer.textContent = '';
+    }
+
+    if (corpusChip) {
+      corpusChip.hidden = true;
+    }
+    if (workflowRestartButton) {
+      workflowRestartButton.hidden = true;
+    }
+    if (chatPanel) {
+      chatPanel.hidden = true;
+    }
+    if (communityToggleWrap) {
+      communityToggleWrap.hidden = true;
+    }
+    if (entityTypeToggleWrap) {
+      entityTypeToggleWrap.hidden = true;
+    }
+    if (graphCanvasEl) {
+      graphCanvasEl.hidden = true;
+      graphCanvasEl.setAttribute('aria-hidden', 'true');
+    }
+    if (canvasTabBar) {
+      canvasTabBar.hidden = true;
+    }
+    var entitySearchEl = document.getElementById('entity-search');
+    if (entitySearchEl) {
+      entitySearchEl.hidden = true;
+    }
+    var entitySearchInputEl = document.getElementById('entity-search-input');
+    if (entitySearchInputEl) {
+      entitySearchInputEl.value = '';
+    }
+    if (window.EntitySearch) {
+      window.EntitySearch.close();
+    }
+    if (graphEyebrow) {
+      graphEyebrow.hidden = true;
+    }
+    if (workflowStatus) {
+      workflowStatus.hidden = true;
+    }
+
+    if (window.GraphCanvas) {
+      // Destroys/recreates `cy` (graph-canvas.js's own init already calls
+      // cy.destroy() internally), clearing the legend, so the canvas is
+      // genuinely empty even before a new Corpus is chosen.
+      window.GraphCanvas.init({ interactive: true });
+    }
+
+    if (fileInput) {
+      fileInput.disabled = false;
+      fileInput.value = '';
+    }
+    if (demoButton) {
+      demoButton.disabled = false;
+    }
+    if (demoOfflineButton) {
+      demoOfflineButton.disabled = false;
+    }
+
+    if (canvasIdle) {
+      canvasIdle.hidden = false;
+    }
   }
 
   function showCorpusChip(body) {
@@ -700,6 +832,9 @@
     corpusChip.appendChild(label);
 
     corpusChip.hidden = false;
+    if (workflowRestartButton) {
+      workflowRestartButton.hidden = false;
+    }
     activeCorpusId = body && body.corpusId ? body.corpusId : activeCorpusId;
     activeCorpusReady = false;
     renderWorkflowStatus('BUILDING');
@@ -987,7 +1122,17 @@
       }
     });
 
-    activeProgressSource.onerror = function () {
+    // Capture the specific EventSource instance this handler was attached
+    // to (not the shared module-level `activeProgressSource`) — a restart
+    // (resetToIdleState) may already have closed and nulled that shared
+    // reference by the time this fires, and a stale handler must then be a
+    // complete no-op rather than re-showing a banner for a discarded
+    // Corpus or throwing on `null.close()`.
+    var source = activeProgressSource;
+    source.onerror = function () {
+      if (activeProgressSource !== source) {
+        return;
+      }
       if (!activeCorpusReady) {
         showErrorBanner('The progress stream disconnected. You can reconnect it or start over with a new corpus.');
       }

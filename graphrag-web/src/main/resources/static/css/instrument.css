@@ -190,6 +190,37 @@ body {
   gap: var(--space-4);
 }
 
+/* ---- workflow restart button (spec-10-4) ----
+   Sits beside #corpus-chip in the app bar, shown/hidden as its pair
+   (paired toggling lives in upload.js), so it stays reachable in every
+   workflow state a Corpus is active — not just FAILED, where the old
+   #workflow-recovery-actions-only control used to live. Small, text-
+   button scale matching the app bar's own typography, not the idle
+   screen's larger .demo-dataset-button chrome. */
+.workflow-restart-button {
+  padding: var(--space-1) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+
+.workflow-restart-button:hover {
+  border-color: var(--ink-400);
+}
+
+.workflow-restart-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.workflow-restart-button[hidden] {
+  display: none;
+}
+
 .brand-mark::before {
   content: "";
   position: absolute;
