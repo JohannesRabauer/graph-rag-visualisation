@@ -14,8 +14,20 @@ import java.util.List;
  */
 public interface GraphStorePort {
 
+    /**
+     * Persists entities into the graph store.
+     *
+     * @param entities the entities to persist into the graph store; never
+     *                 null
+     */
     void persistEntities(Collection<Entity> entities);
 
+    /**
+     * Persists relationships into the graph store.
+     *
+     * @param relationships the relationships to persist into the graph
+     *                       store; never null
+     */
     void persistRelationships(Collection<Relationship> relationships);
 
     default void persistEntities(String corpusId, Collection<Entity> entities) {

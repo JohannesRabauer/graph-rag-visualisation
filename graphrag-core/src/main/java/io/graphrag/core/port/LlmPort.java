@@ -14,6 +14,13 @@ import java.util.List;
  */
 public interface LlmPort {
 
+    /**
+     * Extracts a knowledge graph from a corpus.
+     *
+     * @param corpus the corpus to extract a knowledge graph from; never null
+     * @return the extracted entities and relationships for {@code corpus};
+     *         never null
+     */
     GraphExtraction extract(Corpus corpus);
 
     default String summarizeCommunity(Collection<Entity> members) {
