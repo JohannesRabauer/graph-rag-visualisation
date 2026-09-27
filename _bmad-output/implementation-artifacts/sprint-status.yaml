@@ -110,7 +110,7 @@ development_status:
   11-1-scale-the-main-screen-to-fill-the-viewport: done
   11-2-make-the-chat-history-scrollable-with-a-pinned-composer: done
   11-3-fix-retrieval-trace-replay-not-rendering-or-highlighting: done
-  11-4-clarify-and-verify-compare-with-vector-search-behavior: backlog
+  11-4-clarify-and-verify-compare-with-vector-search-behavior: done
   11-5-tune-graph-layout-so-communities-and-nodes-aren-t-wildly-far-apart: backlog
   11-6-add-zoom-in-out-controls-for-the-graph-canvas: backlog
   11-7-make-the-community-formation-and-color-code-entity-types-toggles-non-blocking: backlog

@@ -1019,6 +1019,11 @@
       var compareCta = document.createElement('button');
       compareCta.type = 'button';
       compareCta.className = 'compare-cta';
+      var compareCtaExplanation = 'Re-runs this question through a plain vector-similarity search ' +
+          '(no knowledge graph) for comparison, and opens the Vector Space tab showing ' +
+          'that answer and where the corpus\'s chunks sit in embedding space.';
+      compareCta.title = compareCtaExplanation;
+      compareCta.setAttribute('aria-label', compareCtaExplanation);
       compareCta.textContent = '\u21BB Compare with Vector Search';
       message.appendChild(compareCta);
     }

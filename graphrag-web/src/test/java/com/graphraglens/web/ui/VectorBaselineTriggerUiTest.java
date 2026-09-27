@@ -41,6 +41,40 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
     }
 
     @Test
+    void compareCTAHasATooltipExplainingWhatItDoesBeforeItIsClicked() {
+        loadDemoDatasetAndWaitReady();
+
+        // Story 11-4: the button must carry a title/tooltip AND an aria-label
+        // (for keyboard/assistive-tech users, since native title tooltips
+        // don't surface on keyboard focus) explaining its purpose before the
+        // user clicks it — and it must render identically for LOCAL and
+        // GLOBAL answers alike.
+        java.util.regex.Pattern explanation =
+                java.util.regex.Pattern.compile("vector-similarity.*Vector Space", java.util.regex.Pattern.DOTALL);
+
+        page.locator("#chat-input").fill("Tell me about Irene Adler.");
+        page.locator("#chat-form .send-button").click();
+        assertThat(page.locator(".replay-cta").last())
+                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+
+        Locator localCompareCta = page.locator(".message.answer[data-mode='LOCAL']").last()
+                .locator(".compare-cta");
+        assertThat(localCompareCta).hasAttribute("title", explanation);
+        assertThat(localCompareCta).hasAttribute("aria-label", explanation);
+
+        page.locator("label.mode-choice-option:has(input[value='GLOBAL'])").click();
+        page.locator("#chat-input").fill("What are the major themes across these stories?");
+        page.locator("#chat-form .send-button").click();
+        assertThat(page.locator(".replay-cta").last())
+                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+
+        Locator globalCompareCta = page.locator(".message.answer[data-mode='GLOBAL']").last()
+                .locator(".compare-cta");
+        assertThat(globalCompareCta).hasAttribute("title", explanation);
+        assertThat(globalCompareCta).hasAttribute("aria-label", explanation);
+    }
+
+    @Test
     void vectorSpaceTabIsRevealedAfterFirstComparisonAndTabSwitchingWorks() {
         loadDemoDatasetAndWaitReady();
 
