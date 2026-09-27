@@ -98,16 +98,16 @@ development_status:
   9-7-automate-demo-screenshot-capture-in-ci: done
   epic-9-retrospective: optional
 
-  epic-10: backlog
+  epic-10: done
   10-1-fix-entity-search-community-toggle-visual-overlap: done
-  10-2-fix-the-progress-stream-s-false-disconnected-banner: backlog
-  10-3-color-code-entity-tags-by-type-toggleable: backlog
-  10-4-allow-loading-a-new-corpus-after-one-is-already-active: backlog
-  10-5-audit-graphrag-core-s-reusability-as-a-standalone-library: backlog
+  10-2-fix-the-progress-stream-s-false-disconnected-banner: done
+  10-3-color-code-entity-tags-by-type-toggleable: done
+  10-4-allow-loading-a-new-corpus-after-one-is-already-active: done
+  10-5-audit-graphrag-core-s-reusability-as-a-standalone-library: done
   epic-10-retrospective: optional
 
-  epic-11: backlog
-  11-1-scale-the-main-screen-to-fill-the-viewport: backlog
+  epic-11: in-progress
+  11-1-scale-the-main-screen-to-fill-the-viewport: done
   11-2-make-the-chat-history-scrollable-with-a-pinned-composer: backlog
   11-3-fix-retrieval-trace-replay-not-rendering-or-highlighting: backlog
   11-4-clarify-and-verify-compare-with-vector-search-behavior: backlog
