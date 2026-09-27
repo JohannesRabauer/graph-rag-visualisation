@@ -10,9 +10,13 @@
   // so toggling back ON needs no re-fetch and no replay of the fold-in.
   var COMMUNITY_TOKEN_COUNT = 10;
   var HULL_HIDDEN_CLASS = 'hull-hidden';
+  var ENTITY_TYPE_TOKEN_COUNT = 6;
 
   var cy = null;
   var hullsVisible = true;
+  // Entity-type color-coding toggle (spec-10-3): default ON, matching the
+  // community-visualization toggle's own default-ON convention.
+  var entityTypeColoringEnabled = true;
   var communityLegendEntries = {};
   var layoutQueued = false;
   // Opt-in tap registrations (Story 6.2). Only `explore.js` calls
@@ -86,6 +90,30 @@
     };
   }
 
+  // Same deterministic-hash technique as `communityColorIndex`/
+  // `communityColors` above, keyed on the Entity's own `type` string (e.g.
+  // "Person", "Concept") rather than a communityId, and on the 6
+  // `--entity-type-N` tokens rather than the 10 `--community-N` ones.
+  function entityTypeColorIndex(type) {
+    // Lowercase-normalized so "same type always the same color" still
+    // holds when a real (non-stub) LLM free-forms the `type` string's case
+    // differently across calls (e.g. "Person" vs. "person").
+    var text = String(type || '').toLowerCase();
+    var hash = 0;
+    for (var i = 0; i < text.length; i += 1) {
+      hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+    }
+    return (hash % ENTITY_TYPE_TOKEN_COUNT) + 1;
+  }
+
+  function entityTypeColors(type) {
+    var index = entityTypeColorIndex(type);
+    return {
+      fill: readCssVar('--entity-type-' + index, '#7A8C6B'),
+      labelColor: readCssVar('--entity-type-' + index + '-label', '#4F5C42')
+    };
+  }
+
   // The legend is far more useful naming *what a community is about* than
   // showing its opaque internal id (e.g. "community-7") — trims the AI/
   // deterministic summary down to a short label, falling back to the raw
@@ -118,6 +146,7 @@
 
     communityLegendEntries = {};
     hullsVisible = true;
+    entityTypeColoringEnabled = true;
     focusedNodeId = null;
     renderLegend();
 
@@ -206,6 +235,21 @@
           style: {
             'background-opacity': 0,
             label: ''
+          }
+        },
+        {
+          // Entity-type color-coding (spec-10-3): fill/border driven by the
+          // `typeFill`/`typeBorder` data `addEntity` sets from
+          // `entityTypeColors`, applied only when the `type-colored` class
+          // is present (toggle ON). Positioned after the base `node`
+          // selector and before `.step-active`/`.step-previous` below, so
+          // Replay's own border override still wins over a type-colored
+          // border — same style-array precedence-by-position convention the
+          // base `node` selector already relies on.
+          selector: 'node.type-colored:not(.community-hull)',
+          style: {
+            'background-color': 'data(typeFill)',
+            'border-color': 'data(typeBorder)'
           }
         },
         {
@@ -621,6 +665,7 @@
     }
     setEmptyState(null);
     var label = name || identity;
+    var colors = entityTypeColors(type);
     var node = cy.getElementById(identity);
     if (node && node.length > 0) {
       // A placeholder node may already exist here, created early by a
@@ -631,11 +676,23 @@
       node.data('name', name);
       node.data('type', type);
       node.data('placeholder', false);
+      node.data('typeFill', colors.fill);
+      node.data('typeBorder', colors.labelColor);
+      node.toggleClass('type-colored', entityTypeColoringEnabled);
     } else {
-      cy.add({
+      node = cy.add({
         group: 'nodes',
-        data: { id: identity, label: label, name: name, type: type, placeholder: false }
+        data: {
+          id: identity,
+          label: label,
+          name: name,
+          type: type,
+          placeholder: false,
+          typeFill: colors.fill,
+          typeBorder: colors.labelColor
+        }
       });
+      node.toggleClass('type-colored', entityTypeColoringEnabled);
     }
     queueLayout();
   }
@@ -704,6 +761,17 @@
       });
     }
     renderLegend();
+  }
+
+  // Toggles entity-type color-coding (spec-10-3) live across every
+  // already-rendered Entity node, not just future ones — model directly on
+  // `setHullsVisible` above. Community hulls are excluded: this toggle only
+  // ever concerns Entity nodes, never the Community-hull coloring language.
+  function setEntityTypeColoringEnabled(enabled) {
+    entityTypeColoringEnabled = !!enabled;
+    if (cy) {
+      cy.nodes(':not(.community-hull)').toggleClass('type-colored', entityTypeColoringEnabled);
+    }
   }
 
   function renderLegend() {
@@ -978,6 +1046,33 @@
     return communityIdFromParentId(parent.id());
   }
 
+  // Test-support only: the actual rendered fill/border color Cytoscape's
+  // style cascade resolves for a given Entity node — reading the resolved
+  // style (not re-deriving "what color should this be" from data/classes)
+  // is what actually determines what a viewer sees on screen, exactly like
+  // `communityHullOpacity` above.
+  function entityNodeFillColor(identity) {
+    if (!cy || !identity) {
+      return null;
+    }
+    var node = cy.getElementById(identity);
+    if (!node || node.length === 0) {
+      return null;
+    }
+    return node.style('background-color');
+  }
+
+  function entityNodeBorderColor(identity) {
+    if (!cy || !identity) {
+      return null;
+    }
+    var node = cy.getElementById(identity);
+    if (!node || node.length === 0) {
+      return null;
+    }
+    return node.style('border-color');
+  }
+
   // Test-support only: whether a rendered element (node, hull, or edge —
   // Cytoscape ids are unique across all of them) currently carries a given
   // class. Generic on purpose, so it covers any future highlight class
@@ -997,6 +1092,8 @@
     addRelationship: addRelationship,
     addCommunity: addCommunity,
     setHullsVisible: setHullsVisible,
+    setEntityTypeColoringEnabled: setEntityTypeColoringEnabled,
+    entityTypeColors: entityTypeColors,
     highlightStep: highlightStep,
     clearStepHighlights: clearStepHighlights,
     onNodeTap: onNodeTap,
@@ -1007,6 +1104,8 @@
     simulateTap: simulateTap,
     communityHullOpacity: communityHullOpacity,
     communityIdForEntity: communityIdForEntity,
-    elementHasClass: elementHasClass
+    elementHasClass: elementHasClass,
+    entityNodeFillColor: entityNodeFillColor,
+    entityNodeBorderColor: entityNodeBorderColor
   };
 })();
