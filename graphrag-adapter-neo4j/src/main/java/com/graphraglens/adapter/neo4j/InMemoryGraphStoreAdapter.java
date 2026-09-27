@@ -1,10 +1,10 @@
 package com.graphraglens.adapter.neo4j;
 
-import com.graphraglens.core.domain.Community;
-import com.graphraglens.core.domain.CommunityMembership;
-import com.graphraglens.core.domain.Entity;
-import com.graphraglens.core.domain.Relationship;
-import com.graphraglens.core.port.GraphStorePort;
+import io.graphrag.core.domain.Community;
+import io.graphrag.core.domain.CommunityMembership;
+import io.graphrag.core.domain.Entity;
+import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.port.GraphStorePort;
 
 import java.util.ArrayList;
 import java.util.Collection;

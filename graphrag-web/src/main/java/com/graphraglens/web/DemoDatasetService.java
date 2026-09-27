@@ -1,7 +1,7 @@
 package com.graphraglens.web;
 
-import com.graphraglens.core.domain.Corpus;
-import com.graphraglens.core.domain.UploadedDocument;
+import io.graphrag.core.domain.Corpus;
+import io.graphrag.core.domain.UploadedDocument;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

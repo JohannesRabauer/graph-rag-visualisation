@@ -1,7 +1,7 @@
 package com.graphraglens.adapter.langchain4j;
 
-import com.graphraglens.core.domain.Corpus;
-import com.graphraglens.core.domain.UploadedDocument;
+import io.graphrag.core.domain.Corpus;
+import io.graphrag.core.domain.UploadedDocument;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

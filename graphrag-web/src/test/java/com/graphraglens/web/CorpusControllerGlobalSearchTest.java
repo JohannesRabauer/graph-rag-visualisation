@@ -1,9 +1,9 @@
 package com.graphraglens.web;
 
 import com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter;
-import com.graphraglens.core.domain.Corpus;
-import com.graphraglens.core.domain.RetrievalTrace;
-import com.graphraglens.core.domain.UploadedDocument;
+import io.graphrag.core.domain.Corpus;
+import io.graphrag.core.domain.RetrievalTrace;
+import io.graphrag.core.domain.UploadedDocument;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
@@ -87,10 +87,10 @@ class CorpusControllerGlobalSearchTest {
 
         InMemoryGraphStoreAdapter graphStore = new InMemoryGraphStoreAdapter();
         graphStore.persistCommunities(firstCorpus.id(), List.of(
-                new com.graphraglens.core.domain.Community("community-1",
+                new io.graphrag.core.domain.Community("community-1",
                         "This community centers on Irene Adler and disguises.")));
         graphStore.persistCommunities(secondCorpus.id(), List.of(
-                new com.graphraglens.core.domain.Community("community-2",
+                new io.graphrag.core.domain.Community("community-2",
                         "This community centers on Professor Moriarty and networks.")));
 
         CorpusController controller = new CorpusController(

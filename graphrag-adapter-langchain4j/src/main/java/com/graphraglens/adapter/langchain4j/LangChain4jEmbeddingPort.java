@@ -1,6 +1,6 @@
 package com.graphraglens.adapter.langchain4j;
 
-import com.graphraglens.core.port.EmbeddingPort;
+import io.graphrag.core.port.EmbeddingPort;
 
 import java.util.Locale;
 

@@ -1,6 +1,6 @@
 package com.graphraglens.adapter.parsing;
 
-import com.graphraglens.core.port.DocumentParserPort;
+import io.graphrag.core.port.DocumentParserPort;
 
 import java.nio.charset.StandardCharsets;
 

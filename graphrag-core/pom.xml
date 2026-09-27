@@ -11,7 +11,9 @@
     <relativePath>../pom.xml</relativePath>
   </parent>
 
+  <groupId>io.graphrag</groupId>
   <artifactId>graphrag-core</artifactId>
+  <version>1.0.0</version>
   <packaging>jar</packaging>
 
   <name>GraphRAG Lens :: Core</name>
@@ -20,6 +22,52 @@
     no dependency on any web framework, graph-database driver, or
     LLM-orchestration library (AD-1).
   </description>
+
+  <url>https://github.com/JohannesRabauer/graph-rag-visualisation</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <name>Johannes Rabauer</name>
+      <url>https://github.com/JohannesRabauer</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/JohannesRabauer/graph-rag-visualisation.git</connection>
+    <developerConnection>scm:git:https://github.com/JohannesRabauer/graph-rag-visualisation.git</developerConnection>
+    <url>https://github.com/JohannesRabauer/graph-rag-visualisation</url>
+    <tag>graphrag-core-1.0.0</tag>
+  </scm>
+
+  <!--
+    GitHub Packages was picked as the lowest-setup-cost default (this repo
+    already lives on GitHub), but note the tradeoff: unlike Maven Central,
+    GitHub Packages requires an authenticated GitHub token even to
+    *download* a public package, which is real friction for consumers.
+    Maven Central would not need a token to consume but needs more
+    publishing setup (namespace verification, GPG signing, etc.). Revisit
+    this choice before actually running a publish.
+  -->
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages - graph-rag-visualisation</name>
+      <url>https://maven.pkg.github.com/JohannesRabauer/graph-rag-visualisation</url>
+    </repository>
+    <snapshotRepository>
+      <id>github</id>
+      <name>GitHub Packages - graph-rag-visualisation (snapshots)</name>
+      <url>https://maven.pkg.github.com/JohannesRabauer/graph-rag-visualisation</url>
+    </snapshotRepository>
+  </distributionManagement>
 
   <dependencyManagement>
     <dependencies>
@@ -70,4 +118,50 @@
       </plugin>
     </plugins>
   </build>
+
+  <!--
+    Source/javadoc jar generation lives behind this opt-in profile, not the
+    default build: routine `mvn install` runs (including CI on every push/
+    PR) must not depend on Javadoc succeeding, especially once real
+    Javadoc content lands and could legitimately fail to generate. Activate
+    explicitly when preparing an actual release, e.g.
+    `mvn package -pl graphrag-core -am -Prelease`.
+  -->
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.11.2</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

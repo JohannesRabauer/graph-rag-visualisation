@@ -34,9 +34,9 @@
 
   <dependencies>
     <dependency>
-      <groupId>com.graphraglens</groupId>
+      <groupId>io.graphrag</groupId>
       <artifactId>graphrag-core</artifactId>
-      <version>${project.version}</version>
+      <version>${graphrag-core.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.pdfbox</groupId>
