@@ -31,6 +31,18 @@
   // visual `.kbd-focus` ring, kept as module state so it survives between
   // keydown events without re-querying the DOM each time.
   var focusedNodeId = null;
+  // Story 11.1: the container's own ResizeObserver (not a `window` `resize`
+  // listener — see Design Notes in spec-11-1) so the canvas tracks real
+  // window/viewport resizes and stays robust against any future CSS change
+  // to how `#graph-canvas`'s own box is sized, without depending on that
+  // change also firing a window resize event.
+  // Kept as module state so a later `init()` call (which tears down and
+  // rebuilds `cy`) can disconnect the previous observer before attaching a
+  // fresh one, rather than stacking duplicate observers on the same
+  // `#graph-canvas` element across re-inits.
+  var resizeObserver = null;
+  var resizeFitTimer = null;
+  var RESIZE_FIT_DEBOUNCE_MS = 120;
 
   function graphContainer() {
     return document.getElementById('graph-canvas');
@@ -137,6 +149,19 @@
     // main screen's existing pan/zoom-disabled behavior unchanged
     // (Story 6.1 AC4 — a regression guard for this shared module).
     var interactive = !!(options && options.interactive);
+
+    // Disconnect any observer/timer left by a prior `init()` call
+    // unconditionally, before either early return below, so a call that
+    // bails out (missing container, or Cytoscape not loaded) can never
+    // leave a previous successful `init()`'s ResizeObserver still attached.
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (resizeFitTimer) {
+      clearTimeout(resizeFitTimer);
+      resizeFitTimer = null;
+    }
 
     var container = graphContainer();
     if (cy) {
@@ -415,7 +440,52 @@
       }
     });
 
+    watchContainerResize(container);
+
     return cy;
+  }
+
+  // Keeps the Cytoscape canvas in sync with its container's actual box.
+  // `cy.resize()` just recalculates Cytoscape's cached width/height and is
+  // cheap, so it runs on every observed change; the follow-up `cy.fit()`
+  // re-centers/re-zooms the rendered graph and is debounced so a burst of
+  // observer callbacks (a window being dragged, a CSS transition on
+  // `.node-detail-panel`) doesn't fight in-progress pan/zoom with repeated
+  // fits. Guarded on `cy` so this safely no-ops before `init()` has created
+  // one (or after a later `init()` has torn the old one down).
+  function watchContainerResize(container) {
+    // `init()` already disconnects/reset any prior observer/timer
+    // unconditionally at its top (before either early return), so this is
+    // just a defensive no-op guard against calling `watchContainerResize`
+    // directly with one already attached.
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (resizeFitTimer) {
+      clearTimeout(resizeFitTimer);
+      resizeFitTimer = null;
+    }
+    if (!container || typeof window.ResizeObserver === 'undefined') {
+      return;
+    }
+    resizeObserver = new window.ResizeObserver(function () {
+      if (!cy) {
+        return;
+      }
+      cy.resize();
+      if (resizeFitTimer) {
+        clearTimeout(resizeFitTimer);
+      }
+      resizeFitTimer = setTimeout(function () {
+        resizeFitTimer = null;
+        if (!cy) {
+          return;
+        }
+        cy.fit();
+      }, RESIZE_FIT_DEBOUNCE_MS);
+    });
+    resizeObserver.observe(container);
   }
 
   // Extracts the raw communityId back out of a hull node's `community::`-
@@ -1086,6 +1156,30 @@
     return !!(element && element.length > 0 && element.hasClass(className));
   }
 
+  // Test-support only (spec-11-1/MainScreenLayoutUiTest): exposes
+  // Cytoscape's own cached container dimensions so a Playwright test can
+  // assert `cy.resize()` actually ran after a viewport resize, without
+  // depending on a still-animating force-directed layout's node positions.
+  // Returns null before `init()` has created `cy`.
+  function dimensions() {
+    if (!cy) {
+      return null;
+    }
+    return { width: cy.width(), height: cy.height() };
+  }
+
+  // Test-support only (spec-11-1/MainScreenLayoutUiTest): exposes Cytoscape's
+  // own current zoom/pan so a test can assert the debounced `cy.fit()` after
+  // a resize actually re-centered/re-zoomed the viewport — `dimensions()`
+  // above only proves `cy.resize()` ran, not that `cy.fit()` did anything.
+  // Returns null before `init()` has created `cy`.
+  function viewState() {
+    if (!cy) {
+      return null;
+    }
+    return { zoom: cy.zoom(), pan: cy.pan() };
+  }
+
   window.GraphCanvas = {
     init: init,
     addEntity: addEntity,
@@ -1106,6 +1200,8 @@
     communityIdForEntity: communityIdForEntity,
     elementHasClass: elementHasClass,
     entityNodeFillColor: entityNodeFillColor,
-    entityNodeBorderColor: entityNodeBorderColor
+    entityNodeBorderColor: entityNodeBorderColor,
+    dimensions: dimensions,
+    viewState: viewState
   };
 })();

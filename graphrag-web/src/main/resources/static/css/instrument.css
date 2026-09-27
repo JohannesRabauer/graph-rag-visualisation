@@ -134,7 +134,8 @@ body {
    a soft shadow lifts it off the page surround. */
 .app-frame {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1900px;
+  min-width: 960px;
   height: calc(100vh - var(--space-8) * 2);
   min-height: 560px;
   background: var(--panel);
@@ -1699,19 +1700,24 @@ body {
 
 /* ============================================================
    Responsive breakpoints
-   The system above assumes a wide (~1180px) browser tab. Below ~900px
+   The system above assumes a wide (~1180px) browser tab. Below ~960px
    (embedded panels, smaller windows, tablets) the floating chat-panel/
    node-detail-panel and idle-state copy get cramped against the graph
    canvas; below ~640px the app bar and controls need to tighten up too.
    Only spacing/sizing is adjusted here — no components change shape or
    behavior, so all existing markup/JS keeps working unmodified.
+
+   This threshold must match .app-frame's base min-width (960px, above)
+   exactly — otherwise viewports between the two values are forced to
+   the 960px floor with no reset, causing horizontal overflow.
    ============================================================ */
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   body {
     padding: var(--space-4) var(--space-2);
   }
 
   .app-frame {
+    min-width: 0;
     height: calc(100vh - var(--space-4) * 2);
     min-height: 480px;
   }
@@ -1743,6 +1749,7 @@ body {
   }
 
   .app-frame {
+    min-width: 0;
     height: calc(100vh - var(--space-2) * 2);
     min-height: 420px;
     border-radius: var(--radius);
