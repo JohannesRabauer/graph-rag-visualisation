@@ -250,6 +250,12 @@ body {
 .canvas {
   position: relative;
   flex: 1;
+  /* Without this, a flex item's default `min-height: auto` refuses to
+     shrink below its content's intrinsic height (the flexbox "automatic
+     minimum size" behavior), so `.canvas` would grow to fit `.chat-panel`'s
+     full unclipped content instead of shrinking to `.app-frame`'s allotted
+     height. */
+  min-height: 0;
   display: flex;
   flex-direction: row;
   align-items: stretch;
