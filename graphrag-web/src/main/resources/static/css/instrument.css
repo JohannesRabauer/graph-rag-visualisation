@@ -752,13 +752,28 @@ body {
   border-left: 1.5px solid var(--line-strong);
 }
 
-.community-toggle-wrap {
+/* ---- top-right control stack (Story 10.1) ----
+   .community-toggle-wrap and .entity-search used to each anchor
+   `position: absolute` to the same top-right corner with independent,
+   eyeballed pixel offsets — they overlapped whenever the toggle's actual
+   rendered height exceeded the entity-search box's fixed `top`. A single
+   flex column now owns the corner anchor; each child just flows below the
+   previous one, so they can never overlap regardless of either one's
+   content length. */
+.canvas-top-right-stack {
   position: absolute;
   top: var(--space-3);
   right: var(--space-5);
-  z-index: 2;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
 }
 
+/* Position/z-index now live on the shared `.canvas-top-right-stack`
+   ancestor (Story 10.1) — this rule survives alone because visibility is
+   still toggled per-control by `upload.js` via this element's own id. */
 .community-toggle-wrap[hidden] {
   display: none;
 }
@@ -1289,14 +1304,15 @@ body {
    Same small-print treatment as .vector-space-note — a plain-language
    caveat, not an alarm; corpora/traces are in-memory only. */
 /* ---- entity search (Story 9.4) ----
-   Floats top-right of the graph stage, clear of both the tab bar (spans
-   the full width at top: 0) and the eyebrow (top-left) — a name-prefix
-   jump-to-Entity control, not a full search experience. */
+   A name-prefix jump-to-Entity control, not a full search experience.
+   Positioning is owned by its `.canvas-top-right-stack` ancestor
+   (Story 10.1) — this rule only sets its own box sizing and the
+   `relative` anchor its dropdown depends on. */
 .entity-search {
-  position: absolute;
-  top: 46px;
-  right: var(--space-4);
-  z-index: 5;
+  /* `relative`, not `static`: `.entity-search-results` anchors its
+     `top: calc(100% + 4px)` to this box specifically, not to the whole
+     `.canvas-top-right-stack` column (see Story 10.1's design note above). */
+  position: relative;
   width: 220px;
 }
 
@@ -1462,7 +1478,7 @@ body {
   width: min(720px, calc(100% - 300px - var(--space-10)));
 }
 
-.graph-stage:has(.node-detail-panel.is-open) .community-toggle-wrap {
+.graph-stage:has(.node-detail-panel.is-open) .canvas-top-right-stack {
   right: calc(300px + var(--space-5));
 }
 
@@ -1664,7 +1680,7 @@ body {
     display: none;
   }
 
-  .community-toggle-wrap {
+  .canvas-top-right-stack {
     right: var(--space-3);
   }
 
@@ -1772,7 +1788,7 @@ body {
   top: calc(36px + var(--space-3));
 }
 
-.graph-stage:has(#canvas-tab-bar:not([hidden])) .community-toggle-wrap {
+.graph-stage:has(#canvas-tab-bar:not([hidden])) .canvas-top-right-stack {
   top: calc(36px + var(--space-3));
 }
 
