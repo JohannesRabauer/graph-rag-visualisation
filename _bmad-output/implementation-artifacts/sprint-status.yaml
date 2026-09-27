@@ -105,3 +105,13 @@ development_status:
   10-4-allow-loading-a-new-corpus-after-one-is-already-active: backlog
   10-5-audit-graphrag-core-s-reusability-as-a-standalone-library: backlog
   epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-scale-the-main-screen-to-fill-the-viewport: backlog
+  11-2-make-the-chat-history-scrollable-with-a-pinned-composer: backlog
+  11-3-fix-retrieval-trace-replay-not-rendering-or-highlighting: backlog
+  11-4-clarify-and-verify-compare-with-vector-search-behavior: backlog
+  11-5-tune-graph-layout-so-communities-and-nodes-aren-t-wildly-far-apart: backlog
+  11-6-add-zoom-in-out-controls-for-the-graph-canvas: backlog
+  11-7-make-the-community-formation-and-color-code-entity-types-toggles-non-blocking: backlog
+  epic-11-retrospective: optional

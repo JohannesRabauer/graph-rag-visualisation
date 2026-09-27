@@ -785,3 +785,118 @@ So that "usable for other projects" is a verified fact, not an assumption (GitHu
 **Then** it produces a findings list (confirmed-solid vs. actually-missing) and a prioritized, concrete punch list
 **And** judgment calls it cannot make unilaterally (the `com.graphraglens` branding vs. a generic library identity; whether "reusable" requires actually publishing the artifact) are surfaced as explicit open questions for {user_name}, not decided silently
 **And** any resulting work is filed as its own follow-up story/issue once those questions are answered — this story's own scope is the audit and punch list, not the fixes themselves
+
+## Epic 11: Layout, Replay & Graph Navigation Live-Demo Fixes
+
+Found via direct user feedback while using the app (three UI/layout bugs, one confirmed regression, one behavior-clarity investigation, one navigation feature request, and one recurring overlap bug) — filed as GitHub issues #30-#36. Like Epic 10, this is a grab-bag of independent, user-reported items grouped only for sprint tracking, not a themed epic.
+**FRs covered:** none directly (bug fixes and hardening against existing FR8-FR13/FR16/FR20-22 UX; #33 is an investigation/clarity deliverable, not a new user-facing FR)
+
+### Story 11.1: Scale the Main Screen to Fill the Viewport
+
+As the creator,
+I want the main screen's layout to fill the available browser viewport,
+So that the app doesn't render confined to a small region of the window regardless of screen size (GitHub #30).
+
+**Acceptance Criteria:**
+
+**Given** the app is loaded in a browser window of any reasonably supported size
+**When** the main screen renders (chat panel + graph canvas)
+**Then** the layout fills the viewport's width and height (within sane min/max bounds), instead of leaving large unused margins
+**And** the Cytoscape.js graph canvas resizes/re-fits along with its container rather than staying a fixed small box
+
+**Design Notes:** Check `instrument.css` / the Thymeleaf page shell for fixed-width/height containers, and confirm Cytoscape.js is told to resize (`cy.resize()`/`cy.fit()`) on container size changes, not just on initial load.
+
+### Story 11.2: Make the Chat History Scrollable with a Pinned Composer
+
+As the creator,
+I want the chat panel's question/answer thread to scroll independently while the search-mode choice and composer stay fixed at the bottom,
+So that long chat histories remain navigable without losing access to the input controls (GitHub #31).
+
+**Acceptance Criteria:**
+
+**Given** the chat panel (UX-DR2) contains enough question/answer turns to exceed the visible panel height
+**When** I scroll within the chat panel
+**Then** only the message thread scrolls, revealing earlier turns
+**And** the Local/Global/Drift mode choice (UX-DR3) and the Composer (UX-DR4) remain fixed at the bottom of the panel at all times, never scrolling out of view
+
+**Design Notes:** Restructure the chat panel as a flex column with the thread as the single `overflow-y: auto` region and the mode choice + composer outside that scrolling region.
+
+### Story 11.3: Fix Retrieval Trace Replay Not Rendering or Highlighting
+
+As the creator,
+I want the Replay scrubber to reliably appear after every answer and for playback to visibly traverse the graph again,
+So that Retrieval Trace Replay works as it did before this regression (GitHub #32).
+
+**Acceptance Criteria:**
+
+**Given** an answer has just been generated with a captured Retrieval Trace
+**When** the answer renders
+**Then** the Replay scrubber (UX-DR9) always appears, not intermittently
+**Given** the Replay scrubber is shown
+**When** I step through or play the trace
+**Then** the graph canvas visibly transitions node/edge visual states (UX-DR6: active, previous-step, traversed, upcoming) exactly as it did prior to the regression, and the Step badge (UX-DR8) updates in step
+
+**Design Notes:** Root-cause first — bisect recent Epic 9/10 changes to find when this broke, and check whether the same client-side replay path is shared with DRIFT (Epic 7) and Vector (Epic 8) trace replay, since a shared regression would affect all three.
+
+### Story 11.4: Clarify and Verify "Compare with Vector Search" Behavior
+
+As the creator,
+I want to confirm what the "Compare with Vector Search" action actually does end-to-end and make its purpose/result self-evident in the UI,
+So that the feature isn't a confusing black box during a demo (GitHub #33).
+
+**Acceptance Criteria:**
+
+**Given** an answer has been generated via GraphRAG (Local/Global/Drift)
+**When** I trigger "Compare with Vector Search" (FR20)
+**Then** the investigation confirms whether the Vector Baseline answer, its Vector Trace (FR21), and the embedding-space visualization (FR22) actually render as designed (Stories 8.2-8.5)
+**And** if it works as designed, a small UI affordance (inline explanation or clearer labeling) is added so the action's purpose and result are clear without external documentation
+**And** if it is broken or incomplete, the concrete gap is filed as its own follow-up issue rather than patched speculatively here
+
+**Design Notes:** This story's own scope is investigation plus, at most, a labeling/clarity fix — not a rebuild of the Vector Baseline pipeline.
+
+### Story 11.5: Tune Graph Layout So Communities and Nodes Aren't Wildly Far Apart
+
+As the creator,
+I want related nodes and their Community to render at a proportionate, readable distance from each other,
+So that the graph stays legible instead of communities scattering far apart for no apparent reason (GitHub #34).
+
+**Acceptance Criteria:**
+
+**Given** a Corpus of typical size is loaded with communities detected (Epic 4)
+**When** the graph canvas lays out nodes
+**Then** nodes belonging to the same Community render within a visually coherent, bounded distance of each other and of their Community hull (UX-DR7)
+**And** the layout no longer produces outlier spacing for isolated nodes, small communities, or disconnected subgraphs without a corresponding visual reason (e.g. genuine graph distance)
+
+**Design Notes:** Identify the current Cytoscape.js layout algorithm/config and whether it's Community-aware; tune parameters (or switch layout) once the specific cause of outlier spacing is found — don't guess-and-check blindly.
+
+### Story 11.6: Add Zoom In/Out Controls for the Graph Canvas
+
+As the creator,
+I want visible zoom in/out (and fit-to-view) buttons on the graph canvas,
+So that navigating the graph feels smooth and doesn't require a mouse wheel (GitHub #35).
+
+**Acceptance Criteria:**
+
+**Given** the graph canvas is showing (FR16: pannable/zoomable at all times)
+**When** I look at the canvas
+**Then** dedicated zoom-in, zoom-out, and fit-to-view/reset controls are visible and clickable, styled per the "Instrument" design tokens (UX-DR1)
+**And** using these controls produces the same zoom behavior as the existing mouse-wheel zoom, with smooth (eased/animated) transitions
+**And** mouse-wheel zoom continues to work unchanged alongside the new controls
+
+**Design Notes:** Also review current zoom step size/sensitivity and whether transitions are animated, since "doesn't feel smooth" may be partly a tuning issue independent of the missing UI controls.
+
+### Story 11.7: Make the Community-Formation and Color-Code-Entity-Types Toggles Non-Blocking
+
+As the creator,
+I want the community-formation-view and color-code-entity-types checkboxes to never block or overlap the graph canvas,
+So that both controls stay usable without obscuring the graph underneath them (GitHub #36).
+
+**Acceptance Criteria:**
+
+**Given** the graph canvas is showing with both the community-formation-visualization toggle (FR7) and the color-code-entity-types toggle (Story 10.3) present
+**When** either or both are rendered
+**Then** neither control's bounding box overlaps graph content in a way that hides nodes/edges/hulls underneath it
+**And** the controls remain independently visible and clickable at any supported viewport width
+**And** the solution scales to additional floating controls being added later without requiring another one-off overlap fix (e.g. a collapsible/collapsed-icon state or a docked settings affordance, rather than more absolutely-positioned corner elements)
+
+**Design Notes:** Directly related to the entity-search/community-toggle overlap already fixed in Story 10.1 (#20) — confirm whether this is the same class of bug resurfacing with the color-code-entity-types toggle (Story 10.3) added into the same corner, and fix the underlying layout pattern rather than adding a third one-off position.
