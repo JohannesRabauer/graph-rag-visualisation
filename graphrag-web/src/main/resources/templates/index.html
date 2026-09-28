@@ -58,30 +58,40 @@
         </div>
 
         <div class="canvas-top-right-stack" id="canvas-top-right-stack">
-          <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
-            <label class="community-toggle" for="community-visualization-toggle">
-              <input id="community-visualization-toggle" class="community-toggle-input" type="checkbox" checked>
-              <span class="community-toggle-text">
-                <span class="community-toggle-label">Community formation view</span>
-                <span class="community-toggle-meta">Visual only — shows the clustering animation as communities form. Detection itself always runs, checked or not.</span>
-              </span>
-            </label>
-          </div>
-          <div class="entity-type-toggle-wrap" id="entity-type-toggle-wrap" hidden>
-            <label class="entity-type-toggle" for="entity-type-color-toggle">
-              <input id="entity-type-color-toggle" class="entity-type-toggle-input" type="checkbox" checked>
-              <span class="entity-type-toggle-text">
-                <span class="entity-type-toggle-label">Color-code entity types</span>
-                <span class="entity-type-toggle-meta">Colors each Entity's Tag chip and canvas node by its type — same type, same color.</span>
-              </span>
-            </label>
-          </div>
           <div class="entity-search" id="entity-search" hidden>
             <input type="text" id="entity-search-input" class="entity-search-input"
                    placeholder="Jump to an Entity by name…" aria-label="Search Entities by name"
                    autocomplete="off" role="combobox" aria-expanded="false" aria-controls="entity-search-results">
             <ul class="entity-search-results" id="entity-search-results" role="listbox"
                 aria-label="Matching Entities" hidden></ul>
+          </div>
+          <div class="canvas-settings" id="canvas-settings">
+            <button type="button" class="canvas-settings-toggle" id="canvas-settings-toggle"
+                    aria-label="Canvas view settings" aria-haspopup="true" aria-expanded="false"
+                    aria-controls="canvas-settings-popover" hidden>
+              <span aria-hidden="true">&#9881;</span>
+            </button>
+            <div class="canvas-settings-popover" id="canvas-settings-popover"
+                 role="group" aria-label="Graph view options" hidden>
+              <div class="community-toggle-wrap" id="community-toggle-wrap" hidden>
+                <label class="community-toggle" for="community-visualization-toggle">
+                  <input id="community-visualization-toggle" class="community-toggle-input" type="checkbox" checked>
+                  <span class="community-toggle-text">
+                    <span class="community-toggle-label">Community formation view</span>
+                    <span class="community-toggle-meta">Visual only — shows the clustering animation as communities form. Detection itself always runs, checked or not.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="entity-type-toggle-wrap" id="entity-type-toggle-wrap" hidden>
+                <label class="entity-type-toggle" for="entity-type-color-toggle">
+                  <input id="entity-type-color-toggle" class="entity-type-toggle-input" type="checkbox" checked>
+                  <span class="entity-type-toggle-text">
+                    <span class="entity-type-toggle-label">Color-code entity types</span>
+                    <span class="entity-type-toggle-meta">Colors each Entity's Tag chip and canvas node by its type — same type, same color.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
         <div class="error-banner" id="error-banner" role="alert" hidden></div>
