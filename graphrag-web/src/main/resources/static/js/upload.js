@@ -21,6 +21,10 @@
   var entityTypeColorToggle = document.getElementById('entity-type-color-toggle');
   var canvasSettingsToggle = document.getElementById('canvas-settings-toggle');
   var canvasSettingsPopover = document.getElementById('canvas-settings-popover');
+  var canvasZoomControls = document.getElementById('canvas-zoom-controls');
+  var canvasZoomInButton = document.getElementById('canvas-zoom-in-button');
+  var canvasZoomOutButton = document.getElementById('canvas-zoom-out-button');
+  var canvasZoomFitButton = document.getElementById('canvas-zoom-fit-button');
   var graphCanvasEl = document.getElementById('graph-canvas');
   var graphEyebrow = document.getElementById('graph-eyebrow');
   var workflowStatus = document.getElementById('workflow-status');
@@ -196,6 +200,32 @@
     });
   }
 
+  // Story 11.6 (#35): zoom in/out/fit-to-view buttons — each just delegates
+  // to `graph-canvas.js`'s own eased-animation functions; visibility is
+  // gated the same way `#canvas-settings-toggle` is (corpus-ready reveal,
+  // hidden again on reset), below.
+  if (canvasZoomInButton) {
+    canvasZoomInButton.addEventListener('click', function () {
+      if (window.GraphCanvas) {
+        window.GraphCanvas.zoomIn();
+      }
+    });
+  }
+  if (canvasZoomOutButton) {
+    canvasZoomOutButton.addEventListener('click', function () {
+      if (window.GraphCanvas) {
+        window.GraphCanvas.zoomOut();
+      }
+    });
+  }
+  if (canvasZoomFitButton) {
+    canvasZoomFitButton.addEventListener('click', function () {
+      if (window.GraphCanvas) {
+        window.GraphCanvas.fitToView();
+      }
+    });
+  }
+
   // Delegated outside-click close \u2014 same pattern as the .compare-cta
   // handler above: a single document-level listener that no-ops unless the
   // popover is open and the click landed outside both the button and the
@@ -260,6 +290,7 @@
       document.getElementById('graph-legend'),
       document.getElementById('graph-eyebrow'),
       document.getElementById('canvas-settings-toggle'),
+      document.getElementById('canvas-zoom-controls'),
       document.getElementById('replay-scrubber'),
       document.getElementById('entity-detail-panel'),
       document.getElementById('entity-search')
@@ -809,6 +840,9 @@
     if (canvasSettingsToggle) {
       canvasSettingsToggle.hidden = true;
     }
+    if (canvasZoomControls) {
+      canvasZoomControls.hidden = true;
+    }
     closeCanvasSettingsPopover();
     if (graphCanvasEl) {
       graphCanvasEl.hidden = true;
@@ -937,6 +971,9 @@
     }
     if (canvasSettingsToggle) {
       canvasSettingsToggle.hidden = false;
+    }
+    if (canvasZoomControls) {
+      canvasZoomControls.hidden = false;
     }
     if (graphCanvasEl) {
       graphCanvasEl.hidden = false;

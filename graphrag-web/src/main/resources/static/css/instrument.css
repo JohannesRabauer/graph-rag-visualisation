@@ -839,7 +839,12 @@ body {
   position: relative;
 }
 
-.canvas-settings-toggle {
+/* Shared icon-button recipe for the small square canvas-overlay buttons
+   (the settings toggle and each zoom-control button below) — one class
+   holds the properties that must always match between them, so the two
+   can never silently drift apart the way separately-duplicated
+   declarations did. */
+.canvas-icon-button {
   width: 34px;
   height: 34px;
   display: flex;
@@ -854,11 +859,11 @@ body {
   cursor: pointer;
 }
 
-.canvas-settings-toggle:hover {
+.canvas-icon-button:hover {
   color: var(--ink-900);
 }
 
-.canvas-settings-toggle:focus-visible {
+.canvas-icon-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -879,6 +884,24 @@ body {
 }
 
 .canvas-settings-popover[hidden] {
+  display: none;
+}
+
+/* ---- zoom controls (spec-11-6, #35) ----
+   A third sibling inside `.canvas-top-right-stack` (spec-11-7's just-
+   established flex-column stack, reserved for exactly this) — reuses that
+   proven non-overlap mechanism (including its free detail-panel-open shift
+   and narrow-viewport override) rather than adding new absolute-positioning
+   code. Buttons share `.canvas-icon-button`'s exact icon-button recipe with
+   `.canvas-settings-toggle` above, laid out as a small flex row instead of
+   that button's single square. */
+.canvas-zoom-controls {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-2);
+}
+
+.canvas-zoom-controls[hidden] {
   display: none;
 }
 

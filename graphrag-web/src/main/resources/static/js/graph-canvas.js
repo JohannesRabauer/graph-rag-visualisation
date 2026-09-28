@@ -210,6 +210,8 @@
       elements: [],
       userZoomingEnabled: interactive,
       userPanningEnabled: interactive,
+      minZoom: 0.1,
+      maxZoom: 5,
       style: [
         {
           selector: 'node',
@@ -582,6 +584,65 @@
         type: node.data('type')
       });
     }
+  }
+
+  // Story 11.6 (#35): the visible zoom in/out/fit-to-view button cluster's
+  // wiring. Zoom in/out use `cy.animate({ zoom })` — the exact eased-
+  // animation precedent `focusEntity()` above already established (same
+  // 300ms duration/easing) — rather than an instant `cy.zoom()` jump, so
+  // button-driven zoom feels identical to existing interactions. A ~1.25x
+  // step per click, symmetric in both directions (dividing, not multiplying
+  // by a separate "zoom out factor") so one zoom-in followed by one
+  // zoom-out returns to the original zoom level. `minZoom`/`maxZoom` are set
+  // on the Cytoscape instance (see its constructor above) so repeated clicks
+  // can't drive the zoom to a degenerate scale.
+  var ZOOM_STEP_FACTOR = 1.25;
+  var ZOOM_ANIMATION_DURATION = 300;
+  // Guards `zoomIn`/`zoomOut` against overlapping animations: `cy.zoom()`
+  // read at click time reflects whatever the in-flight animation has
+  // reached *so far*, not its target, so a rapid double-click would read a
+  // mid-animation value and silently collapse two clicks into one step
+  // instead of compounding. While an animation is in flight, further clicks
+  // are a no-op until the `complete` callback clears this flag.
+  var zoomAnimationInProgress = false;
+
+  function animateZoom(targetZoom) {
+    zoomAnimationInProgress = true;
+    cy.animate(
+      { zoom: targetZoom },
+      {
+        duration: ZOOM_ANIMATION_DURATION,
+        complete: function () {
+          zoomAnimationInProgress = false;
+        }
+      }
+    );
+  }
+
+  function zoomIn() {
+    if (!cy || zoomAnimationInProgress) {
+      return;
+    }
+    animateZoom(cy.zoom() * ZOOM_STEP_FACTOR);
+  }
+
+  function zoomOut() {
+    if (!cy || zoomAnimationInProgress) {
+      return;
+    }
+    animateZoom(cy.zoom() / ZOOM_STEP_FACTOR);
+  }
+
+  function fitToView() {
+    if (!cy) {
+      return;
+    }
+    // Clears any in-flight zoomIn/zoomOut animation first — otherwise that
+    // animation can keep running after `cy.fit()` returns and silently
+    // override its result once it finishes.
+    cy.stop(true, true);
+    zoomAnimationInProgress = false;
+    cy.fit();
   }
 
   function setLegendActiveCommunity(communityId) {
@@ -1069,6 +1130,14 @@
     }, extra || {});
   }
 
+  // Tracks whether the debounced, animated `cose` layout `queueLayout`
+  // triggers is still actually running (as opposed to merely queued) — a
+  // corpus streams in many entity/relationship/community SSE events in
+  // quick succession, each re-queueing this layout, so "Ready" firing does
+  // not by itself mean the canvas has stopped moving. Test-support only
+  // (`isLayoutActive` below); the app itself never reads this.
+  var layoutRunning = false;
+
   function queueLayout() {
     if (!cy || layoutQueued) {
       return;
@@ -1079,13 +1148,28 @@
       if (!cy) {
         return;
       }
-      cy.layout(cyLayoutOptions({ animate: true, animationDuration: 400 })).run();
+      layoutRunning = true;
+      var layout = cy.layout(cyLayoutOptions({ animate: true, animationDuration: 400 }));
+      layout.one('layoutstop', function () {
+        layoutRunning = false;
+      });
+      layout.run();
     };
     if (typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(runLayout);
     } else {
       setTimeout(runLayout, 0);
     }
+  }
+
+  // Test-support only: whether `queueLayout`'s debounced/animated layout is
+  // currently queued (waiting for its next animation frame) or actually
+  // running its `cose` animation — used to let a Playwright test wait
+  // deterministically for the canvas to stop moving on its own, instead of
+  // a fixed sleep guessing how long a corpus's own burst of SSE-triggered
+  // layouts takes to settle.
+  function isLayoutActive() {
+    return layoutQueued || layoutRunning;
   }
 
   // Test-support only (spec-11-5/GraphLayoutCommunitySpacingUiTest): runs the
@@ -1220,6 +1304,22 @@
     return { width: cy.width(), height: cy.height() };
   }
 
+  // Test-support only (spec-11-6/ZoomControlsUiTest): an independently-
+  // computed `cy.fit()` baseline, so a test can assert `fitToView()`'s
+  // result actually converges to the graph's real fitted extent rather than
+  // merely differing from whatever zoom level preceded it. `cy.fit()` is
+  // idempotent against an already-fitted viewport (fitting the same
+  // elements/padding again lands on the same zoom), so calling it here has
+  // no observable side effect when the viewport is already fitted.
+  // Returns null before `init()` has created `cy`.
+  function fitZoomForTest() {
+    if (!cy) {
+      return null;
+    }
+    cy.fit();
+    return cy.zoom();
+  }
+
   // Test-support only (spec-11-1/MainScreenLayoutUiTest): exposes Cytoscape's
   // own current zoom/pan so a test can assert the debounced `cy.fit()` after
   // a resize actually re-centered/re-zoomed the viewport — `dimensions()`
@@ -1351,6 +1451,9 @@
     focusCommunity: focusCommunity,
     searchEntities: searchEntities,
     focusEntity: focusEntity,
+    zoomIn: zoomIn,
+    zoomOut: zoomOut,
+    fitToView: fitToView,
     simulateTap: simulateTap,
     communityHullOpacity: communityHullOpacity,
     communityIdForEntity: communityIdForEntity,
@@ -1359,6 +1462,8 @@
     entityNodeBorderColor: entityNodeBorderColor,
     dimensions: dimensions,
     viewState: viewState,
+    fitZoomForTest: fitZoomForTest,
+    isLayoutActive: isLayoutActive,
     layoutSpacingMetrics: layoutSpacingMetrics,
     runLayoutSynchronouslyForTest: runLayoutSynchronouslyForTest
   };

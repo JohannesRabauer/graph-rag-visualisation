@@ -66,7 +66,7 @@
                 aria-label="Matching Entities" hidden></ul>
           </div>
           <div class="canvas-settings" id="canvas-settings">
-            <button type="button" class="canvas-settings-toggle" id="canvas-settings-toggle"
+            <button type="button" class="canvas-icon-button canvas-settings-toggle" id="canvas-settings-toggle"
                     aria-label="Canvas view settings" aria-haspopup="true" aria-expanded="false"
                     aria-controls="canvas-settings-popover" hidden>
               <span aria-hidden="true">&#9881;</span>
@@ -92,6 +92,17 @@
                 </label>
               </div>
             </div>
+          </div>
+          <div class="canvas-zoom-controls" id="canvas-zoom-controls" role="group" aria-label="Zoom controls" hidden>
+            <button type="button" class="canvas-icon-button canvas-zoom-button" id="canvas-zoom-in-button" aria-label="Zoom in">
+              <span aria-hidden="true">&#43;</span>
+            </button>
+            <button type="button" class="canvas-icon-button canvas-zoom-button" id="canvas-zoom-out-button" aria-label="Zoom out">
+              <span aria-hidden="true">&#8722;</span>
+            </button>
+            <button type="button" class="canvas-icon-button canvas-zoom-button" id="canvas-zoom-fit-button" aria-label="Fit to view">
+              <span aria-hidden="true">&#8862;</span>
+            </button>
           </div>
         </div>
         <div class="error-banner" id="error-banner" role="alert" hidden></div>
