@@ -1035,6 +1035,40 @@
     }
   }
 
+  // The `cose` layout's options, shared by `queueLayout` (the real,
+  // animated, debounced layout every mutation queues) and
+  // `runLayoutSynchronouslyForTest` (test-support only, see below) — kept as
+  // one function so the two never drift apart.
+  //
+  // nestingFactor/componentSpacing are tuned beyond cose's generic defaults
+  // for this app's typical graph shape (many small Communities expressed as
+  // compound/parent nodes, plus isolated/disconnected entities) — see
+  // spec-11-5 (GitHub #34). Both are lowered from cose's own defaults
+  // (nestingFactor 1.2, componentSpacing 40): empirically (rendered, not
+  // just reasoned about — see spec-11-5's own Boundaries & Constraints),
+  // *raising* nestingFactor stretches every cross-Community edge's ideal
+  // length (cose multiplies it by nestingFactor for edges that cross a
+  // compound boundary), pushing connected Communities and their members
+  // further apart, not closer — so it's lowered instead to pull them in.
+  // Lowering componentSpacing shrinks the extra gap cose's own post-layout
+  // packing step inserts between disconnected components (isolated
+  // entities, singleton/disconnected Communities), so those don't drift as
+  // far from the rest of the graph. Neither fit/padding/animate/
+  // animationDuration nor the compound-node parenting above are touched.
+  var TUNED_NESTING_FACTOR = 0.3;
+  var TUNED_COMPONENT_SPACING = 8;
+
+  function cyLayoutOptions(extra) {
+    return Object.assign({
+      name: 'cose',
+      fit: true,
+      padding: 32,
+      randomize: false,
+      nestingFactor: TUNED_NESTING_FACTOR,
+      componentSpacing: TUNED_COMPONENT_SPACING
+    }, extra || {});
+  }
+
   function queueLayout() {
     if (!cy || layoutQueued) {
       return;
@@ -1045,13 +1079,31 @@
       if (!cy) {
         return;
       }
-      cy.layout({ name: 'cose', animate: true, animationDuration: 400, fit: true, padding: 32, randomize: false }).run();
+      cy.layout(cyLayoutOptions({ animate: true, animationDuration: 400 })).run();
     };
     if (typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(runLayout);
     } else {
       setTimeout(runLayout, 0);
     }
+  }
+
+  // Test-support only (spec-11-5/GraphLayoutCommunitySpacingUiTest): runs the
+  // exact same tuned `cose` layout again, synchronously and unanimated, so a
+  // test can sample several independent layouts of the same already-loaded
+  // graph. `cose` is a stochastic simulated-annealing layout (random
+  // per-iteration perturbation, cooling over a fixed iteration count) — a
+  // single run's positions are one sample of a distribution, not a fixed
+  // point, so a spacing assertion against only one run would be at the mercy
+  // of that run's own luck. Bypasses `queueLayout`'s debounce/animation
+  // entirely; does not affect the app's own real (animated, debounced)
+  // layout path.
+  function runLayoutSynchronouslyForTest() {
+    if (!cy) {
+      return false;
+    }
+    cy.layout(cyLayoutOptions({ animate: false })).run();
+    return true;
   }
 
   // Test-support only: fires a real Cytoscape 'tap' event on a rendered node
@@ -1180,6 +1232,110 @@
     return { zoom: cy.zoom(), pan: cy.pan() };
   }
 
+  // Test-support only (spec-11-5/GraphLayoutCommunitySpacingUiTest): summarizes
+  // the rendered layout's actual node spacing so a Playwright test can assert
+  // on it directly, rather than re-deriving positions from raw
+  // `cy.getElementById(id).position()` calls that would be brittle to change
+  // and duplicate this same math per-test. All returned distances are in the
+  // same rendered-position units Cytoscape itself uses (pre-zoom model
+  // coordinates), so ratios between them are meaningful regardless of the
+  // viewport's current zoom/pan (set by `fit`/`padding`).
+  //
+  // - `medianEdgeLength`: the median straight-line distance between the two
+  //   endpoints of every rendered edge — this graph's own "typical" spacing
+  //   unit, used as the yardstick every other distance below is judged
+  //   against (a fixed pixel bound would be meaningless across corpora of
+  //   different sizes).
+  // - `communities`: for every rendered Community hull, the bounding-box
+  //   diagonal of just its member (non-hull) nodes' positions — i.e. how far
+  //   apart this Community's own members actually ended up, independent of
+  //   the hull's own drawn padding.
+  // - `maxNearestNeighborGap`: the largest, over every childless node, of
+  //   that node's distance to its single closest other node — the metric
+  //   that actually catches an isolated/singleton node (or a whole small
+  //   community) drifting off to an outlier distance from the rest of the
+  //   graph, since such a node's nearest neighbor would necessarily be far.
+  function layoutSpacingMetrics() {
+    if (!cy) {
+      return null;
+    }
+    // `:childless` alone would also match an empty Community hull (a
+    // compound node with zero children), which isn't an entity and would
+    // pollute the nearest-neighbor gap measurement below — excluded here.
+    var nodes = cy.nodes(':childless').not('.community-hull');
+    if (nodes.length === 0) {
+      return null;
+    }
+
+    function distance(a, b) {
+      var dx = a.x - b.x;
+      var dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    var edgeLengths = cy.edges().map(function (edge) {
+      return distance(edge.source().position(), edge.target().position());
+    });
+    edgeLengths.sort(function (a, b) { return a - b; });
+    var medianEdgeLength;
+    if (edgeLengths.length === 0) {
+      // Explicit `null` (not e.g. 0/NaN) so a caller dividing by this can
+      // check for the no-edges case first rather than silently computing
+      // a meaningless ratio.
+      medianEdgeLength = null;
+    } else if (edgeLengths.length % 2 === 1) {
+      medianEdgeLength = edgeLengths[Math.floor(edgeLengths.length / 2)];
+    } else {
+      var mid = edgeLengths.length / 2;
+      medianEdgeLength = (edgeLengths[mid - 1] + edgeLengths[mid]) / 2;
+    }
+
+    var positions = nodes.map(function (node) { return node.position(); });
+    var maxNearestNeighborGap = 0;
+    for (var i = 0; i < positions.length; i += 1) {
+      if (positions.length < 2) {
+        break;
+      }
+      var nearest = null;
+      for (var j = 0; j < positions.length; j += 1) {
+        if (i === j) {
+          continue;
+        }
+        var d = distance(positions[i], positions[j]);
+        if (nearest === null || d < nearest) {
+          nearest = d;
+        }
+      }
+      if (nearest !== null && nearest > maxNearestNeighborGap) {
+        maxNearestNeighborGap = nearest;
+      }
+    }
+
+    var communities = {};
+    cy.nodes('.community-hull').forEach(function (hull) {
+      var members = hull.children();
+      if (members.length === 0) {
+        return;
+      }
+      var memberPositions = members.map(function (member) { return member.position(); });
+      var minX = Math.min.apply(null, memberPositions.map(function (p) { return p.x; }));
+      var maxX = Math.max.apply(null, memberPositions.map(function (p) { return p.x; }));
+      var minY = Math.min.apply(null, memberPositions.map(function (p) { return p.y; }));
+      var maxY = Math.max.apply(null, memberPositions.map(function (p) { return p.y; }));
+      var communityId = communityIdFromParentId(hull.id());
+      communities[communityId] = {
+        memberCount: members.length,
+        diagonal: distance({ x: minX, y: minY }, { x: maxX, y: maxY })
+      };
+    });
+
+    return {
+      medianEdgeLength: medianEdgeLength,
+      maxNearestNeighborGap: maxNearestNeighborGap,
+      communities: communities
+    };
+  }
+
   window.GraphCanvas = {
     init: init,
     addEntity: addEntity,
@@ -1202,6 +1358,8 @@
     entityNodeFillColor: entityNodeFillColor,
     entityNodeBorderColor: entityNodeBorderColor,
     dimensions: dimensions,
-    viewState: viewState
+    viewState: viewState,
+    layoutSpacingMetrics: layoutSpacingMetrics,
+    runLayoutSynchronouslyForTest: runLayoutSynchronouslyForTest
   };
 })();
