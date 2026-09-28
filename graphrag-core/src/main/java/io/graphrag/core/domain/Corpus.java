@@ -27,6 +27,8 @@ public record Corpus(String id, List<UploadedDocument> documents, String name) {
         return documents.size();
     }
 
+    private static final int MAX_NAMED_FILES = 3;
+
     private static String defaultName(List<UploadedDocument> documents) {
         if (documents == null || documents.isEmpty()) {
             return "Untitled Corpus";
@@ -34,6 +36,12 @@ public record Corpus(String id, List<UploadedDocument> documents, String name) {
         if (documents.size() == 1) {
             return documents.getFirst().filename();
         }
-        return documents.stream().map(UploadedDocument::filename).collect(java.util.stream.Collectors.joining(", "));
+        List<String> filenames = documents.stream().map(UploadedDocument::filename).toList();
+        if (filenames.size() <= MAX_NAMED_FILES) {
+            return String.join(", ", filenames);
+        }
+        int remaining = filenames.size() - MAX_NAMED_FILES;
+        String shown = String.join(", ", filenames.subList(0, MAX_NAMED_FILES));
+        return shown + " +" + remaining + " more";
     }
 }
