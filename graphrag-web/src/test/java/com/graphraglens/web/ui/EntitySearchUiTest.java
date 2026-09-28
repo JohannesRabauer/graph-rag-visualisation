@@ -87,21 +87,28 @@ class EntitySearchUiTest extends UiTestSupport {
     }
 
     @Test
-    void entitySearchNeverOverlapsTheCommunityToggle() {
-        // Story 10.1 regression: both controls used to independently anchor
+    void entitySearchNeverOverlapsTheCollapsedSettingsButton() {
+        // Story 10.1 regression, now guarding spec-11-7's replacement
+        // control: both controls used to independently anchor
         // `position: absolute` to the same top-right corner with fixed pixel
-        // offsets, and the community toggle's real rendered height (its
-        // meta text wraps across several lines) exceeded the entity-search
-        // box's fixed `top`, so they visually overlapped. Checked against
-        // real rendered geometry, not CSS source values, since that's
-        // exactly what a source-level check would have missed the first time.
+        // offsets, and a toggle's real rendered height exceeded the
+        // entity-search box's fixed `top`, so they visually overlapped.
+        // The always-visible community/entity-type toggles are gone now
+        // (collapsed behind the settings popover, spec-11-7), but the same
+        // class of regression is still possible between the settings button
+        // and entity-search — checked against real rendered geometry, not
+        // CSS source values, since that's exactly what a source-level check
+        // would have missed the first time. This only covers the small,
+        // fixed-size *collapsed* button; see
+        // entitySearchNeverOverlapsTheOpenSettingsPopover below for the
+        // popover's own, much larger, rendered content.
         loadDemoDatasetAndWaitReady();
 
-        assertControlsDoNotOverlap();
+        assertControlsDoNotOverlap(page.locator("#canvas-settings-toggle"), page.locator("#entity-search"));
     }
 
     @Test
-    void entitySearchNeverOverlapsTheCommunityToggleWithTheDetailPanelOpen() {
+    void entitySearchNeverOverlapsTheCollapsedSettingsButtonWithTheDetailPanelOpen() {
         // Acceptance criterion: opening the entity detail panel shifts the
         // whole `.canvas-top-right-stack` leftward (to clear the panel) via
         // a dedicated override — both controls must still not overlap.
@@ -114,39 +121,59 @@ class EntitySearchUiTest extends UiTestSupport {
                 .isTrue();
         assertThat(page.locator("#entity-detail-panel")).hasClass(Pattern.compile(OPEN_CLASS_PATTERN));
 
-        assertControlsDoNotOverlap();
+        assertControlsDoNotOverlap(page.locator("#canvas-settings-toggle"), page.locator("#entity-search"));
     }
 
     @Test
-    void entitySearchNeverOverlapsTheCommunityToggleAtNarrowViewportWidth() {
+    void entitySearchNeverOverlapsTheCollapsedSettingsButtonAtNarrowViewportWidth() {
         // Acceptance criterion: a narrow viewport tightens the stack's right
         // margin via a dedicated media-query override — both controls must
         // still not overlap.
         page.setViewportSize(600, 800);
         loadDemoDatasetAndWaitReady();
 
-        assertControlsDoNotOverlap();
+        assertControlsDoNotOverlap(page.locator("#canvas-settings-toggle"), page.locator("#entity-search"));
     }
 
-    private void assertControlsDoNotOverlap() {
-        Locator toggle = page.locator("#community-toggle-wrap");
-        Locator search = page.locator("#entity-search");
-        assertThat(toggle).isVisible();
-        assertThat(search).isVisible();
+    @Test
+    void entitySearchNeverOverlapsTheOpenSettingsPopover() {
+        // The collapsed-button check above can never catch an overlap
+        // regression caused by the popover's real rendered content once it
+        // is open — the popover only ever extends further down/right from
+        // the button (`.canvas-settings-popover` is `position: absolute`),
+        // so #entity-search must sit ahead of it in both DOM order and
+        // markup order for this to hold.
+        loadDemoDatasetAndWaitReady();
 
-        BoundingBox toggleBox = toggle.boundingBox();
-        BoundingBox searchBox = search.boundingBox();
-        org.assertj.core.api.Assertions.assertThat(toggleBox).isNotNull();
-        org.assertj.core.api.Assertions.assertThat(searchBox).isNotNull();
+        page.locator("#canvas-settings-toggle").click();
+        assertControlsDoNotOverlap(page.locator("#canvas-settings-popover"), page.locator("#entity-search"));
+    }
 
-        boolean overlapsVertically = toggleBox.y < searchBox.y + searchBox.height
-                && searchBox.y < toggleBox.y + toggleBox.height;
-        boolean overlapsHorizontally = toggleBox.x < searchBox.x + searchBox.width
-                && searchBox.x < toggleBox.x + toggleBox.width;
+    @Test
+    void entitySearchNeverOverlapsTheOpenSettingsPopoverAtNarrowViewportWidth() {
+        page.setViewportSize(600, 800);
+        loadDemoDatasetAndWaitReady();
+
+        page.locator("#canvas-settings-toggle").click();
+        assertControlsDoNotOverlap(page.locator("#canvas-settings-popover"), page.locator("#entity-search"));
+    }
+
+    private void assertControlsDoNotOverlap(Locator first, Locator second) {
+        assertThat(first).isVisible();
+        assertThat(second).isVisible();
+
+        BoundingBox firstBox = first.boundingBox();
+        BoundingBox secondBox = second.boundingBox();
+        org.assertj.core.api.Assertions.assertThat(firstBox).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(secondBox).isNotNull();
+
+        boolean overlapsVertically = firstBox.y < secondBox.y + secondBox.height
+                && secondBox.y < firstBox.y + firstBox.height;
+        boolean overlapsHorizontally = firstBox.x < secondBox.x + secondBox.width
+                && secondBox.x < firstBox.x + firstBox.width;
 
         org.assertj.core.api.Assertions.assertThat(overlapsVertically && overlapsHorizontally)
-                .withFailMessage("Community toggle %s and entity search %s bounding boxes overlap",
-                        toggleBox, searchBox)
+                .withFailMessage("%s and entity search %s bounding boxes overlap", firstBox, secondBox)
                 .isFalse();
     }
 }

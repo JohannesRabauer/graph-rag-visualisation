@@ -98,20 +98,20 @@ development_status:
   9-7-automate-demo-screenshot-capture-in-ci: done
   epic-9-retrospective: optional
 
-  epic-10: backlog
+  epic-10: done
   10-1-fix-entity-search-community-toggle-visual-overlap: done
-  10-2-fix-the-progress-stream-s-false-disconnected-banner: backlog
-  10-3-color-code-entity-tags-by-type-toggleable: backlog
-  10-4-allow-loading-a-new-corpus-after-one-is-already-active: backlog
-  10-5-audit-graphrag-core-s-reusability-as-a-standalone-library: backlog
+  10-2-fix-the-progress-stream-s-false-disconnected-banner: done
+  10-3-color-code-entity-tags-by-type-toggleable: done
+  10-4-allow-loading-a-new-corpus-after-one-is-already-active: done
+  10-5-audit-graphrag-core-s-reusability-as-a-standalone-library: done
   epic-10-retrospective: optional
 
-  epic-11: backlog
-  11-1-scale-the-main-screen-to-fill-the-viewport: backlog
-  11-2-make-the-chat-history-scrollable-with-a-pinned-composer: backlog
-  11-3-fix-retrieval-trace-replay-not-rendering-or-highlighting: backlog
-  11-4-clarify-and-verify-compare-with-vector-search-behavior: backlog
-  11-5-tune-graph-layout-so-communities-and-nodes-aren-t-wildly-far-apart: backlog
-  11-6-add-zoom-in-out-controls-for-the-graph-canvas: backlog
-  11-7-make-the-community-formation-and-color-code-entity-types-toggles-non-blocking: backlog
+  epic-11: done
+  11-1-scale-the-main-screen-to-fill-the-viewport: done
+  11-2-make-the-chat-history-scrollable-with-a-pinned-composer: done
+  11-3-fix-retrieval-trace-replay-not-rendering-or-highlighting: done
+  11-4-clarify-and-verify-compare-with-vector-search-behavior: done
+  11-5-tune-graph-layout-so-communities-and-nodes-aren-t-wildly-far-apart: done
+  11-6-add-zoom-in-out-controls-for-the-graph-canvas: done
+  11-7-make-the-community-formation-and-color-code-entity-types-toggles-non-blocking: done
   epic-11-retrospective: optional

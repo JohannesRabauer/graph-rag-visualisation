@@ -31,6 +31,18 @@
   // visual `.kbd-focus` ring, kept as module state so it survives between
   // keydown events without re-querying the DOM each time.
   var focusedNodeId = null;
+  // Story 11.1: the container's own ResizeObserver (not a `window` `resize`
+  // listener — see Design Notes in spec-11-1) so the canvas tracks real
+  // window/viewport resizes and stays robust against any future CSS change
+  // to how `#graph-canvas`'s own box is sized, without depending on that
+  // change also firing a window resize event.
+  // Kept as module state so a later `init()` call (which tears down and
+  // rebuilds `cy`) can disconnect the previous observer before attaching a
+  // fresh one, rather than stacking duplicate observers on the same
+  // `#graph-canvas` element across re-inits.
+  var resizeObserver = null;
+  var resizeFitTimer = null;
+  var RESIZE_FIT_DEBOUNCE_MS = 120;
 
   function graphContainer() {
     return document.getElementById('graph-canvas');
@@ -138,6 +150,19 @@
     // (Story 6.1 AC4 — a regression guard for this shared module).
     var interactive = !!(options && options.interactive);
 
+    // Disconnect any observer/timer left by a prior `init()` call
+    // unconditionally, before either early return below, so a call that
+    // bails out (missing container, or Cytoscape not loaded) can never
+    // leave a previous successful `init()`'s ResizeObserver still attached.
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (resizeFitTimer) {
+      clearTimeout(resizeFitTimer);
+      resizeFitTimer = null;
+    }
+
     var container = graphContainer();
     if (cy) {
       cy.destroy();
@@ -185,6 +210,8 @@
       elements: [],
       userZoomingEnabled: interactive,
       userPanningEnabled: interactive,
+      minZoom: 0.1,
+      maxZoom: 5,
       style: [
         {
           selector: 'node',
@@ -415,7 +442,52 @@
       }
     });
 
+    watchContainerResize(container);
+
     return cy;
+  }
+
+  // Keeps the Cytoscape canvas in sync with its container's actual box.
+  // `cy.resize()` just recalculates Cytoscape's cached width/height and is
+  // cheap, so it runs on every observed change; the follow-up `cy.fit()`
+  // re-centers/re-zooms the rendered graph and is debounced so a burst of
+  // observer callbacks (a window being dragged, a CSS transition on
+  // `.node-detail-panel`) doesn't fight in-progress pan/zoom with repeated
+  // fits. Guarded on `cy` so this safely no-ops before `init()` has created
+  // one (or after a later `init()` has torn the old one down).
+  function watchContainerResize(container) {
+    // `init()` already disconnects/reset any prior observer/timer
+    // unconditionally at its top (before either early return), so this is
+    // just a defensive no-op guard against calling `watchContainerResize`
+    // directly with one already attached.
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (resizeFitTimer) {
+      clearTimeout(resizeFitTimer);
+      resizeFitTimer = null;
+    }
+    if (!container || typeof window.ResizeObserver === 'undefined') {
+      return;
+    }
+    resizeObserver = new window.ResizeObserver(function () {
+      if (!cy) {
+        return;
+      }
+      cy.resize();
+      if (resizeFitTimer) {
+        clearTimeout(resizeFitTimer);
+      }
+      resizeFitTimer = setTimeout(function () {
+        resizeFitTimer = null;
+        if (!cy) {
+          return;
+        }
+        cy.fit();
+      }, RESIZE_FIT_DEBOUNCE_MS);
+    });
+    resizeObserver.observe(container);
   }
 
   // Extracts the raw communityId back out of a hull node's `community::`-
@@ -512,6 +584,65 @@
         type: node.data('type')
       });
     }
+  }
+
+  // Story 11.6 (#35): the visible zoom in/out/fit-to-view button cluster's
+  // wiring. Zoom in/out use `cy.animate({ zoom })` — the exact eased-
+  // animation precedent `focusEntity()` above already established (same
+  // 300ms duration/easing) — rather than an instant `cy.zoom()` jump, so
+  // button-driven zoom feels identical to existing interactions. A ~1.25x
+  // step per click, symmetric in both directions (dividing, not multiplying
+  // by a separate "zoom out factor") so one zoom-in followed by one
+  // zoom-out returns to the original zoom level. `minZoom`/`maxZoom` are set
+  // on the Cytoscape instance (see its constructor above) so repeated clicks
+  // can't drive the zoom to a degenerate scale.
+  var ZOOM_STEP_FACTOR = 1.25;
+  var ZOOM_ANIMATION_DURATION = 300;
+  // Guards `zoomIn`/`zoomOut` against overlapping animations: `cy.zoom()`
+  // read at click time reflects whatever the in-flight animation has
+  // reached *so far*, not its target, so a rapid double-click would read a
+  // mid-animation value and silently collapse two clicks into one step
+  // instead of compounding. While an animation is in flight, further clicks
+  // are a no-op until the `complete` callback clears this flag.
+  var zoomAnimationInProgress = false;
+
+  function animateZoom(targetZoom) {
+    zoomAnimationInProgress = true;
+    cy.animate(
+      { zoom: targetZoom },
+      {
+        duration: ZOOM_ANIMATION_DURATION,
+        complete: function () {
+          zoomAnimationInProgress = false;
+        }
+      }
+    );
+  }
+
+  function zoomIn() {
+    if (!cy || zoomAnimationInProgress) {
+      return;
+    }
+    animateZoom(cy.zoom() * ZOOM_STEP_FACTOR);
+  }
+
+  function zoomOut() {
+    if (!cy || zoomAnimationInProgress) {
+      return;
+    }
+    animateZoom(cy.zoom() / ZOOM_STEP_FACTOR);
+  }
+
+  function fitToView() {
+    if (!cy) {
+      return;
+    }
+    // Clears any in-flight zoomIn/zoomOut animation first — otherwise that
+    // animation can keep running after `cy.fit()` returns and silently
+    // override its result once it finishes.
+    cy.stop(true, true);
+    zoomAnimationInProgress = false;
+    cy.fit();
   }
 
   function setLegendActiveCommunity(communityId) {
@@ -965,6 +1096,48 @@
     }
   }
 
+  // The `cose` layout's options, shared by `queueLayout` (the real,
+  // animated, debounced layout every mutation queues) and
+  // `runLayoutSynchronouslyForTest` (test-support only, see below) — kept as
+  // one function so the two never drift apart.
+  //
+  // nestingFactor/componentSpacing are tuned beyond cose's generic defaults
+  // for this app's typical graph shape (many small Communities expressed as
+  // compound/parent nodes, plus isolated/disconnected entities) — see
+  // spec-11-5 (GitHub #34). Both are lowered from cose's own defaults
+  // (nestingFactor 1.2, componentSpacing 40): empirically (rendered, not
+  // just reasoned about — see spec-11-5's own Boundaries & Constraints),
+  // *raising* nestingFactor stretches every cross-Community edge's ideal
+  // length (cose multiplies it by nestingFactor for edges that cross a
+  // compound boundary), pushing connected Communities and their members
+  // further apart, not closer — so it's lowered instead to pull them in.
+  // Lowering componentSpacing shrinks the extra gap cose's own post-layout
+  // packing step inserts between disconnected components (isolated
+  // entities, singleton/disconnected Communities), so those don't drift as
+  // far from the rest of the graph. Neither fit/padding/animate/
+  // animationDuration nor the compound-node parenting above are touched.
+  var TUNED_NESTING_FACTOR = 0.3;
+  var TUNED_COMPONENT_SPACING = 8;
+
+  function cyLayoutOptions(extra) {
+    return Object.assign({
+      name: 'cose',
+      fit: true,
+      padding: 32,
+      randomize: false,
+      nestingFactor: TUNED_NESTING_FACTOR,
+      componentSpacing: TUNED_COMPONENT_SPACING
+    }, extra || {});
+  }
+
+  // Tracks whether the debounced, animated `cose` layout `queueLayout`
+  // triggers is still actually running (as opposed to merely queued) — a
+  // corpus streams in many entity/relationship/community SSE events in
+  // quick succession, each re-queueing this layout, so "Ready" firing does
+  // not by itself mean the canvas has stopped moving. Test-support only
+  // (`isLayoutActive` below); the app itself never reads this.
+  var layoutRunning = false;
+
   function queueLayout() {
     if (!cy || layoutQueued) {
       return;
@@ -975,13 +1148,46 @@
       if (!cy) {
         return;
       }
-      cy.layout({ name: 'cose', animate: true, animationDuration: 400, fit: true, padding: 32, randomize: false }).run();
+      layoutRunning = true;
+      var layout = cy.layout(cyLayoutOptions({ animate: true, animationDuration: 400 }));
+      layout.one('layoutstop', function () {
+        layoutRunning = false;
+      });
+      layout.run();
     };
     if (typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(runLayout);
     } else {
       setTimeout(runLayout, 0);
     }
+  }
+
+  // Test-support only: whether `queueLayout`'s debounced/animated layout is
+  // currently queued (waiting for its next animation frame) or actually
+  // running its `cose` animation — used to let a Playwright test wait
+  // deterministically for the canvas to stop moving on its own, instead of
+  // a fixed sleep guessing how long a corpus's own burst of SSE-triggered
+  // layouts takes to settle.
+  function isLayoutActive() {
+    return layoutQueued || layoutRunning;
+  }
+
+  // Test-support only (spec-11-5/GraphLayoutCommunitySpacingUiTest): runs the
+  // exact same tuned `cose` layout again, synchronously and unanimated, so a
+  // test can sample several independent layouts of the same already-loaded
+  // graph. `cose` is a stochastic simulated-annealing layout (random
+  // per-iteration perturbation, cooling over a fixed iteration count) — a
+  // single run's positions are one sample of a distribution, not a fixed
+  // point, so a spacing assertion against only one run would be at the mercy
+  // of that run's own luck. Bypasses `queueLayout`'s debounce/animation
+  // entirely; does not affect the app's own real (animated, debounced)
+  // layout path.
+  function runLayoutSynchronouslyForTest() {
+    if (!cy) {
+      return false;
+    }
+    cy.layout(cyLayoutOptions({ animate: false })).run();
+    return true;
   }
 
   // Test-support only: fires a real Cytoscape 'tap' event on a rendered node
@@ -1086,6 +1292,150 @@
     return !!(element && element.length > 0 && element.hasClass(className));
   }
 
+  // Test-support only (spec-11-1/MainScreenLayoutUiTest): exposes
+  // Cytoscape's own cached container dimensions so a Playwright test can
+  // assert `cy.resize()` actually ran after a viewport resize, without
+  // depending on a still-animating force-directed layout's node positions.
+  // Returns null before `init()` has created `cy`.
+  function dimensions() {
+    if (!cy) {
+      return null;
+    }
+    return { width: cy.width(), height: cy.height() };
+  }
+
+  // Test-support only (spec-11-6/ZoomControlsUiTest): an independently-
+  // computed `cy.fit()` baseline, so a test can assert `fitToView()`'s
+  // result actually converges to the graph's real fitted extent rather than
+  // merely differing from whatever zoom level preceded it. `cy.fit()` is
+  // idempotent against an already-fitted viewport (fitting the same
+  // elements/padding again lands on the same zoom), so calling it here has
+  // no observable side effect when the viewport is already fitted.
+  // Returns null before `init()` has created `cy`.
+  function fitZoomForTest() {
+    if (!cy) {
+      return null;
+    }
+    cy.fit();
+    return cy.zoom();
+  }
+
+  // Test-support only (spec-11-1/MainScreenLayoutUiTest): exposes Cytoscape's
+  // own current zoom/pan so a test can assert the debounced `cy.fit()` after
+  // a resize actually re-centered/re-zoomed the viewport — `dimensions()`
+  // above only proves `cy.resize()` ran, not that `cy.fit()` did anything.
+  // Returns null before `init()` has created `cy`.
+  function viewState() {
+    if (!cy) {
+      return null;
+    }
+    return { zoom: cy.zoom(), pan: cy.pan() };
+  }
+
+  // Test-support only (spec-11-5/GraphLayoutCommunitySpacingUiTest): summarizes
+  // the rendered layout's actual node spacing so a Playwright test can assert
+  // on it directly, rather than re-deriving positions from raw
+  // `cy.getElementById(id).position()` calls that would be brittle to change
+  // and duplicate this same math per-test. All returned distances are in the
+  // same rendered-position units Cytoscape itself uses (pre-zoom model
+  // coordinates), so ratios between them are meaningful regardless of the
+  // viewport's current zoom/pan (set by `fit`/`padding`).
+  //
+  // - `medianEdgeLength`: the median straight-line distance between the two
+  //   endpoints of every rendered edge — this graph's own "typical" spacing
+  //   unit, used as the yardstick every other distance below is judged
+  //   against (a fixed pixel bound would be meaningless across corpora of
+  //   different sizes).
+  // - `communities`: for every rendered Community hull, the bounding-box
+  //   diagonal of just its member (non-hull) nodes' positions — i.e. how far
+  //   apart this Community's own members actually ended up, independent of
+  //   the hull's own drawn padding.
+  // - `maxNearestNeighborGap`: the largest, over every childless node, of
+  //   that node's distance to its single closest other node — the metric
+  //   that actually catches an isolated/singleton node (or a whole small
+  //   community) drifting off to an outlier distance from the rest of the
+  //   graph, since such a node's nearest neighbor would necessarily be far.
+  function layoutSpacingMetrics() {
+    if (!cy) {
+      return null;
+    }
+    // `:childless` alone would also match an empty Community hull (a
+    // compound node with zero children), which isn't an entity and would
+    // pollute the nearest-neighbor gap measurement below — excluded here.
+    var nodes = cy.nodes(':childless').not('.community-hull');
+    if (nodes.length === 0) {
+      return null;
+    }
+
+    function distance(a, b) {
+      var dx = a.x - b.x;
+      var dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    var edgeLengths = cy.edges().map(function (edge) {
+      return distance(edge.source().position(), edge.target().position());
+    });
+    edgeLengths.sort(function (a, b) { return a - b; });
+    var medianEdgeLength;
+    if (edgeLengths.length === 0) {
+      // Explicit `null` (not e.g. 0/NaN) so a caller dividing by this can
+      // check for the no-edges case first rather than silently computing
+      // a meaningless ratio.
+      medianEdgeLength = null;
+    } else if (edgeLengths.length % 2 === 1) {
+      medianEdgeLength = edgeLengths[Math.floor(edgeLengths.length / 2)];
+    } else {
+      var mid = edgeLengths.length / 2;
+      medianEdgeLength = (edgeLengths[mid - 1] + edgeLengths[mid]) / 2;
+    }
+
+    var positions = nodes.map(function (node) { return node.position(); });
+    var maxNearestNeighborGap = 0;
+    for (var i = 0; i < positions.length; i += 1) {
+      if (positions.length < 2) {
+        break;
+      }
+      var nearest = null;
+      for (var j = 0; j < positions.length; j += 1) {
+        if (i === j) {
+          continue;
+        }
+        var d = distance(positions[i], positions[j]);
+        if (nearest === null || d < nearest) {
+          nearest = d;
+        }
+      }
+      if (nearest !== null && nearest > maxNearestNeighborGap) {
+        maxNearestNeighborGap = nearest;
+      }
+    }
+
+    var communities = {};
+    cy.nodes('.community-hull').forEach(function (hull) {
+      var members = hull.children();
+      if (members.length === 0) {
+        return;
+      }
+      var memberPositions = members.map(function (member) { return member.position(); });
+      var minX = Math.min.apply(null, memberPositions.map(function (p) { return p.x; }));
+      var maxX = Math.max.apply(null, memberPositions.map(function (p) { return p.x; }));
+      var minY = Math.min.apply(null, memberPositions.map(function (p) { return p.y; }));
+      var maxY = Math.max.apply(null, memberPositions.map(function (p) { return p.y; }));
+      var communityId = communityIdFromParentId(hull.id());
+      communities[communityId] = {
+        memberCount: members.length,
+        diagonal: distance({ x: minX, y: minY }, { x: maxX, y: maxY })
+      };
+    });
+
+    return {
+      medianEdgeLength: medianEdgeLength,
+      maxNearestNeighborGap: maxNearestNeighborGap,
+      communities: communities
+    };
+  }
+
   window.GraphCanvas = {
     init: init,
     addEntity: addEntity,
@@ -1101,11 +1451,20 @@
     focusCommunity: focusCommunity,
     searchEntities: searchEntities,
     focusEntity: focusEntity,
+    zoomIn: zoomIn,
+    zoomOut: zoomOut,
+    fitToView: fitToView,
     simulateTap: simulateTap,
     communityHullOpacity: communityHullOpacity,
     communityIdForEntity: communityIdForEntity,
     elementHasClass: elementHasClass,
     entityNodeFillColor: entityNodeFillColor,
-    entityNodeBorderColor: entityNodeBorderColor
+    entityNodeBorderColor: entityNodeBorderColor,
+    dimensions: dimensions,
+    viewState: viewState,
+    fitZoomForTest: fitZoomForTest,
+    isLayoutActive: isLayoutActive,
+    layoutSpacingMetrics: layoutSpacingMetrics,
+    runLayoutSynchronouslyForTest: runLayoutSynchronouslyForTest
   };
 })();

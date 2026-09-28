@@ -134,7 +134,8 @@ body {
    a soft shadow lifts it off the page surround. */
 .app-frame {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1900px;
+  min-width: 960px;
   height: calc(100vh - var(--space-8) * 2);
   min-height: 560px;
   background: var(--panel);
@@ -249,6 +250,12 @@ body {
 .canvas {
   position: relative;
   flex: 1;
+  /* Without this, a flex item's default `min-height: auto` refuses to
+     shrink below its content's intrinsic height (the flexbox "automatic
+     minimum size" behavior), so `.canvas` would grow to fit `.chat-panel`'s
+     full unclipped content instead of shrinking to `.app-frame`'s allotted
+     height. */
+  min-height: 0;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -819,9 +826,88 @@ body {
   gap: var(--space-2);
 }
 
-/* Position/z-index now live on the shared `.canvas-top-right-stack`
-   ancestor (Story 10.1) — this rule survives alone because visibility is
-   still toggled per-control by `upload.js` via this element's own id. */
+/* ---- settings popover (spec-11-7) ----
+   #36: the two view-option toggles used to be permanently-rendered
+   siblings in the stack — a small default footprint when there were only
+   two, but an ever-growing absolute overlay as more controls (10.3's
+   entity-type toggle, 11.6's future zoom controls) joined it, competing
+   with canvas content underneath. Both toggles now nest inside a single
+   collapsible popover behind one small, constant-size settings button —
+   the button's own bounding box is the only thing that can ever overlap
+   canvas content while collapsed (the default state). */
+.canvas-settings {
+  position: relative;
+}
+
+/* Shared icon-button recipe for the small square canvas-overlay buttons
+   (the settings toggle and each zoom-control button below) — one class
+   holds the properties that must always match between them, so the two
+   can never silently drift apart the way separately-duplicated
+   declarations did. */
+.canvas-icon-button {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-600);
+  cursor: pointer;
+}
+
+.canvas-icon-button:hover {
+  color: var(--ink-900);
+}
+
+.canvas-icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.canvas-settings-toggle[hidden] {
+  display: none;
+}
+
+.canvas-settings-popover {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.canvas-settings-popover[hidden] {
+  display: none;
+}
+
+/* ---- zoom controls (spec-11-6, #35) ----
+   A third sibling inside `.canvas-top-right-stack` (spec-11-7's just-
+   established flex-column stack, reserved for exactly this) — reuses that
+   proven non-overlap mechanism (including its free detail-panel-open shift
+   and narrow-viewport override) rather than adding new absolute-positioning
+   code. Buttons share `.canvas-icon-button`'s exact icon-button recipe with
+   `.canvas-settings-toggle` above, laid out as a small flex row instead of
+   that button's single square. */
+.canvas-zoom-controls {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-2);
+}
+
+.canvas-zoom-controls[hidden] {
+  display: none;
+}
+
+/* Visibility is still gated per-control by `upload.js` via this element's
+   own id (corpus-ready reveal, reset flow) — unchanged from Story 10.1 —
+   but it now only matters while the ancestor popover is itself open. */
 .community-toggle-wrap[hidden] {
   display: none;
 }
@@ -1563,10 +1649,12 @@ body {
 /* Coexistence with the other canvas-overlay controls (2026-09-20 UX pass,
    merging the former Explore page's detail panel onto this canvas): the
    panel is a full-height 300px right rail, which would otherwise sit on
-   top of the replay scrubber's right edge and the community toggle's
-   top-right corner. Both retreat to make room only while the panel is
-   actually open — a deliberate choice (per the project owner) that
-   Replay and the detail panel coexist rather than one closing the other. */
+   top of the replay scrubber's right edge and the top-right control stack
+   (entity search, and the settings button/popover the community and
+   entity-type toggles now nest behind, spec-11-7). Both retreat to make
+   room only while the panel is actually open — a deliberate choice (per
+   the project owner) that Replay and the detail panel coexist rather than
+   one closing the other. */
 .graph-stage:has(.node-detail-panel.is-open) .replay-scrubber {
   right: 300px;
 }
@@ -1699,19 +1787,24 @@ body {
 
 /* ============================================================
    Responsive breakpoints
-   The system above assumes a wide (~1180px) browser tab. Below ~900px
+   The system above assumes a wide (~1180px) browser tab. Below ~960px
    (embedded panels, smaller windows, tablets) the floating chat-panel/
    node-detail-panel and idle-state copy get cramped against the graph
    canvas; below ~640px the app bar and controls need to tighten up too.
    Only spacing/sizing is adjusted here — no components change shape or
    behavior, so all existing markup/JS keeps working unmodified.
+
+   This threshold must match .app-frame's base min-width (960px, above)
+   exactly — otherwise viewports between the two values are forced to
+   the 960px floor with no reset, causing horizontal overflow.
    ============================================================ */
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   body {
     padding: var(--space-4) var(--space-2);
   }
 
   .app-frame {
+    min-width: 0;
     height: calc(100vh - var(--space-4) * 2);
     min-height: 480px;
   }
@@ -1743,6 +1836,7 @@ body {
   }
 
   .app-frame {
+    min-width: 0;
     height: calc(100vh - var(--space-2) * 2);
     min-height: 420px;
     border-radius: var(--radius);

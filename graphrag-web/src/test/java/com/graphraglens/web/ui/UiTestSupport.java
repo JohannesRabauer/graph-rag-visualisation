@@ -2,6 +2,7 @@ package com.graphraglens.web.ui;
 
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.Route;
@@ -17,8 +18,11 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.Map;
 
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Shared real-browser UI test harness (AD-15 amendment — see graphrag-web's
@@ -109,5 +113,46 @@ abstract class UiTestSupport {
         page.locator("#demo-dataset-button").click();
         assertThat(page.locator("#workflow-status-text"))
                 .containsText("Ready", new LocatorAssertions.ContainsTextOptions().setTimeout(20000));
+    }
+
+    /**
+     * Steps forward through the currently-open trace (opened via the most
+     * recently rendered {@code .replay-cta}) until some step's identifier is
+     * genuinely marked {@code step-active} on the canvas (same technique as
+     * {@code ReplayRelationshipEdgeHighlightUiTest}/{@code DriftTreeReplayUiTest}),
+     * proving Replay is not just visible but actually driving the graph
+     * canvas.
+     */
+    @SuppressWarnings("unchecked")
+    protected void assertReplayHighlightsAStepOnTheCanvas() {
+        List<Map<String, Object>> traceSteps = (List<Map<String, Object>>) page.evaluate(
+                "() => {"
+                        + "  const ctas = document.querySelectorAll('.replay-cta');"
+                        + "  const traceId = ctas[ctas.length - 1].dataset.traceId;"
+                        + "  return fetch('/api/traces/' + traceId)"
+                        + "    .then(response => response.json())"
+                        + "    .then(body => body.steps || []);"
+                        + "}");
+        assertThat(traceSteps).isNotEmpty();
+
+        Locator stepForward = page.locator("#replay-step-forward");
+        boolean highlighted = false;
+        for (int i = 0; i < traceSteps.size() && !highlighted; i++) {
+            String identifier = (String) traceSteps.get(i).get("identifier");
+            if (identifier != null) {
+                Boolean isActive = (Boolean) page.evaluate(
+                        "id => window.GraphCanvas.elementHasClass(id, 'step-active')", identifier);
+                if (Boolean.TRUE.equals(isActive)) {
+                    highlighted = true;
+                    break;
+                }
+            }
+            if (Boolean.TRUE.equals(stepForward.isDisabled())) {
+                break;
+            }
+            stepForward.click();
+        }
+
+        assertThat(highlighted).isTrue();
     }
 }

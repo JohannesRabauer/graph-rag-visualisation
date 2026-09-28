@@ -19,6 +19,12 @@
   var communityVisualizationToggle = document.getElementById('community-visualization-toggle');
   var entityTypeToggleWrap = document.getElementById('entity-type-toggle-wrap');
   var entityTypeColorToggle = document.getElementById('entity-type-color-toggle');
+  var canvasSettingsToggle = document.getElementById('canvas-settings-toggle');
+  var canvasSettingsPopover = document.getElementById('canvas-settings-popover');
+  var canvasZoomControls = document.getElementById('canvas-zoom-controls');
+  var canvasZoomInButton = document.getElementById('canvas-zoom-in-button');
+  var canvasZoomOutButton = document.getElementById('canvas-zoom-out-button');
+  var canvasZoomFitButton = document.getElementById('canvas-zoom-fit-button');
   var graphCanvasEl = document.getElementById('graph-canvas');
   var graphEyebrow = document.getElementById('graph-eyebrow');
   var workflowStatus = document.getElementById('workflow-status');
@@ -148,6 +154,100 @@
       });
   });
 
+  // spec-11-7 (#36): the settings popover collapses the community-formation
+  // and entity-type-color toggles behind one small, constant-size button \u2014
+  // an ever-growing absolute overlay competing with canvas content
+  // otherwise. Opens/closes via the button, an outside click, or Escape;
+  // never blocks the canvas while collapsed (the default state).
+  function closeCanvasSettingsPopover() {
+    if (!canvasSettingsPopover || canvasSettingsPopover.hidden) {
+      return;
+    }
+    canvasSettingsPopover.hidden = true;
+    if (canvasSettingsToggle) {
+      canvasSettingsToggle.setAttribute('aria-expanded', 'false');
+      // Return focus to the button that opened it — otherwise Escape,
+      // an outside click, or the tab-switch auto-close would leave focus
+      // stranded on a now-hidden control (or lost to the document body).
+      canvasSettingsToggle.focus();
+    }
+  }
+
+  function openCanvasSettingsPopover() {
+    if (!canvasSettingsPopover || !canvasSettingsPopover.hidden) {
+      return;
+    }
+    canvasSettingsPopover.hidden = false;
+    if (canvasSettingsToggle) {
+      canvasSettingsToggle.setAttribute('aria-expanded', 'true');
+    }
+    // Move focus into the popover's first control so keyboard users land
+    // directly on something operable instead of the popover opening with
+    // focus left behind on the button.
+    var firstCheckbox = canvasSettingsPopover.querySelector('input[type="checkbox"]');
+    if (firstCheckbox) {
+      firstCheckbox.focus();
+    }
+  }
+
+  if (canvasSettingsToggle) {
+    canvasSettingsToggle.addEventListener('click', function () {
+      if (canvasSettingsPopover && canvasSettingsPopover.hidden) {
+        openCanvasSettingsPopover();
+      } else {
+        closeCanvasSettingsPopover();
+      }
+    });
+  }
+
+  // Story 11.6 (#35): zoom in/out/fit-to-view buttons — each just delegates
+  // to `graph-canvas.js`'s own eased-animation functions; visibility is
+  // gated the same way `#canvas-settings-toggle` is (corpus-ready reveal,
+  // hidden again on reset), below.
+  if (canvasZoomInButton) {
+    canvasZoomInButton.addEventListener('click', function () {
+      if (window.GraphCanvas) {
+        window.GraphCanvas.zoomIn();
+      }
+    });
+  }
+  if (canvasZoomOutButton) {
+    canvasZoomOutButton.addEventListener('click', function () {
+      if (window.GraphCanvas) {
+        window.GraphCanvas.zoomOut();
+      }
+    });
+  }
+  if (canvasZoomFitButton) {
+    canvasZoomFitButton.addEventListener('click', function () {
+      if (window.GraphCanvas) {
+        window.GraphCanvas.fitToView();
+      }
+    });
+  }
+
+  // Delegated outside-click close \u2014 same pattern as the .compare-cta
+  // handler above: a single document-level listener that no-ops unless the
+  // popover is open and the click landed outside both the button and the
+  // popover itself.
+  document.addEventListener('click', function (event) {
+    if (!canvasSettingsPopover || canvasSettingsPopover.hidden) {
+      return;
+    }
+    var target = event.target;
+    var withinPopover = target && target.closest && target.closest('#canvas-settings-popover');
+    var onToggle = target && target.closest && target.closest('#canvas-settings-toggle');
+    if (!withinPopover && !onToggle) {
+      closeCanvasSettingsPopover();
+    }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      closeCanvasSettingsPopover();
+    }
+  });
+
   // Story 8-3: reveal the Vector Space tab and update the answer panel.
   function revealVectorSpaceTab(answerText) {
     var wasHidden = !!(tabVectorSpace && tabVectorSpace.hidden);
@@ -189,12 +289,18 @@
       document.getElementById('drift-tree'),
       document.getElementById('graph-legend'),
       document.getElementById('graph-eyebrow'),
-      document.getElementById('community-toggle-wrap'),
-      document.getElementById('entity-type-toggle-wrap'),
+      document.getElementById('canvas-settings-toggle'),
+      document.getElementById('canvas-zoom-controls'),
       document.getElementById('replay-scrubber'),
       document.getElementById('entity-detail-panel'),
       document.getElementById('entity-search')
     ];
+    if (showVector) {
+      // The settings button hides below (part of kgEls) — always close its
+      // popover too, so it never lingers open-but-invisible behind the
+      // Vector Space tab and reappears already-open when switching back.
+      closeCanvasSettingsPopover();
+    }
     kgEls.forEach(function (el) {
       if (!el) {
         return;
@@ -731,6 +837,13 @@
     if (entityTypeToggleWrap) {
       entityTypeToggleWrap.hidden = true;
     }
+    if (canvasSettingsToggle) {
+      canvasSettingsToggle.hidden = true;
+    }
+    if (canvasZoomControls) {
+      canvasZoomControls.hidden = true;
+    }
+    closeCanvasSettingsPopover();
     if (graphCanvasEl) {
       graphCanvasEl.hidden = true;
       graphCanvasEl.setAttribute('aria-hidden', 'true');
@@ -855,6 +968,12 @@
     }
     if (entityTypeColorToggle) {
       entityTypeColorToggle.checked = true;
+    }
+    if (canvasSettingsToggle) {
+      canvasSettingsToggle.hidden = false;
+    }
+    if (canvasZoomControls) {
+      canvasZoomControls.hidden = false;
     }
     if (graphCanvasEl) {
       graphCanvasEl.hidden = false;
@@ -1019,6 +1138,11 @@
       var compareCta = document.createElement('button');
       compareCta.type = 'button';
       compareCta.className = 'compare-cta';
+      var compareCtaExplanation = 'Re-runs this question through a plain vector-similarity search ' +
+          '(no knowledge graph) for comparison, and opens the Vector Space tab showing ' +
+          'that answer and where the corpus\'s chunks sit in embedding space.';
+      compareCta.title = compareCtaExplanation;
+      compareCta.setAttribute('aria-label', compareCtaExplanation);
       compareCta.textContent = '\u21BB Compare with Vector Search';
       message.appendChild(compareCta);
     }

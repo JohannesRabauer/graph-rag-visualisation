@@ -30,9 +30,12 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         loadDemoDatasetAndWaitReady();
 
         // Turn the community-visualization toggle OFF before asking anything,
-        // so every hull starts hidden. Clicking the wrapping <label> (rather
-        // than the checkbox directly) exercises the same activation path a
-        // real click on the label's text would take.
+        // so every hull starts hidden. spec-11-7 (#36): the toggle no longer
+        // renders permanently — open the settings popover first (its own
+        // id/semantics are unchanged, only its container). Clicking the
+        // wrapping <label> (rather than the checkbox directly) exercises the
+        // same activation path a real click on the label's text would take.
+        page.locator("#canvas-settings-toggle").click();
         page.locator("label.community-toggle").click();
 
         // GLOBAL Search puts every Community on the trace (AnswerGlobalSearch

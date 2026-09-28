@@ -199,5 +199,6 @@ class LoadNewCorpusUiTest extends UiTestSupport {
         assertThat(page.locator("#graph-eyebrow")).isHidden();
         assertThat(page.locator("#community-toggle-wrap")).isHidden();
         assertThat(page.locator("#entity-type-toggle-wrap")).isHidden();
+        assertThat(page.locator("#canvas-settings-toggle")).isHidden();
     }
 }

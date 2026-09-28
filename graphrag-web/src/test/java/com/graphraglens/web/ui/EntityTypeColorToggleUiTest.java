@@ -19,6 +19,15 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
  */
 class EntityTypeColorToggleUiTest extends UiTestSupport {
 
+    // spec-11-7 (#36): the toggle is no longer permanently rendered — it
+    // now nests inside the settings popover behind `#canvas-settings-toggle`
+    // (its own id/semantics are unchanged, only its container). Opens it so
+    // the checkbox is actually interactable/visible before these tests
+    // exercise it.
+    private void openSettingsPopover() {
+        page.locator("#canvas-settings-toggle").click();
+    }
+
     private void tap(String identity) {
         boolean fired = (boolean) page.evaluate(
                 "identity => window.GraphCanvas.simulateTap(identity)", identity);
@@ -47,6 +56,7 @@ class EntityTypeColorToggleUiTest extends UiTestSupport {
     @Test
     void toggleDefaultsCheckedOnAFreshDemoDatasetLoad() {
         loadDemoDatasetAndWaitReady();
+        openSettingsPopover();
 
         Locator toggle = page.locator("#entity-type-color-toggle");
         assertThat(toggle).isChecked();
@@ -94,6 +104,7 @@ class EntityTypeColorToggleUiTest extends UiTestSupport {
         String coloredNodeFill = (String) page.evaluate(
                 "() => window.GraphCanvas.entityNodeFillColor('sherlock holmes::person')");
 
+        openSettingsPopover();
         page.locator("#entity-type-color-toggle").uncheck();
 
         String neutralChipBackground = chipStyle("backgroundColor");
@@ -208,9 +219,10 @@ class EntityTypeColorToggleUiTest extends UiTestSupport {
         String coloredNodeFill = normalizeColor((String) page.evaluate(
                 "() => window.GraphCanvas.entityNodeFillColor('sherlock holmes::person')"));
 
+        openSettingsPopover();
         // The community-visualization toggle's checkbox sits immediately
         // before this one in the DOM (both are lone-input labels inside
-        // `#canvas-top-right-stack`) — clicking it establishes a known
+        // the settings popover) — clicking it establishes a known
         // keyboard-focus starting point without depending on the whole
         // page's full Tab order, then a single real Tab key press moves
         // focus onto the entity-type toggle exactly as a keyboard-only
