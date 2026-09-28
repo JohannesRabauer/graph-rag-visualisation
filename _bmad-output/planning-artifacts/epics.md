@@ -900,3 +900,127 @@ So that both controls stay usable without obscuring the graph underneath them (G
 **And** the solution scales to additional floating controls being added later without requiring another one-off overlap fix (e.g. a collapsible/collapsed-icon state or a docked settings affordance, rather than more absolutely-positioned corner elements)
 
 **Design Notes:** Directly related to the entity-search/community-toggle overlap already fixed in Story 10.1 (#20) — confirm whether this is the same class of bug resurfacing with the color-code-entity-types toggle (Story 10.3) added into the same corner, and fix the underlying layout pattern rather than adding a third one-off position.
+
+## Epic 12: Durable Neo4j Persistence & Corpus History
+
+Found while investigating why the app loses all state on every restart (`spec-neo4j-corpus-persistence`, `_bmad-output/specs/spec-neo4j-corpus-persistence/SPEC.md`). `Neo4jGraphStoreAdapter`/`Neo4jVectorStoreAdapter` turned out to be empty compatibility-alias classes over the in-memory adapters — nothing has ever actually talked to the `neo4j` container `docker-compose.yml` already runs. This epic wires real Neo4j-backed persistence for the graph, vectors, and the corpus registry itself, then adds a history/switcher so every previously-ingested corpus survives an app restart and can be reselected. **Supersedes Story 9.3's "warn" resolution** (`9-3-warn-on-or-persist-corpus-and-trace-state-across-restarts`, currently `done` via a documented README warning) — corpus/graph/vector state now actually persists; Retrieval Trace state remains out of scope (spec non-goal) and Story 9.3's warning about trace loss stays accurate. Complements, doesn't duplicate, Story 10.4 (loading a *new* corpus while one is active) — this epic adds reselecting a *previous* one.
+**FRs covered:** none directly (delivers `spec-neo4j-corpus-persistence`'s CAP-1–CAP-8; governed by `ARCHITECTURE-SPINE.md`'s AD-2, AD-10, AD-11, AD-16, AD-17, AD-19–AD-23; hardens NFR3's restart-durability gap beyond Story 9.3's warning-only closure)
+
+### Story 12.1: Wire a Real Neo4j Adapter for the Knowledge Graph
+
+As the creator,
+I want `GraphStorePort` implemented against the real Neo4j Java Driver instead of the in-memory alias classes,
+So that a corpus's Entities, Relationships, Communities, and Community Memberships survive an app restart (CAP-1).
+
+**Acceptance Criteria:**
+
+**Given** a corpus has been ingested and its Knowledge Graph constructed
+**When** I inspect Neo4j directly (Browser or a GDS Leiden run) against that `corpusId`
+**Then** the same Entity/Relationship/Community/CommunityMembership nodes the app's UI displays are present, using Cypher `MERGE` on the composite keys AD-20 defines — `(corpusId, normalizedIdentity)` for Entity, `(corpusId, id)` for Community, `(corpusId, source, type, target)` for Relationship, `(corpusId, communityId, entityIdentity)` for CommunityMembership — never a blind `CREATE` and never the identity-only key AD-10/AD-11 originally read as
+**And** every corpus-scoped `GraphStorePort` method (`persistEntities(corpusId, ...)`, `entities(corpusId)`, etc.) is directly `@Override`-n with real corpus-scoped Cypher; the single-argument unscoped overloads throw `UnsupportedOperationException` rather than silently falling through to unscoped writes (AD-20's reviewer-closed trap)
+**And** after restarting the `app` container (Neo4j untouched), that corpus's graph is displayed identically without re-ingesting or re-calling the LLM
+**And** `Neo4j2026.08.1`'s GDS Leiden call still runs correctly against `UNDIRECTED`-projected relationships scoped to one `corpusId` (AD-4 unaffected by the scoping change)
+
+**Design Notes:** `graphrag-core` must not gain a Neo4j driver import (AD-1) — all of this lives in `graphrag-adapter-neo4j`. `InMemoryGraphStoreAdapter` stays in the module for the adapter's own unit tests only; it is never wired into the running app after this story (AD-21).
+
+### Story 12.2: Wire a Real Neo4j Adapter for the Vector Index
+
+As the creator,
+I want `VectorStorePort` implemented against real Neo4j vector storage instead of the in-memory alias class,
+So that a corpus's embedded chunks and fitted 2D projection survive an app restart (CAP-2).
+
+**Acceptance Criteria:**
+
+**Given** a corpus has had its vector index constructed (`ConstructVectorIndex`)
+**When** the app restarts
+**Then** the Vector Space view and the Vector Baseline query mode for that `corpusId` work identically to before the restart, with no re-embedding
+**And** chunk embeddings are stored on `Chunk` nodes MERGE-keyed on `(corpusId, chunk.id)`, indexed by exactly one vector index spanning every corpus (never one index per corpus), filtered by `corpusId` via in-index filtering at query time
+**And** the adapter uses the current Cypher `SEARCH` clause against a `LIST<FLOAT>` embedding property — never the deprecated `db.index.vector.queryNodes`/`queryRelationships` procedures, and never assumes Enterprise-only native `VECTOR` typing (AD-17, corrected)
+**And** the fitted `ProjectionModel` is stored as one `(:ProjectionModel {corpusId, mean, pc1, pc2})` node per corpus, MERGE-keyed on `corpusId` alone
+
+**Design Notes:** Depends on Story 12.1 only for shared adapter-module scaffolding (Driver bean from Story 12.3); otherwise independently testable.
+
+### Story 12.3: Add Neo4j Connection Configuration with a Fail-Fast Startup Check
+
+As the creator,
+I want the app to connect to the `docker-compose` Neo4j service via externally configurable settings, and to fail loudly if it can't,
+So that an unreachable Neo4j is an obvious startup error, never a silent degrade back to in-memory behavior (CAP-3).
+
+**Acceptance Criteria:**
+
+**Given** the app is starting up
+**When** it builds its Neo4j `Driver` bean
+**Then** it uses `org.neo4j.driver:neo4j-java-driver` directly (never `spring-boot-starter-data-neo4j`), configured from `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` env vars (defaults `bolt://neo4j:7687` / `neo4j` / matching `docker-compose.yml`'s existing `NEO4J_PASSWORD` default)
+**And** `driver.verifyConnectivity()` runs at `ApplicationReadyEvent`; if it fails, startup aborts with a clear, logged error
+**Given** `docker-compose.yml`'s `app` service
+**When** this story ships
+**Then** it gains the three new env vars, sourced the same way `OPENAI_API_KEY` already is
+**And** `ParserConfig`'s `@Bean` methods construct `Neo4jGraphStoreAdapter`/`Neo4jVectorStoreAdapter` (wired with this Driver bean) instead of the in-memory classes
+
+**Design Notes:** This is the story that actually flips the switch from "everything in-memory" to "everything Neo4j" — Stories 12.1/12.2 build the adapters, this one wires them in and makes the failure mode visible (AD-21).
+
+### Story 12.4: Replace `CorpusStore` with a Durable Neo4j-Backed Corpus Registry
+
+As the creator,
+I want corpus bookkeeping (name, status, timestamps) persisted to Neo4j instead of an in-memory map,
+So that the list of corpora I've ingested survives an app restart, not just the graph data itself (CAP-4).
+
+**Acceptance Criteria:**
+
+**Given** `CorpusStore`'s in-memory maps are deleted outright (no cache layer kept in front of Neo4j)
+**When** `CorpusController` needs any of `put`/`markReady`/`markFailed`/`get`/`status`/`size`
+**Then** it calls a new `Neo4jCorpusRegistry` (a plain Spring-managed class in `graphrag-adapter-neo4j`, **not** a new `graphrag-core` port — AD-19) which persists `CorpusMeta` nodes (`corpusId`, derived name, document filenames, workflow status, `createdAt`, `lastActivatedAt`) MERGE-keyed on `corpusId` alone
+**And** `CorpusWorkflowStatus` (`BUILDING`/`READY`/`FAILED`) moves from its current home nested in `CorpusStore.java` to `graphrag-adapter-neo4j`, alongside `Neo4jCorpusRegistry`
+**And** demo/offline corpora (`markOffline`, Story 9.1) are the one exception — never written as `CorpusMeta` nodes, held only in a small in-process set exactly as `CorpusStore` held them today, still lost on restart
+**And** `lastActivatedAt` is initialized to the same value as `createdAt` at corpus-creation time (never left null), and both timestamps are written from `graphrag-web`'s own `Instant.now()` passed as a Cypher parameter, never Neo4j's server-side `datetime()`
+**And** after restarting the app, previously-ingested corpora still appear with their correct name and status without being re-uploaded
+**And** AD-16's query gate (`409` on `BUILDING`/`FAILED`) behaves identically to before — only where the status is read from and stored has changed
+
+### Story 12.5: Reconcile Interrupted Corpora to `FAILED` on Startup
+
+As the creator,
+I want any corpus still `BUILDING` when the app starts to be automatically marked `FAILED`,
+So that a crash mid-ingestion never leaves a corpus permanently stuck with no way to see it failed or retry (CAP-8).
+
+**Acceptance Criteria:**
+
+**Given** a corpus was `BUILDING` when the `app` process died (killed, crashed, or force-stopped)
+**When** the app restarts
+**Then** an `ApplicationReadyEvent` listener, running immediately after Story 12.3's connectivity check succeeds and before any HTTP traffic is accepted, transitions that corpus's `CorpusMeta` from `BUILDING` to `FAILED`
+**And** this transition is one conditional Cypher write per corpus (`MATCH (c:CorpusMeta {corpusId: $id}) WHERE c.status = 'BUILDING' SET c.status = 'FAILED'`) inside Neo4j's own transaction — never a read into the JVM followed by a separate write — so it stays correct even if two `app` containers briefly overlap during a redeploy
+**And** the corpus then shows as `FAILED` in the history list (Story 12.7), consistent with any other failed ingestion
+
+### Story 12.6: Add Explicit Corpus Activation and History List Endpoints
+
+As the creator,
+I want a `GET /api/corpora` endpoint listing every retained corpus and a `POST /api/corpora/{corpusId}/activate` endpoint,
+So that the frontend has what it needs to show corpus history and record which one I'm actively working on (CAP-5/CAP-6, backend half).
+
+**Acceptance Criteria:**
+
+**Given** three corpora have been ingested across two app restarts
+**When** I call `GET /api/corpora`
+**Then** it returns all three (id, name, status, `createdAt`, `lastActivatedAt`) sourced from `Neo4jCorpusRegistry`, ordered by `lastActivatedAt` descending
+**Given** any retained corpus
+**When** I call `POST /api/corpora/{corpusId}/activate`
+**Then** that corpus's `lastActivatedAt` updates to now, and this is the *only* thing that updates it — query, vector-space, and progress traffic never touch it (AD-22)
+**And** no server-side "current active corpus" singleton is introduced — activation is purely a `CorpusMeta` timestamp update, ordering is entirely how the frontend interprets `GET /api/corpora`'s response
+
+### Story 12.7: Build the Corpus History Switcher and Auto-Restore on Load
+
+As the creator,
+I want to see every corpus I've ever ingested in a history list, click one to make it active, and have the app reopen on whichever I was last using,
+So that I never lose track of past work to a restart and never have to re-ingest to get back to it (CAP-5/CAP-6/CAP-7, frontend half).
+
+**Acceptance Criteria:**
+
+**Given** two or more previously-ingested corpora exist
+**When** the main screen loads
+**Then** it calls `GET /api/corpora`, renders the results as a selectable history list (name, status, timestamps), and auto-sets `activeCorpusId` to the entry with the most recent `lastActivatedAt` — then calls `POST /api/corpora/{corpusId}/activate` for that same corpus, so opening the app itself counts as activating it
+**Given** the history list is showing and a non-active corpus is clicked
+**When** the click is handled
+**Then** `activeCorpusId` reassigns to it, `POST .../activate` is called for it, and the graph canvas, vector-space view, and query panel all re-render against the newly-selected `corpusId` within the same page load — no full page reload, no re-ingestion
+**And** a corpus showing `FAILED` (including one reconciled by Story 12.5) is visibly distinguishable in the list from `READY`/`BUILDING`, consistent with AD-16's existing query gate
+**And** demo/offline corpora (Story 9.1) appear in the list only for the current session — never reappearing after a restart, since Story 12.4 never persists them
+
+**Design Notes:** Builds on the existing corpus-chip UI pattern from Story 10.4's "start over" flow — this adds *switching to a previous* corpus alongside that story's *replace with a new* one, not a competing UI.

@@ -7,7 +7,7 @@ paradigm: 'Hexagonal Architecture (Ports & Adapters)'
 scope: 'Whole system'
 status: final
 created: 2026-09-19
-updated: 2026-09-20
+updated: 2026-09-28
 binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22]
 sources:
   - _bmad-output/planning-artifacts/briefs/brief-graph-rag-visualisation-2026-09-19/brief.md
@@ -15,6 +15,8 @@ sources:
   - _bmad-output/planning-artifacts/prds/prd-graph-rag-visualisation-2026-09-19/prd.md
   - _bmad-output/planning-artifacts/ux-designs/ux-graph-rag-visualisation-2026-09-19/DESIGN.md
   - _bmad-output/planning-artifacts/ux-designs/ux-graph-rag-visualisation-2026-09-19/EXPERIENCE.md
+  - _bmad-output/specs/spec-neo4j-corpus-persistence/SPEC.md
+  - _bmad-output/specs/spec-neo4j-corpus-persistence/brownfield.md
 companions: []
 ---
 
@@ -142,23 +144,61 @@ graph TD
 - **Prevents:** A second build toolchain (Node/npm/a bundler) creeping into a project explicitly meant to stay Java-native; a contributor assuming a compile step exists for client JS when none does.
 - **Rule:** The page shell (layout, chat panel scaffolding, toggles, initial state) is server-rendered via Thymeleaf templates in `graphrag-web/src/main/resources/templates/`. Cytoscape.js and any other client-side JavaScript (the graph canvas, replay scrubber, SSE consumption) are plain, unbundled `.js` files under `graphrag-web/src/main/resources/static/js/` — vendored or CDN-loaded, never TypeScript, never passed through a bundler. There is no `frontend/` module, no `package.json`-driven build step anywhere in the project. **Test-only exception (added 2026-09-20):** `graphrag-web`'s test sources may depend on Playwright-Java (a Maven test-scope dependency; see `graphrag-web/pom.xml` and `src/test/java/.../ui/`) to drive a real headless browser for UI-behavior tests. Playwright-Java bundles a Node-based automation driver internally, but it is a test-runtime dependency invoked via `mvn test`, never an authoring or build step for the app's own JS — no `package.json`, no `npm install`, and no bundler is introduced into the shipped app or anywhere in the repository as a result.
 
-### AD-16 — Corpus workflow status gates Query at the web layer (added 2026-09-20)
+### AD-16 — Corpus workflow status gates Query at the web layer (added 2026-09-20; amended 2026-09-28)
 
-- **Binds:** `graphrag-web`'s `CorpusController`/`CorpusStore`; FR-8–FR-11.
+- **Binds:** `graphrag-web`'s `CorpusController`/corpus registry; FR-8–FR-11.
 - **Prevents:** A presenter's LOCAL/GLOBAL question landing against a Corpus that hasn't finished ingesting (or that failed) and getting a confusing, partial, or misleading answer instead of a clear "still building" message mid-demo. This reverses this project's own original UX allowance — EXPERIENCE.md's now-superseded "queries proceed against a partial graph" decision, the same allowance AD-14 was originally written to protect (see AD-14's reconciliation note above) — a deliberate, accepted trade-off from the `spec-demo-ready-showcase-workflow.md` story, not an oversight.
-- **Rule:** `CorpusController.query()` checks `CorpusStore.status(corpusId)` *before* invoking either use case. A `BUILDING` or `FAILED` Corpus responds `409 Conflict` with a plain-language message, and neither `AnswerLocalSearch` nor `AnswerGlobalSearch` is invoked at all — no use case call, no read, no partial answer. This gate lives entirely in `graphrag-web`, above the use-case boundary AD-14 governs: once a read use case *is* invoked (Corpus is `READY`), it remains exactly as lock-free and non-blocking as AD-14 specifies. Graph exploration (FR-16–FR-17) has no equivalent gate and needs none — since the 2026-09-20 Explore-into-main-screen merge it is pure client-side canvas interaction with elements already received via SSE (see AD-14's superseded note), never a server call this gate could apply to.
+- **Rule:** `CorpusController.query()` checks the corpus's status *before* invoking either use case. A `BUILDING` or `FAILED` Corpus responds `409 Conflict` with a plain-language message, and neither `AnswerLocalSearch` nor `AnswerGlobalSearch` is invoked at all — no use case call, no read, no partial answer. This gate lives entirely in `graphrag-web`, above the use-case boundary AD-14 governs: once a read use case *is* invoked (Corpus is `READY`), it remains exactly as lock-free and non-blocking as AD-14 specifies. Graph exploration (FR-16–FR-17) has no equivalent gate and needs none — since the 2026-09-20 Explore-into-main-screen merge it is pure client-side canvas interaction with elements already received via SSE (see AD-14's superseded note), never a server call this gate could apply to. **Amended 2026-09-28 (spec-neo4j-corpus-persistence):** the in-memory `CorpusStore` this rule originally cited is removed entirely (AD-19); every operation `CorpusController` used to perform against it (`put`/`markReady`/`markFailed`/`get`/`status`/`size`/`isOffline`/`markOffline`) now goes through `Neo4jCorpusRegistry` (`graphrag-adapter-neo4j`) instead, which persists the durable ones (all but the offline-id set, per AD-19) instead of holding them in a `ConcurrentHashMap`. The query gate's behavior is unchanged — only where the status is read from and how it's stored.
 
-### AD-17 — Vector subsystem reuses existing adapters; no new container (added 2026-09-20, v1.1)
+### AD-17 — Vector subsystem reuses existing adapters; no new container (added 2026-09-20, v1.1; amended 2026-09-28)
 
 - **Binds:** New `EmbeddingPort`, `VectorStorePort` in `graphrag-core`; `AnswerVectorBaseline`, `ConstructVectorIndex` use cases; FR-19–FR-22.
 - **Prevents:** A third data-store container (a dedicated vector DB) creeping in and violating AD-8's "exactly two containers" rule; LangChain4j/OpenAI or Neo4j-driver types leaking outside their existing adapter boundaries the way AD-3/AD-2 already prevent for LLM and graph access.
-- **Rule:** `EmbeddingPort` is implemented by the *existing* `graphrag-adapter-langchain4j` (LangChain4j already wraps OpenAI embeddings — no new adapter module). `VectorStorePort` is implemented by the *existing* `graphrag-adapter-neo4j`, using Neo4j 2026.x's native vector index rather than a separate vector database — this is what keeps AD-8 intact. `ConstructVectorIndex` runs as its own step alongside `IngestCorpus` (chunk the Corpus, embed each chunk via `EmbeddingPort`, persist via `VectorStorePort`); it does not block or gate Entity/Relationship extraction, and vice versa. The 2D projection used by the Vector Space view (EXPERIENCE.md) is computed once during this step and persisted alongside the vectors — never recomputed per query.
+- **Rule:** `EmbeddingPort` is implemented by the *existing* `graphrag-adapter-langchain4j` (LangChain4j already wraps OpenAI embeddings — no new adapter module). `VectorStorePort` is implemented by the *existing* `graphrag-adapter-neo4j`, using Neo4j 2026.x's native vector index rather than a separate vector database — this is what keeps AD-8 intact. `ConstructVectorIndex` runs as its own step alongside `IngestCorpus` (chunk the Corpus, embed each chunk via `EmbeddingPort`, persist via `VectorStorePort`); it does not block or gate Entity/Relationship extraction, and vice versa. The 2D projection used by the Vector Space view (EXPERIENCE.md) is computed once during this step and persisted alongside the vectors — never recomputed per query. **Amended 2026-09-28 (spec-neo4j-corpus-persistence, first real implementation of this AD):** exactly one vector index spans every corpus's `Chunk` nodes — never one index per corpus, which would proliferate unboundedly since corpora are retained indefinitely (AD-20) — filtered by the `corpusId` property at query time via in-index filtering. **Correction, 2026-09-28 review:** Community Edition indexes a `LIST<FLOAT>` embedding property, not Enterprise/Aura's native `VECTOR` type — "vector index," not "native vector index." In-index filtering (`SEARCH ... WHERE`) reached general availability on Community Edition specifically as of 2026.04 (not 2026.01, which was Enterprise-only preview) — the same release that deprecated the older `db.index.vector.queryNodes`/`queryRelationships` procedures in favor of the Cypher `SEARCH` clause. Since `docker-compose.yml` pins `neo4j:2026.08.1-community` (well past 2026.04), the adapter must use the current `SEARCH`-clause syntax against a `LIST<FLOAT>` property. Sources: neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/, community.neo4j.com/t/search-clause-with-where-in-community-edition-ga-status-and-supported-predicates-for-multi-tenant-filtering/78969. The fitted `ProjectionModel` is one `(:ProjectionModel {corpusId, mean, pc1, pc2})` node per corpus, MERGE-keyed on `corpusId` alone.
 
 ### AD-18 — Query mode and trace-step shape extend for DRIFT and the Vector Baseline (added 2026-09-20, v1.1)
 
 - **Binds:** AD-13 (query contract); AD-5 (trace steps); `AnswerDriftSearch`, `AnswerVectorBaseline` use cases; FR-18, FR-21.
 - **Prevents:** AD-13's mode enum and AD-5's step-kind set silently going stale as v1.1 adds real new modes/step kinds, without reopening or contradicting Epic 3/4/5's already-`review` stories built against the original AD-5/AD-13 text.
 - **Rule:** AD-13's `mode` field extends to `"LOCAL" | "GLOBAL" | "DRIFT"`; response shapes (`answer` / `noAnswer` / `error`) are unchanged. AD-5's trace-step model extends with two new step kinds beyond "Entity, Relationship, or Community touched": a **sub-question-spawned** step (DRIFT only, carries the spawned question text and its parent community pass) and a **chunk-retrieved-via-similarity** step (Vector Baseline only, carries the chunk id and its similarity score). Both remain part of one ordered step sequence per AD-5's "never an unordered set" rule. The Vector Baseline's trace is a *separate* trace (its own `traceId`, per AD-5), never merged into the same trace as the GraphRAG answer it's compared against — the Compare CTA (EXPERIENCE.md) triggers a second, independent `AnswerVectorBaseline` call, not a mode branch inside the original query.
+
+### AD-19 — Corpus registry persistence lives in `graphrag-adapter-neo4j`, but is not a `graphrag-core` port (added 2026-09-28)
+
+- **Binds:** `graphrag-adapter-neo4j` (new `Neo4jCorpusRegistry`); `graphrag-web`'s `CorpusController`; supersedes `CorpusStore`.
+- **Prevents:** Two incompatible ways this could otherwise go — (a) `graphrag-web` gaining its own direct Neo4j driver usage for corpus bookkeeping, splitting Neo4j access across two modules and undermining AD-2's single-module driver rule; or (b) corpus workflow status/activation-history bookkeeping (demo-app concerns, not GraphRAG-library concerns) leaking into `graphrag-core`'s port surface, forcing every future library consumer to implement a registry port they don't need.
+- **Rule:** The `CorpusStore` class is deleted outright — there is no in-memory cache layer in front of Neo4j. `Neo4jCorpusRegistry` is its sole replacement: a plain Spring-managed class in `graphrag-adapter-neo4j` (*not* a `graphrag-core` port implementation) that persists `CorpusMeta` nodes (id, derived name, document filenames, workflow status, createdAt, lastActivatedAt) via the same Neo4j Java Driver used by `GraphStorePort`/`VectorStorePort`. `graphrag-web` calls it directly, the same way it calls other adapter-side Spring beans, for every operation `CorpusStore` used to serve (`put`/`markReady`/`markFailed`/`get`/`status`/`size`). The one thing `Neo4jCorpusRegistry` still holds in a plain in-process field, not in Neo4j, is the offline-corpus-id set: demo/offline corpora (`markOffline`, Story 9.1) are never written as `CorpusMeta` nodes, and that small transient set is lost on restart exactly as it is today — a deliberate, narrow exception to "no cache layer," not a contradiction of it. The `CorpusWorkflowStatus` enum (`BUILDING`/`READY`/`FAILED`), currently nested inside `CorpusStore.java`, moves to `graphrag-adapter-neo4j` alongside `Neo4jCorpusRegistry` — `graphrag-web` already depends on `graphrag-adapter-neo4j` (never the reverse), so this is a relocation along the existing dependency direction, not a hexagon inversion.
+
+### AD-20 — Every Neo4j node/constraint is scoped by `corpusId`; nothing is keyed globally (added 2026-09-28)
+
+- **Binds:** `graphrag-adapter-neo4j`'s `GraphStorePort`/`VectorStorePort`/`Neo4jCorpusRegistry` implementations; amends AD-10, AD-11.
+- **Prevents:** Two independently-built write paths picking different scoping for the same node type — in particular, `DetectCommunities` generates `Community.id` as a per-run sequential string (`"community-0"`, `"community-1"`, ...), which is **not** globally unique, so two different corpora's communities would silently `MERGE` onto the same node under AD-11's original `{id, summary}` key alone. `Entity.normalizedIdentity()` (lowercased `name::type`) is equally repeatable across corpora (two corpora both mentioning "Apple").
+- **Rule:** Every node written by these adapters carries an explicit `corpusId` property, and every uniqueness constraint / `MERGE` key includes it:
+  - `Entity`: `(corpusId, normalizedIdentity)` — amends AD-10, which read as identity-only.
+  - `Community`: `(corpusId, id)` — amends AD-11, which read as `id`-only.
+  - `Relationship`: `(corpusId, source, type, target)`.
+  - `CommunityMembership`: `(corpusId, communityId, entityIdentity)`.
+  - `Chunk`: `(corpusId, chunk.id)` (the domain type already carries `corpusId`, per `Chunk.java`).
+  - `CorpusMeta`: `corpusId` alone — it *is* the corpus.
+  Neo4j `CREATE CONSTRAINT ... IS UNIQUE` is declared for each composite key at adapter startup (idempotent, safe to run every boot).
+  **Reviewer-found trap, closed 2026-09-28:** `GraphStorePort`'s single-argument overloads (`persistEntities(Collection<Entity>)`, etc.) are the interface's *abstract* methods; the `corpusId`-scoped overloads are `default` methods that fall back to the unscoped one unless explicitly overridden — a minimally-compliant implementer could satisfy the interface while silently writing globally-unscoped nodes, defeating this whole AD with no compile error. `Neo4jGraphStoreAdapter`/`Neo4jVectorStoreAdapter` must `@Override` every `corpusId`-scoped method directly with real corpus-scoped Cypher, and must make the unscoped single-argument overloads throw `UnsupportedOperationException` rather than silently delegating — every real call site in this codebase (`IngestCorpus`, `ConstructVectorIndex`, `CorpusController`) always has a `corpusId` on hand, so the unscoped path is dead code for these adapters and should fail loud if ever reached, not degrade isolation silently.
+
+### AD-21 — Neo4j connectivity is the plain driver only, fails fast, externally configured (added 2026-09-28)
+
+- **Binds:** `graphrag-adapter-neo4j`; `graphrag-web` startup sequence; `docker-compose.yml`.
+- **Prevents:** Silent in-memory fallback when Neo4j is unreachable (today's actual bug, since `Neo4jGraphStoreAdapter`/`Neo4jVectorStoreAdapter` are alias classes over the in-memory ones); a second Neo4j connection library (`spring-boot-starter-data-neo4j`) entering the dependency tree when AD-2 already rejected Spring Data Neo4j.
+- **Rule:** The `org.neo4j.driver:neo4j-java-driver` Maven artifact is added directly to `graphrag-adapter-neo4j` — never `spring-boot-starter-data-neo4j`. A single `Driver` bean is built from `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` env-backed properties (defaults `bolt://neo4j:7687` / `neo4j` / matching `docker-compose.yml`'s existing `NEO4J_PASSWORD` default). `driver.verifyConnectivity()` runs at `ApplicationReadyEvent`; a failure aborts startup with a clear, logged error — never a silent degrade to in-memory behavior. `docker-compose.yml`'s `app` service gains these three env vars, sourced the same way `OPENAI_API_KEY` already is. `ParserConfig`'s `@Bean` methods switch from constructing `InMemoryGraphStoreAdapter`/`InMemoryVectorStoreAdapter` directly to constructing the real `Neo4jGraphStoreAdapter`/`Neo4jVectorStoreAdapter` (wired with the `Driver` bean this AD defines) — the in-memory classes remain in `graphrag-adapter-neo4j` only for the adapters' own unit tests, never wired into the running app.
+
+### AD-22 — Corpus activation is an explicit call, never inferred from query traffic (added 2026-09-28)
+
+- **Binds:** `CorpusController`; the frontend corpus switcher; FR-8–FR-11 (query traffic must stay decoupled from this).
+- **Prevents:** A read use case's own request traffic silently mutating registry state (conflating "was queried against" with "was deliberately selected"), and an ambiguous startup-restore rule if any background/stale request could bump `lastActivatedAt`.
+- **Rule:** `POST /api/corpora/{corpusId}/activate` is the only *explicit user-triggered* update to `Neo4jCorpusRegistry`'s `lastActivatedAt`. The frontend calls it exactly twice: once when the switcher (CAP-7) selects a corpus, and once on page load for whichever corpus it auto-restores. **Reviewer-found gap, closed 2026-09-28:** ingestion completion is not one of those two triggers, so `lastActivatedAt` is initialized to the same value as `createdAt` at corpus-creation time (not left null) — otherwise a just-ingested corpus the user is actively looking at would sort behind older, previously-activated corpora and CAP-5's auto-restore would silently pick the wrong one on the next startup. `GET /api/corpora` (CAP-6) returns every retained corpus ordered by `lastActivatedAt` descending; the frontend picks the first entry to auto-restore (CAP-5) — this is pure frontend logic, no server-side "current active corpus" singleton exists. Query, vector-space, and progress endpoints never touch `lastActivatedAt`. All `CorpusMeta` timestamps (`createdAt`, `lastActivatedAt`) are written from `graphrag-web`'s own `Instant.now()`, passed as a Cypher parameter — never Neo4j's server-side `datetime()` — so ordering stays monotonic against one clock source rather than depending on driver/server clock agreement.
+
+### AD-23 — Startup reconciles any interrupted corpus to `FAILED` before serving traffic (added 2026-09-28)
+
+- **Binds:** `graphrag-web` startup sequence; `Neo4jCorpusRegistry`.
+- **Prevents:** A corpus whose ingestion was interrupted by an app crash surviving indefinitely in `BUILDING`, which AD-16's query gate would then block forever with no path to retry and no visible failure signal in the history list (CAP-6/CAP-7).
+- **Rule:** An `ApplicationReadyEvent` listener in `graphrag-web`, running immediately after AD-21's connectivity check succeeds and before the app accepts any HTTP traffic, transitions every `CorpusMeta` still in `BUILDING` status to `FAILED`. This is the only place a corpus is ever auto-transitioned to `FAILED` outside of an actual ingestion error. **Reviewer-found gap, closed 2026-09-28:** the literal in-JVM race this AD was written against can't happen (an old process's `CompletableFuture` ingestion work dies with the JVM), but an overlap-window redeploy — two `app` containers briefly live against one `neo4j` — reproduces the same race by a different mechanism, since AD-8 fixes the *service topology* (exactly `app` + `neo4j`) but not container replica count. The sweep is therefore a single conditional Cypher write, not a read-then-write: `MATCH (c:CorpusMeta {corpusId: $id}) WHERE c.status = 'BUILDING' SET c.status = 'FAILED'`, scoped per corpus inside Neo4j's own transaction — never a read into the JVM followed by a separate write — so two overlapping `app` instances each running this sweep converge on the same result instead of racing on a stale in-memory read.
 
 ## Consistency Conventions
 
@@ -191,7 +231,8 @@ graphrag-lens/
     src/main/java/.../usecase/    # IngestCorpus, DetectCommunities, AnswerLocalSearch, AnswerGlobalSearch,
                                    # AnswerDriftSearch, ConstructVectorIndex, AnswerVectorBaseline (v1.1)
     src/main/java/.../port/       # GraphStorePort, LlmPort, DocumentParserPort, EmbeddingPort, VectorStorePort (v1.1)
-  graphrag-adapter-neo4j/         # implements GraphStorePort (driver + Cypher + GDS calls)
+  graphrag-adapter-neo4j/         # implements GraphStorePort/VectorStorePort (driver + Cypher + GDS calls);
+                                   # also Neo4jCorpusRegistry (plain class, not a core port — AD-19)
   graphrag-adapter-langchain4j/   # implements LlmPort (LangChain4j + OpenAI)
   graphrag-adapter-parsing/       # implements DocumentParserPort (plain text, PDFBox)
   graphrag-web/                   # Spring Boot: REST + SSE controllers, wires adapters into core
@@ -209,7 +250,7 @@ graph LR
 
 Single environment: a developer's own machine, via `docker-compose up`. No staging/production environment exists or is planned for v1 (PRD: single-user, local-only). Observability is deliberately minimal — application logs to console only; no metrics/tracing infrastructure — appropriate to a solo hobby project's actual operational needs, not an oversight.
 
-Neo4j graph schema (per AD-10, AD-11 — names and relationships only, not a full property list):
+Neo4j graph schema (per AD-10, AD-11, AD-17, AD-19, AD-20 — names and relationships only, not a full property list):
 
 ```mermaid
 erDiagram
@@ -217,16 +258,38 @@ erDiagram
     ENTITY ||--o{ RELATIONSHIP : "target of"
     ENTITY }o--o{ COMMUNITY : "BELONGS_TO"
     ENTITY ||--o{ TAG : "has"
+    CORPUS_META ||--o{ CHUNK : "chunks of"
+    CORPUS_META ||--o| PROJECTION_MODEL : "fitted for"
+    CORPUS_META {
+        string corpusId "merge key: corpusId alone"
+        string name
+        string status "BUILDING/READY/FAILED"
+        datetime createdAt
+        datetime lastActivatedAt
+    }
     COMMUNITY {
+        string corpusId
         string id
-        string summary
+        string summary "merge key: (corpusId, id)"
     }
     ENTITY {
-        string identityKey "merge key: lowercased name + type"
+        string corpusId
+        string identityKey "lowercased name + type; merge key: (corpusId, identityKey)"
+    }
+    CHUNK {
+        string corpusId
+        string id
+        float embedding "native Neo4j vector index; merge key: (corpusId, id)"
+    }
+    PROJECTION_MODEL {
+        string corpusId "merge key: corpusId alone"
+        float mean
+        float pc1
+        float pc2
     }
 ```
 
-Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of ingested documents (its identity lives in `graphrag-web`, not the graph), and a Retrieval Trace is transient, addressed by `traceId` (AD-5), never persisted.
+`CorpusMeta` (AD-19) is the only part of "Corpus" that becomes a Neo4j node — the registry entry (name, status, timestamps), never the original uploaded document bytes, which are not retained anywhere (spec non-goal). `RetrievalTrace` stays entirely outside Neo4j: transient, addressed by `traceId` (AD-5), never persisted — this is unchanged by this work.
 
 ## Capability → Architecture Map
 
@@ -242,6 +305,8 @@ Corpus and RetrievalTrace are not modeled as Neo4j nodes: a Corpus is a batch of
 | Live ingestion progress (EXPERIENCE.md State Patterns) | `graphrag-web` SSE endpoints | AD-7, AD-12 |
 | DRIFT Search (FR-18) *(v1.1)* | `AnswerDriftSearch` use case (orchestrates `AnswerLocalSearch` + Community summaries) | AD-1, AD-3, AD-6, AD-13, AD-18 |
 | Vector-RAG Comparison Baseline (FR-19–FR-22) *(v1.1)* | `ConstructVectorIndex`, `AnswerVectorBaseline` use cases; `EmbeddingPort`, `VectorStorePort` | AD-1, AD-17, AD-18 |
+| Real Neo4j persistence for graph/vector data (`spec-neo4j-corpus-persistence`) | `graphrag-adapter-neo4j`'s real `GraphStorePort`/`VectorStorePort` implementations (replacing the in-memory alias classes) | AD-2, AD-10, AD-11, AD-17, AD-20, AD-21 |
+| Durable corpus registry & history/switcher (`spec-neo4j-corpus-persistence`) | `Neo4jCorpusRegistry` (`graphrag-adapter-neo4j`); `CorpusController`'s new `GET /api/corpora` + `POST .../activate`; frontend switcher (replaces `CorpusStore`) | AD-16, AD-19, AD-20, AD-21, AD-22, AD-23 |
 
 ## Deferred
 

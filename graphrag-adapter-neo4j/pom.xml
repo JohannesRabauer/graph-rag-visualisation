@@ -19,12 +19,24 @@
     Neo4j adapter implementing the GraphStorePort for graph persistence.
   </description>
 
+  <properties>
+    <neo4j-java-driver.version>5.28.4</neo4j-java-driver.version>
+    <testcontainers.version>1.20.4</testcontainers.version>
+  </properties>
+
   <dependencyManagement>
     <dependencies>
       <dependency>
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
         <version>5.14.4</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -38,7 +50,22 @@
       <version>${graphrag-core.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.neo4j.driver</groupId>
+      <artifactId>neo4j-java-driver</artifactId>
+      <version>${neo4j-java-driver.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>neo4j</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>

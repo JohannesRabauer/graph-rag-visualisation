@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-19-2026 13:59
-last_updated: '2026-09-27'
+last_updated: '2026-09-28'
 project: graphrag-lens
 project_key: NOKEY
 tracking_system: file-system
@@ -111,7 +111,17 @@ development_status:
   11-2-make-the-chat-history-scrollable-with-a-pinned-composer: done
   11-3-fix-retrieval-trace-replay-not-rendering-or-highlighting: done
   11-4-clarify-and-verify-compare-with-vector-search-behavior: done
-  11-5-tune-graph-layout-so-communities-and-nodes-aren-t-wildly-far-apart: done
+  11-5-tune-graph-layout-so-communities-and-nodes-aren-t-wildly-far: done
   11-6-add-zoom-in-out-controls-for-the-graph-canvas: done
-  11-7-make-the-community-formation-and-color-code-entity-types-toggles-non-blocking: done
+  11-7-make-the-community-formation-and-color-code-entity-types-tog: done
   epic-11-retrospective: optional
+
+  epic-12: in-progress
+  12-1-wire-a-real-neo4j-adapter-for-the-knowledge-graph: review
+  12-2-wire-a-real-neo4j-adapter-for-the-vector-index: backlog
+  12-3-add-neo4j-connection-configuration-with-a-fail-fast-startup: backlog
+  12-4-replace-corpusstore-with-a-durable-neo4j-backed-corpus-regis: backlog
+  12-5-reconcile-interrupted-corpora-to-failed-on-startup: backlog
+  12-6-add-explicit-corpus-activation-and-history-list-endpoints: backlog
+  12-7-build-the-corpus-history-switcher-and-auto-restore-on-load: backlog
+  epic-12-retrospective: optional
