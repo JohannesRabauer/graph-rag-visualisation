@@ -126,4 +126,40 @@ class Neo4jCorpusRegistryTest {
 
         assertFalse(restarted.isOffline(corpusId));
     }
+
+    @Test
+    void reconcileInterruptedCorporaFlipsOnlyBuildingCorporaToFailed() {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+
+        Corpus interrupted = newCorpus("corpus-building-" + System.nanoTime());
+        registry.put(interrupted); // left BUILDING, as if by a crash mid-ingestion
+
+        Corpus ready = newCorpus("corpus-ready-" + System.nanoTime());
+        registry.put(ready);
+        registry.markReady(ready.id());
+
+        Corpus failed = newCorpus("corpus-failed-" + System.nanoTime());
+        registry.put(failed);
+        registry.markFailed(failed.id());
+
+        long reconciledCount = registry.reconcileInterruptedCorpora();
+
+        assertEquals(1, reconciledCount);
+        assertEquals(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED, registry.status(interrupted.id()));
+        assertEquals(Neo4jCorpusRegistry.CorpusWorkflowStatus.READY, registry.status(ready.id()));
+        assertEquals(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED, registry.status(failed.id()));
+    }
+
+    @Test
+    void reconcileInterruptedCorporaIsANoOpWhenNoCorporaAreBuilding() {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+        Corpus ready = newCorpus("corpus-ready-only-" + System.nanoTime());
+        registry.put(ready);
+        registry.markReady(ready.id());
+
+        long reconciledCount = registry.reconcileInterruptedCorpora();
+
+        assertEquals(0, reconciledCount);
+        assertEquals(Neo4jCorpusRegistry.CorpusWorkflowStatus.READY, registry.status(ready.id()));
+    }
 }

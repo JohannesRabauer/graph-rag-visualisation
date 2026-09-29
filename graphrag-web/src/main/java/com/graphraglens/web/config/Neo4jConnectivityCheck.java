@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,9 +38,24 @@ import org.springframework.stereotype.Component;
  * broken Neo4j connection is detected. In practice that window is small and
  * this still aborts startup well before the app would otherwise appear
  * healthy.
+ *
+ * <p>Explicitly ordered early ({@link Ordered#HIGHEST_PRECEDENCE}) so that
+ * the reconciliation listener (Story 12.5), ordered after it, is guaranteed
+ * to observe a successful connectivity check first -- Spring gives no
+ * default ordering guarantee across {@code ApplicationListener} beans
+ * reacting to the same event, so relative order must be explicit on both
+ * sides.
  */
 @Component
+@Order(Neo4jConnectivityCheck.ORDER)
 public class Neo4jConnectivityCheck implements ApplicationListener<ApplicationReadyEvent> {
+
+    /**
+     * Shared with {@link InterruptedCorpusReconciler}, which orders itself at
+     * {@code ORDER + 1} so the relative ordering between the two listeners is
+     * declared in exactly one place.
+     */
+    static final int ORDER = Ordered.HIGHEST_PRECEDENCE;
 
     private static final Logger LOG = LoggerFactory.getLogger(Neo4jConnectivityCheck.class);
 

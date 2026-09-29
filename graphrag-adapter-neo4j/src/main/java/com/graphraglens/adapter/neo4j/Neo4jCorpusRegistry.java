@@ -175,4 +175,32 @@ public class Neo4jCorpusRegistry {
             });
         }
     }
+
+    /**
+     * Story 12.5: a startup sweep, not a per-corpus operation. Transitions
+     * every {@code CorpusMeta} node still {@code BUILDING} (left behind by a
+     * crash mid-ingestion) to {@code FAILED}, via one bulk conditional Cypher
+     * write inside Neo4j's own transaction -- never a read into the JVM
+     * followed by per-corpus writes, so it stays correct even if two {@code
+     * app} instances briefly overlap during a redeploy. Already-settled
+     * ({@code READY}/{@code FAILED}) corpora are untouched by the {@code
+     * WHERE} clause; an empty {@code CorpusMeta} set is a no-op.
+     *
+     * @return the number of {@code CorpusMeta} nodes actually flipped to
+     *     {@code FAILED}, taken from Neo4j's own write-result counters
+     *     ({@code propertiesSet()} -- exactly one property is set per
+     *     affected node by this query), so the caller can log it.
+     */
+    public long reconcileInterruptedCorpora() {
+        try (Session session = driver.session()) {
+            return session.executeWrite(tx -> tx.run(
+                            "MATCH (c:CorpusMeta) WHERE c.status = $buildingStatus SET c.status = $failedStatus",
+                            Map.of(
+                                    "buildingStatus", CorpusWorkflowStatus.BUILDING.name(),
+                                    "failedStatus", CorpusWorkflowStatus.FAILED.name()))
+                    .consume()
+                    .counters()
+                    .propertiesSet());
+        }
+    }
 }
