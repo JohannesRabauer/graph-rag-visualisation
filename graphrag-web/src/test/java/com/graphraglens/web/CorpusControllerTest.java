@@ -720,6 +720,104 @@ class CorpusControllerTest {
     }
 
     @Test
+    void listCorporaOrdersMostRecentlyActivatedFirst() throws Exception {
+        MockMultipartFile fileA = new MockMultipartFile(
+                "files", "history-a.txt", "text/plain", "a".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile fileB = new MockMultipartFile(
+                "files", "history-b.txt", "text/plain", "b".getBytes(StandardCharsets.UTF_8));
+
+        String bodyA = mockMvc.perform(multipart("/api/corpora").file(fileA))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusIdA = JsonPath.read(bodyA, "$.corpusId");
+
+        String bodyB = mockMvc.perform(multipart("/api/corpora").file(fileB))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusIdB = JsonPath.read(bodyB, "$.corpusId");
+
+        mockMvc.perform(post("/api/corpora/{corpusId}/activate", corpusIdA))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/corpora/{corpusId}/activate", corpusIdB))
+                .andExpect(status().isOk());
+
+        String listBody = mockMvc.perform(get("/api/corpora"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.corpora[*].name").exists())
+                .andExpect(jsonPath("$.corpora[*].status").exists())
+                .andExpect(jsonPath("$.corpora[*].createdAt").exists())
+                .andExpect(jsonPath("$.corpora[*].lastActivatedAt").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        List<String> ids = JsonPath.read(listBody, "$.corpora[*].id");
+        int indexOfA = ids.indexOf(corpusIdA);
+        int indexOfB = ids.indexOf(corpusIdB);
+        assertThat(indexOfA).isGreaterThanOrEqualTo(0);
+        assertThat(indexOfB).isGreaterThanOrEqualTo(0);
+        assertThat(indexOfB).isLessThan(indexOfA);
+
+        List<String> names = JsonPath.read(listBody, "$.corpora[*].name");
+        List<String> statuses = JsonPath.read(listBody, "$.corpora[*].status");
+        assertThat(names.get(indexOfA)).isEqualTo("history-a.txt");
+        assertThat(names.get(indexOfB)).isEqualTo("history-b.txt");
+        assertThat(statuses.get(indexOfA)).isIn("BUILDING", "READY", "FAILED");
+        assertThat(statuses.get(indexOfB)).isIn("BUILDING", "READY", "FAILED");
+    }
+
+    @Test
+    void activatingAnUnknownCorpusReturns404WithAPlainLanguageError() throws Exception {
+        mockMvc.perform(post("/api/corpora/{corpusId}/activate", "nonexistent-corpus"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value(
+                        "No corpus was found for id nonexistent-corpus"));
+    }
+
+    @Test
+    void activatingAnOfflineDemoCorpusStillReturns200() throws Exception {
+        String responseBody = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        // The write itself is harmless -- an offline corpus's lastActivatedAt is
+        // never read by list() while it stays offline (Neo4jCorpusRegistry#list()
+        // filters it out) -- this only pins down that activation is not blocked
+        // for an offline/demo corpus id.
+        mockMvc.perform(post("/api/corpora/{corpusId}/activate", corpusId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(corpusId))
+                .andExpect(jsonPath("$.activated").value(true));
+    }
+
+    @Test
+    void offlineDemoCorpusIsExcludedFromTheCorporaHistoryList() throws Exception {
+        String responseBody = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        String listBody = mockMvc.perform(get("/api/corpora"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        List<String> ids = JsonPath.read(listBody, "$.corpora[*].id");
+        assertThat(ids).doesNotContain(corpusId);
+    }
+
+    @Test
+    void emptyRegistryReturnsAnEmptyCorporaArrayRatherThanAnError() {
+        Neo4jCorpusRegistry emptyRegistry = org.mockito.Mockito.mock(Neo4jCorpusRegistry.class);
+        org.mockito.Mockito.when(emptyRegistry.list()).thenReturn(List.of());
+        CorpusController controller = new CorpusController(
+                null, emptyRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
+
+        ResponseEntity<Map<String, Object>> response = controller.corpora();
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).containsEntry("corpora", List.of());
+    }
+
+    @Test
     void uploadingAFileThatFailsToReadReturns500WithAGenericPlainLanguageError() throws Exception {
         MockMultipartFile file = new ThrowingMultipartFile("files", "broken.txt", "text/plain");
 

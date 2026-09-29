@@ -12,6 +12,8 @@ import org.neo4j.driver.exceptions.Neo4jException;
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -34,8 +36,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code ensureConstraint} shape.</p>
  *
  * <p>{@code createdAt}/{@code lastActivatedAt} are written from this class's
- * own {@link Instant#now()} as a Cypher parameter, never Neo4j's server-side
- * {@code datetime()} (AD-22). Raw document bytes are never persisted — only
+ * own {@link Instant#now()} (converted to {@link ZonedDateTime} at UTC, since
+ * the Neo4j Java driver has no direct {@code Instant} parameter mapping) as a
+ * Cypher parameter, never Neo4j's server-side {@code datetime()} (AD-22).
+ * Stored as Neo4j's native temporal type so {@code ORDER BY} sorts
+ * chronologically, not as a lexicographically-fragile string. Raw document
+ * bytes are never persisted — only
  * {@link Corpus#documentNames()} (filenames); {@link #get(String)}
  * reconstructs a {@link Corpus} using empty-content {@link UploadedDocument}
  * placeholders, since nothing downstream of a registry lookup reads document
@@ -76,7 +82,7 @@ public class Neo4jCorpusRegistry {
 
     public void put(Corpus corpus) {
         Objects.requireNonNull(corpus, "corpus");
-        String now = Instant.now().toString();
+        ZonedDateTime now = Instant.now().atZone(ZoneOffset.UTC);
         try (Session session = driver.session()) {
             session.executeWrite(tx -> {
                 tx.run("MERGE (c:CorpusMeta {corpusId: $corpusId}) "
@@ -171,6 +177,70 @@ public class Neo4jCorpusRegistry {
             session.executeWrite(tx -> {
                 tx.run("MATCH (c:CorpusMeta {corpusId: $corpusId}) SET c.status = $status",
                         Map.of("corpusId", corpusId, "status", status.name()));
+                return null;
+            });
+        }
+    }
+
+    /**
+     * A single retained corpus's registry-list entry, as returned by
+     * {@link #list()} -- deliberately not {@link Corpus} itself, since a
+     * history-list row needs workflow status and both timestamps but never
+     * document content.
+     */
+    public record CorpusSummary(
+            String corpusId,
+            String name,
+            CorpusWorkflowStatus status,
+            String createdAt,
+            String lastActivatedAt) {
+    }
+
+    /**
+     * Story 12.6: every retained corpus, ordered most-recently-activated
+     * first (via Cypher {@code ORDER BY}, not an in-JVM sort), excluding
+     * demo/offline corpora ({@link #isOffline(String)}) -- the durable
+     * history-list data source for {@code GET /api/corpora}.
+     */
+    public List<CorpusSummary> list() {
+        try (Session session = driver.session()) {
+            return session.executeRead(tx -> tx.run(
+                            "MATCH (c:CorpusMeta) RETURN c.corpusId AS corpusId, c.name AS name, "
+                                    + "c.status AS status, c.createdAt AS createdAt, "
+                                    + "c.lastActivatedAt AS lastActivatedAt "
+                                    + "ORDER BY c.lastActivatedAt DESC")
+                    .list())
+                    .stream()
+                    .map(record -> new CorpusSummary(
+                            record.get("corpusId").asString(),
+                            record.get("name").asString(),
+                            CorpusWorkflowStatus.valueOf(record.get("status").asString()),
+                            record.get("createdAt").asZonedDateTime().toInstant().toString(),
+                            record.get("lastActivatedAt").asZonedDateTime().toInstant().toString()))
+                    .filter(summary -> !isOffline(summary.corpusId()))
+                    .toList();
+        }
+    }
+
+    /**
+     * Story 12.6: the only path that ever updates {@code lastActivatedAt}
+     * after creation, called exclusively by {@code POST
+     * /api/corpora/{corpusId}/activate} -- never inferred from query traffic
+     * (AD per epic-12-context). Sets a fresh {@link Instant#now()}, written as
+     * a Cypher parameter, never Neo4j's server-side {@code datetime()} (AD-22).
+     * No-ops silently for an unknown {@code corpusId}; existence/404 is the
+     * controller's job, matching {@link #get(String)}'s
+     * {@code Optional}-then-{@code orElseThrow} pattern.
+     */
+    public void activate(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return;
+        }
+        ZonedDateTime now = Instant.now().atZone(ZoneOffset.UTC);
+        try (Session session = driver.session()) {
+            session.executeWrite(tx -> {
+                tx.run("MATCH (c:CorpusMeta {corpusId: $corpusId}) SET c.lastActivatedAt = $lastActivatedAt",
+                        Map.of("corpusId", corpusId, "lastActivatedAt", now));
                 return null;
             });
         }

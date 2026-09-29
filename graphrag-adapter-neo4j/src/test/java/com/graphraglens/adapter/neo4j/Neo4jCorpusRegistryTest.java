@@ -19,6 +19,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /**
  * Testcontainers-backed tests proving {@link Neo4jCorpusRegistry} behaves
@@ -161,5 +162,93 @@ class Neo4jCorpusRegistryTest {
 
         assertEquals(0, reconciledCount);
         assertEquals(Neo4jCorpusRegistry.CorpusWorkflowStatus.READY, registry.status(ready.id()));
+    }
+
+    /**
+     * The shared {@link #driver} accumulates {@code CorpusMeta} nodes across
+     * every test in this class, so ordering/exclusion assertions below filter
+     * {@link Neo4jCorpusRegistry#list()}'s full result down to just the ids
+     * each test itself created, rather than asserting on the list's overall
+     * size or contents.
+     */
+    private static List<Neo4jCorpusRegistry.CorpusSummary> listFiltered(Neo4jCorpusRegistry registry, String... ids) {
+        List<String> wanted = List.of(ids);
+        return registry.list().stream().filter(summary -> wanted.contains(summary.corpusId())).toList();
+    }
+
+    @Test
+    void listOrdersMostRecentlyActivatedFirst() throws InterruptedException {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+        Corpus a = newCorpus("corpus-list-a-" + System.nanoTime());
+        Corpus b = newCorpus("corpus-list-b-" + System.nanoTime());
+        Corpus c = newCorpus("corpus-list-c-" + System.nanoTime());
+        registry.put(a);
+        registry.put(b);
+        registry.put(c);
+
+        registry.activate(a.id());
+        Thread.sleep(5);
+        registry.activate(b.id());
+        Thread.sleep(5);
+        registry.activate(c.id());
+
+        List<Neo4jCorpusRegistry.CorpusSummary> filtered = listFiltered(registry, a.id(), b.id(), c.id());
+        assertEquals(3, filtered.size());
+        assertEquals(c.id(), filtered.get(0).corpusId());
+        assertEquals(b.id(), filtered.get(1).corpusId());
+        assertEquals(a.id(), filtered.get(2).corpusId());
+    }
+
+    @Test
+    void activatingAnEarlierCorpusMovesItBackToTheFront() throws InterruptedException {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+        Corpus a = newCorpus("corpus-reactivate-a-" + System.nanoTime());
+        Corpus b = newCorpus("corpus-reactivate-b-" + System.nanoTime());
+        registry.put(a);
+        registry.put(b);
+        registry.activate(b.id());
+
+        Thread.sleep(5);
+        registry.activate(a.id());
+
+        List<Neo4jCorpusRegistry.CorpusSummary> filtered = listFiltered(registry, a.id(), b.id());
+        assertEquals(a.id(), filtered.get(0).corpusId());
+        assertEquals(b.id(), filtered.get(1).corpusId());
+    }
+
+    @Test
+    void listExcludesOfflineCorpora() {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+        Corpus regular = newCorpus("corpus-online-" + System.nanoTime());
+        Corpus offline = newCorpus("corpus-offline-list-" + System.nanoTime());
+        registry.put(regular);
+        registry.put(offline);
+        registry.markOffline(offline.id());
+
+        List<Neo4jCorpusRegistry.CorpusSummary> filtered = listFiltered(registry, regular.id(), offline.id());
+
+        assertEquals(1, filtered.size());
+        assertEquals(regular.id(), filtered.get(0).corpusId());
+    }
+
+    @Test
+    void activateSetsLastActivatedAtToATimestampAfterCreation() throws InterruptedException {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+        Corpus corpus = newCorpus("corpus-activate-ts-" + System.nanoTime());
+        registry.put(corpus);
+        String createdLastActivatedAt = listFiltered(registry, corpus.id()).get(0).lastActivatedAt();
+
+        Thread.sleep(5);
+        registry.activate(corpus.id());
+
+        String updatedLastActivatedAt = listFiltered(registry, corpus.id()).get(0).lastActivatedAt();
+        assertTrue(updatedLastActivatedAt.compareTo(createdLastActivatedAt) > 0);
+    }
+
+    @Test
+    void activateSilentlyNoOpsForAnUnknownCorpusId() {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+
+        assertDoesNotThrow(() -> registry.activate("nonexistent-" + System.nanoTime()));
     }
 }

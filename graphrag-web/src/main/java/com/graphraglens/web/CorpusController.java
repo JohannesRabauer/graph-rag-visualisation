@@ -125,6 +125,44 @@ public class CorpusController {
         return corpusProgressService.register(corpusId);
     }
 
+    /**
+     * Story 12.6: every retained corpus, ordered most-recently-activated
+     * first -- the durable history-list data source for Story 12.7's
+     * switcher UI. Offline/demo corpora are excluded by
+     * {@link Neo4jCorpusRegistry#list()} itself.
+     */
+    @GetMapping("/api/corpora")
+    public ResponseEntity<Map<String, Object>> corpora() {
+        List<Map<String, Object>> corpora = corpusStore.list().stream()
+                .map(this::corpusSummaryPayload)
+                .toList();
+        return ResponseEntity.ok(Map.of("corpora", corpora));
+    }
+
+    /**
+     * Story 12.6: the only endpoint that ever updates {@code
+     * lastActivatedAt} -- never inferred from query/vector-space/progress
+     * traffic. 404s via the existing {@code IllegalArgumentException} ->
+     * {@link #handleIllegalArgumentException(IllegalArgumentException)}
+     * pattern already used by {@link #query}.
+     */
+    @PostMapping("/api/corpora/{corpusId}/activate")
+    public ResponseEntity<Map<String, Object>> activate(@PathVariable("corpusId") String corpusId) {
+        corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        corpusStore.activate(corpusId);
+        return ResponseEntity.ok(Map.of("id", corpusId, "activated", true));
+    }
+
+    private Map<String, Object> corpusSummaryPayload(Neo4jCorpusRegistry.CorpusSummary summary) {
+        return Map.of(
+                "id", summary.corpusId(),
+                "name", summary.name(),
+                "status", summary.status().name(),
+                "createdAt", summary.createdAt(),
+                "lastActivatedAt", summary.lastActivatedAt());
+    }
+
     @PostMapping("/api/corpora")
     public ResponseEntity<Map<String, Object>> upload(
             @RequestParam(value = "files", required = false) List<MultipartFile> files) {

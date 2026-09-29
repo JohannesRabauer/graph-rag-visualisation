@@ -122,6 +122,6 @@ development_status:
   12-3-add-neo4j-connection-configuration-with-a-fail-fast-startup: review
   12-4-replace-corpusstore-with-a-durable-neo4j-backed-corpus-regis: review
   12-5-reconcile-interrupted-corpora-to-failed-on-startup: review
-  12-6-add-explicit-corpus-activation-and-history-list-endpoints: backlog
+  12-6-add-explicit-corpus-activation-and-history-list-endpoints: review
   12-7-build-the-corpus-history-switcher-and-auto-restore-on-load: backlog
   epic-12-retrospective: optional
