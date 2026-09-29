@@ -4,8 +4,8 @@ import com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort;
 import com.graphraglens.adapter.langchain4j.LangChain4jLlmPort;
 import com.graphraglens.adapter.langchain4j.OpenAiEmbeddingPort;
 import com.graphraglens.adapter.langchain4j.OpenAiLlmPort;
-import com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter;
-import com.graphraglens.adapter.neo4j.InMemoryVectorStoreAdapter;
+import com.graphraglens.adapter.neo4j.Neo4jGraphStoreAdapter;
+import com.graphraglens.adapter.neo4j.Neo4jVectorStoreAdapter;
 import com.graphraglens.adapter.parsing.PdfDocumentParserAdapter;
 import com.graphraglens.adapter.parsing.PlainTextDocumentParserAdapter;
 import io.graphrag.core.port.DocumentParserPort;
@@ -16,6 +16,9 @@ import io.graphrag.core.port.VectorStorePort;
 import io.graphrag.core.usecase.AnswerVectorBaseline;
 import io.graphrag.core.usecase.ConstructVectorIndex;
 import io.graphrag.core.usecase.IngestCorpus;
+import org.neo4j.driver.AuthTokens;
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.GraphDatabase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -65,9 +68,26 @@ public class ParserConfig {
         return new LangChain4jLlmPort();
     }
 
+    /**
+     * The single connection source of truth for Neo4j: built from
+     * {@code NEO4J_URI}/{@code NEO4J_USERNAME}/{@code NEO4J_PASSWORD} (env
+     * vars or {@code -D} system properties), with defaults matching
+     * {@code docker-compose.yml}'s {@code neo4j} service (same host/port on
+     * the compose network, same default credentials as its own
+     * {@code NEO4J_AUTH}). Connectivity is not verified here — the driver is
+     * lazy — {@link Neo4jConnectivityCheck} performs the fail-fast check once
+     * the application is ready.
+     */
     @Bean
-    public GraphStorePort graphStorePort() {
-        return new InMemoryGraphStoreAdapter();
+    public Driver driver(@Value("${NEO4J_URI:bolt://neo4j:7687}") String neo4jUri,
+                         @Value("${NEO4J_USERNAME:neo4j}") String neo4jUsername,
+                         @Value("${NEO4J_PASSWORD:graphraglens}") String neo4jPassword) {
+        return GraphDatabase.driver(neo4jUri, AuthTokens.basic(neo4jUsername, neo4jPassword));
+    }
+
+    @Bean
+    public GraphStorePort graphStorePort(Driver driver) {
+        return new Neo4jGraphStoreAdapter(driver);
     }
 
     @Bean
@@ -83,8 +103,8 @@ public class ParserConfig {
     }
 
     @Bean
-    public VectorStorePort vectorStorePort() {
-        return new InMemoryVectorStoreAdapter();
+    public VectorStorePort vectorStorePort(Driver driver) {
+        return new Neo4jVectorStoreAdapter(driver);
     }
 
     @Bean

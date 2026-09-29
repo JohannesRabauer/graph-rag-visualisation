@@ -14,7 +14,7 @@ project along Hexagonal Architecture boundaries.
 | Module | Purpose |
 | --- | --- |
 | [`graphrag-core`](graphrag-core/README.md) | Framework-free hexagonal core. Domain model and port interfaces (`GraphStorePort`, `LlmPort`, `DocumentParserPort`). No dependency on Spring, the Neo4j Java Driver, or LangChain4j. See its own [README](graphrag-core/README.md) for the port contracts and a standalone usage example. |
-| `graphrag-adapter-neo4j` | Adapter stub for the future Neo4j graph-store implementation of `GraphStorePort`. |
+| `graphrag-adapter-neo4j` | Real Neo4j-backed implementation of `GraphStorePort`/`VectorStorePort`, using the plain Neo4j Java Driver (no Spring Data Neo4j). |
 | `graphrag-adapter-langchain4j` | Adapter stub for the future LangChain4j implementation of `LlmPort`. |
 | `graphrag-adapter-parsing` | Adapter stub for the future PDF/text parsing implementation of `DocumentParserPort`. |
 | `graphrag-web` | Spring Boot + Thymeleaf web application; the executable entry point. No Node/npm tooling anywhere in this module or the repository. |
@@ -36,6 +36,12 @@ OPENAI_API_KEY=sk-... docker compose up
 
 This is the only setup step: it builds the `app` image, starts Neo4j
 (with the GDS plugin) alongside it, and serves the app on port 8080.
+
+The app connects to Neo4j via `NEO4J_URI`/`NEO4J_USERNAME`/`NEO4J_PASSWORD`
+(defaults `bolt://neo4j:7687`/`neo4j`/`graphraglens`, matching the `neo4j`
+service's own `NEO4J_AUTH` default) and aborts startup with a clear error if
+Neo4j is unreachable, rather than silently falling back to any in-memory
+behavior.
 
 Caveat: `NEO4J_AUTH`/the Neo4j password is only applied when Neo4j's data
 volume is first created. If you change it after the first run, also run

@@ -29,7 +29,7 @@ class ReplayAfterCorpusResetUiTest extends UiTestSupport {
         page.locator("#chat-form .send-button").click();
 
         Locator replayCta = page.locator(".replay-cta");
-        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(40000));
         replayCta.click();
 
         Locator scrubber = page.locator("#replay-scrubber");
@@ -46,15 +46,22 @@ class ReplayAfterCorpusResetUiTest extends UiTestSupport {
         assertThat(page.locator("#canvas-idle")).isVisible();
 
         // Second Corpus, loaded through the re-shown idle controls.
+        // Wait for #workflow-status to become visible again before checking
+        // its text: resetToIdleState() hides it but leaves the first
+        // Corpus's stale "Ready" textContent in place, so checking text
+        // alone (ignoring the hidden attribute) can match that leftover
+        // state before the second Corpus's own render ever runs.
         page.locator("#demo-dataset-button").click();
+        assertThat(page.locator("#workflow-status"))
+                .not().isHidden(new LocatorAssertions.IsHiddenOptions().setTimeout(40000));
         assertThat(page.locator("#workflow-status-text"))
-                .containsText("Ready", new LocatorAssertions.ContainsTextOptions().setTimeout(20000));
+                .containsText("Ready", new LocatorAssertions.ContainsTextOptions().setTimeout(90000));
 
         page.locator("#chat-input").fill("Tell me about Irene Adler.");
         page.locator("#chat-form .send-button").click();
 
         Locator secondReplayCta = page.locator(".replay-cta").last();
-        assertThat(secondReplayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        assertThat(secondReplayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(40000));
         secondReplayCta.click();
 
         assertThat(scrubber).not().isHidden();

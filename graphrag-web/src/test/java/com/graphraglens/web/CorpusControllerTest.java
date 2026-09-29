@@ -18,6 +18,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -49,7 +51,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class CorpusControllerTest {
 
-    private static final long PIPELINE_TIMEOUT_MS = 5_000L;
+    // Was 5_000L before Story 12.3: graphStorePort()/vectorStorePort() are now
+    // real Neo4j-backed adapters (a Cypher round-trip per persisted
+    // entity/relationship/community, over the shared Testcontainers Neo4j)
+    // rather than in-memory maps, so the pipeline genuinely takes longer end
+    // to end. Widened rather than tightened elsewhere, to keep this an
+    // honest wait for real I/O instead of masking a regression.
+    private static final long PIPELINE_TIMEOUT_MS = 15_000L;
+
+    @DynamicPropertySource
+    static void neo4jProperties(DynamicPropertyRegistry registry) {
+        SharedNeo4jTestContainer.registerDynamicProperties(registry);
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -229,21 +242,20 @@ class CorpusControllerTest {
     void uploadingACorpusWithManyDisjointEntitiesGrowsCommunitiesAndMembershipsBeyondSharedTestClassState() throws Exception {
         // GraphStorePort is a shared, unreset @SpringBootTest singleton (no
         // per-Corpus isolation — see this story's Never boundary), so a bare
-        // non-empty check on communities()/communityMemberships() could pass
-        // from another test's leftover data. Capturing before/after sizes
-        // around the demo-dataset endpoint specifically is not enough either:
-        // its extraction is fully deterministic, so once any test in this
-        // class has run it once, its "community-N" ids and member identities
-        // are identical on every later run and simply overwrite the same map
-        // entries rather than growing them. To prove *this* test's own
-        // pipeline run produced new data, upload a corpus engineered to
-        // contain many mutually-unrelated named entities — comfortably more
-        // than the demo dataset could ever produce Communities for — so both
-        // collections are guaranteed to grow regardless of what earlier
-        // tests in this class already populated or what order tests run in.
-        int communitiesBefore = graphStorePort.communities().size();
-        int membershipsBefore = graphStorePort.communityMemberships().size();
-
+        // non-empty check on the unscoped communities()/communityMemberships()
+        // reads could pass from another test's leftover data. Since Story
+        // 12.3, GraphStorePort is also Neo4jGraphStoreAdapter, which (by
+        // design, AD-20) never overrides those unscoped reads -- they always
+        // return GraphStorePort's own empty default, regardless of what has
+        // been persisted -- so this test instead reads through the
+        // corpus-scoped overloads, keyed by this test's own freshly-generated
+        // corpusId. A brand-new corpusId is guaranteed to start with zero
+        // Communities/memberships regardless of what earlier tests in this
+        // class already populated or what order tests run in, so before/after
+        // counts against that one corpusId are enough to prove *this* test's
+        // own pipeline run produced new data -- no need for the
+        // many-mutually-unrelated-entities trick to force growth against a
+        // shared aggregate view any more.
         MockMultipartFile file = new MockMultipartFile(
                 "files", "many-entities.txt", "text/plain",
                 manyDisjointEntitiesCorpusText().getBytes(StandardCharsets.UTF_8));
@@ -255,11 +267,14 @@ class CorpusControllerTest {
                 .getContentAsString();
         String corpusId = JsonPath.read(responseBody, "$.corpusId");
 
+        assertThat(graphStorePort.communities(corpusId)).isEmpty();
+        assertThat(graphStorePort.communityMemberships(corpusId)).isEmpty();
+
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
                 .emit(eq(corpusId), eq("ingestion-complete"), any());
 
-        assertThat(graphStorePort.communities().size()).isGreaterThan(communitiesBefore);
-        assertThat(graphStorePort.communityMemberships().size()).isGreaterThan(membershipsBefore);
+        assertThat(graphStorePort.communities(corpusId)).isNotEmpty();
+        assertThat(graphStorePort.communityMemberships(corpusId)).isNotEmpty();
     }
 
     /**

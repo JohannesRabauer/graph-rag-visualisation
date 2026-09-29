@@ -23,6 +23,7 @@
   <properties>
     <spring-boot.version>4.1.1</spring-boot.version>
     <playwright.version>1.56.0</playwright.version>
+    <testcontainers.version>1.20.4</testcontainers.version>
   </properties>
 
   <dependencyManagement>
@@ -31,6 +32,13 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
         <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -92,6 +100,26 @@
       <groupId>com.microsoft.playwright</groupId>
       <artifactId>playwright</artifactId>
       <version>${playwright.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      Test-scope only: backs the JVM-wide singleton Neo4j instance shared by
+      CorpusControllerTest and every UiTestSupport-based UI test (Story 12.3),
+      since ParserConfig's graphStorePort()/vectorStorePort() beans are now
+      real Neo4j adapters and every @SpringBootTest context needs a reachable
+      Neo4j to even start. Not transitively inherited from
+      graphrag-adapter-neo4j (its own Testcontainers dependencies are
+      test-scope there too), so declared directly here, mirroring that
+      module's pom.xml.
+    -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>neo4j</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
