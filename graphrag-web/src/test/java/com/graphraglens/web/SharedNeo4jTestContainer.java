@@ -1,5 +1,8 @@
 package com.graphraglens.web;
 
+import org.neo4j.driver.AuthTokens;
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.GraphDatabase;
 import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -33,6 +36,8 @@ public final class SharedNeo4jTestContainer {
                     .withAdminPassword(PASSWORD)
                     .withReuse(true);
 
+    private static volatile Driver driver;
+
     static {
         try {
             INSTANCE.start();
@@ -63,5 +68,26 @@ public final class SharedNeo4jTestContainer {
         registry.add("NEO4J_URI", INSTANCE::getBoltUrl);
         registry.add("NEO4J_USERNAME", () -> USERNAME);
         registry.add("NEO4J_PASSWORD", () -> PASSWORD);
+    }
+
+    /**
+     * A JVM-wide singleton {@link Driver} against this shared container, for
+     * plain, non-Spring test classes (constructing a {@code
+     * Neo4jCorpusRegistry} directly) that don't go through
+     * {@link #registerDynamicProperties(DynamicPropertyRegistry)}'s
+     * {@code @DynamicPropertySource}/Spring-context wiring.
+     */
+    public static Driver driver() {
+        Driver result = driver;
+        if (result == null) {
+            synchronized (SharedNeo4jTestContainer.class) {
+                result = driver;
+                if (result == null) {
+                    result = GraphDatabase.driver(INSTANCE.getBoltUrl(), AuthTokens.basic(USERNAME, PASSWORD));
+                    driver = result;
+                }
+            }
+        }
+        return result;
     }
 }

@@ -2,6 +2,7 @@ package com.graphraglens.web;
 
 import com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort;
 import com.graphraglens.adapter.langchain4j.LangChain4jLlmPort;
+import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.EmbeddedChunk;
@@ -73,7 +74,7 @@ public class CorpusController {
                     + "(upload your own, or the live Demo Dataset) to ask your own question.";
 
     private final IngestCorpus ingestCorpus;
-    private final CorpusStore corpusStore;
+    private final Neo4jCorpusRegistry corpusStore;
     private final List<DocumentParserPort> documentParsers;
     private final DemoDatasetService demoDatasetService;
     private final CorpusProgressService corpusProgressService;
@@ -84,7 +85,7 @@ public class CorpusController {
     private final AnswerVectorBaseline answerVectorBaseline;
     private final VectorStorePort vectorStorePort;
 
-    public CorpusController(IngestCorpus ingestCorpus, CorpusStore corpusStore,
+    public CorpusController(IngestCorpus ingestCorpus, Neo4jCorpusRegistry corpusStore,
                            List<DocumentParserPort> documentParsers, DemoDatasetService demoDatasetService,
                            CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort,
                            RetrievalTraceStore retrievalTraceStore, ConstructVectorIndex constructVectorIndex,
@@ -205,11 +206,11 @@ public class CorpusController {
         if (corpusStore.isOffline(corpus.id())) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", OFFLINE_QUERY_BLOCKED_MESSAGE));
         }
-        CorpusStore.CorpusWorkflowStatus workflowStatus = corpusStore.status(corpus.id());
-        if (workflowStatus == CorpusStore.CorpusWorkflowStatus.BUILDING) {
+        Neo4jCorpusRegistry.CorpusWorkflowStatus workflowStatus = corpusStore.status(corpus.id());
+        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.BUILDING) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_BUILDING_MESSAGE));
         }
-        if (workflowStatus == CorpusStore.CorpusWorkflowStatus.FAILED) {
+        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_FAILED_MESSAGE));
         }
 

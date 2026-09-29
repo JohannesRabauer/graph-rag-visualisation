@@ -2,6 +2,7 @@ package com.graphraglens.web;
 
 import com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter;
 import com.graphraglens.adapter.neo4j.InMemoryVectorStoreAdapter;
+import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort;
 import io.graphrag.core.domain.Chunk;
 import io.graphrag.core.domain.Corpus;
@@ -30,10 +31,10 @@ class CorpusControllerVectorBaselineTest {
 
     @Test
     void vectorModeReturnsAnswerIdTraceIdAnswerAndModeVectorWhenChunksAreAvailable() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("corpus-1", List.of(new UploadedDocument("doc.txt", "Some content.")));
-        corpusStore.put(corpus);
-        corpusStore.markReady(corpus.id());
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
 
         // Pre-populate the vector store with a chunk so the baseline has something to retrieve.
@@ -49,7 +50,7 @@ class CorpusControllerVectorBaselineTest {
 
         AnswerVectorBaseline answerVectorBaseline = new AnswerVectorBaseline(embeddingPort, vectorStore, null);
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, null,
+                null, corpusRegistry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), retrievalTraceStore, null, answerVectorBaseline, vectorStore);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -76,17 +77,17 @@ class CorpusControllerVectorBaselineTest {
 
     @Test
     void vectorModeReturnsNoAnswerShapeWhenVectorIndexIsEmpty() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("corpus-2", List.of(new UploadedDocument("doc.txt", "Some content.")));
-        corpusStore.put(corpus);
-        corpusStore.markReady(corpus.id());
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
 
         // Empty vector store — no chunks built yet.
         AnswerVectorBaseline answerVectorBaseline = new AnswerVectorBaseline(
                 new LangChain4jEmbeddingPort(), new InMemoryVectorStoreAdapter(), null);
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, null,
+                null, corpusRegistry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), retrievalTraceStore, null, answerVectorBaseline, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -115,7 +116,7 @@ class CorpusControllerVectorBaselineTest {
                         new float[]{1f, 0f}, new double[]{1.5, -2.0})));
 
         CorpusController controller = new CorpusController(
-                null, new CorpusStore(), List.of(), null, null, null,
+                null, new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver()), List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null, vectorStore);
 
         ResponseEntity<Map<String, Object>> response = controller.vectorSpace(corpus.id());
@@ -135,7 +136,7 @@ class CorpusControllerVectorBaselineTest {
     @Test
     void vectorSpaceEndpointReturnsEmptyChunksWhenIndexIsNotBuiltYet() {
         CorpusController controller = new CorpusController(
-                null, new CorpusStore(), List.of(), null, null, null,
+                null, new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver()), List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null,
                 new InMemoryVectorStoreAdapter());
 
@@ -147,13 +148,13 @@ class CorpusControllerVectorBaselineTest {
 
     @Test
     void unknownModeIncludingVectorTypoReturns400WithUpdatedErrorMessage() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("corpus-3", List.of(new UploadedDocument("doc.txt", "content")));
-        corpusStore.put(corpus);
-        corpusStore.markReady(corpus.id());
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, null,
+                null, corpusRegistry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(

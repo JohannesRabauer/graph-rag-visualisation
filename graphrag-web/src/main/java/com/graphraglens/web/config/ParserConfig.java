@@ -4,6 +4,7 @@ import com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort;
 import com.graphraglens.adapter.langchain4j.LangChain4jLlmPort;
 import com.graphraglens.adapter.langchain4j.OpenAiEmbeddingPort;
 import com.graphraglens.adapter.langchain4j.OpenAiLlmPort;
+import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import com.graphraglens.adapter.neo4j.Neo4jGraphStoreAdapter;
 import com.graphraglens.adapter.neo4j.Neo4jVectorStoreAdapter;
 import com.graphraglens.adapter.parsing.PdfDocumentParserAdapter;
@@ -105,6 +106,16 @@ public class ParserConfig {
     @Bean
     public VectorStorePort vectorStorePort(Driver driver) {
         return new Neo4jVectorStoreAdapter(driver);
+    }
+
+    /**
+     * The durable replacement for the deleted {@code CorpusStore} (Story
+     * 12.4). A plain adapter-side bean, not a {@code graphrag-core} port
+     * (AD-19) — {@code CorpusController} calls it directly.
+     */
+    @Bean
+    public Neo4jCorpusRegistry neo4jCorpusRegistry(Driver driver) {
+        return new Neo4jCorpusRegistry(driver);
     }
 
     @Bean

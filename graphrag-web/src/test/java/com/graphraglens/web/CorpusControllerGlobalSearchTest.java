@@ -1,6 +1,7 @@
 package com.graphraglens.web;
 
 import com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter;
+import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.RetrievalTrace;
 import io.graphrag.core.domain.UploadedDocument;
@@ -29,14 +30,14 @@ class CorpusControllerGlobalSearchTest {
 
     @Test
     void globalSearchReturnsTheDistinctNoAnswerShapeWhenNoCommunitiesArePersistedYet() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("corpus-1", List.of(new UploadedDocument("doc.txt", "Some content.")));
-        corpusStore.put(corpus);
-        corpusStore.markReady(corpus.id());
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
+                null, corpusRegistry, List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
                 retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -67,8 +68,8 @@ class CorpusControllerGlobalSearchTest {
     @Test
     void fetchingAnUnknownTraceIdThrowsIllegalArgumentExceptionThatMapsTo404() {
         CorpusController controller = new CorpusController(
-                null, new CorpusStore(), List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
-                new RetrievalTraceStore(), null, null, null);
+                null, new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver()), List.of(), null, null, null,
+                new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null, null);
 
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                         () -> controller.trace("unknown-trace-id")))
@@ -77,13 +78,13 @@ class CorpusControllerGlobalSearchTest {
 
     @Test
     void globalSearchUsesOnlyCommunitiesForTheSelectedCorpus() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus firstCorpus = new Corpus("corpus-1", List.of(new UploadedDocument("a.txt", "A")));
         Corpus secondCorpus = new Corpus("corpus-2", List.of(new UploadedDocument("b.txt", "B")));
-        corpusStore.put(firstCorpus);
-        corpusStore.put(secondCorpus);
-        corpusStore.markReady(firstCorpus.id());
-        corpusStore.markReady(secondCorpus.id());
+        corpusRegistry.put(firstCorpus);
+        corpusRegistry.put(secondCorpus);
+        corpusRegistry.markReady(firstCorpus.id());
+        corpusRegistry.markReady(secondCorpus.id());
 
         InMemoryGraphStoreAdapter graphStore = new InMemoryGraphStoreAdapter();
         graphStore.persistCommunities(firstCorpus.id(), List.of(
@@ -94,7 +95,7 @@ class CorpusControllerGlobalSearchTest {
                         "This community centers on Professor Moriarty and networks.")));
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, null, graphStore, new RetrievalTraceStore(), null, null, null);
+                null, corpusRegistry, List.of(), null, null, null, graphStore, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 firstCorpus.id(), Map.of("question", "Tell me about Moriarty", "mode", "GLOBAL"));

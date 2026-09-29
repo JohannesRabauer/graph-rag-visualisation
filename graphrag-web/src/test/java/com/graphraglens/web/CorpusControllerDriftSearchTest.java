@@ -1,6 +1,7 @@
 package com.graphraglens.web;
 
 import com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter;
+import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
@@ -22,10 +23,10 @@ class CorpusControllerDriftSearchTest {
 
     @Test
     void driftSearchReturnsARealSynthesizedAnswerAndStoresItsTrace() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("corpus-1", List.of(new UploadedDocument("doc.txt", "Some content.")));
-        corpusStore.put(corpus);
-        corpusStore.markReady(corpus.id());
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
 
         InMemoryGraphStoreAdapter graphStore = new InMemoryGraphStoreAdapter();
@@ -38,7 +39,7 @@ class CorpusControllerDriftSearchTest {
                 new Relationship("Sherlock Holmes", "Person", "INVESTIGATES", "Irene Adler", "Person")));
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
+                null, corpusRegistry, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "What connects Sherlock Holmes to Irene Adler?", "mode", "DRIFT"));
@@ -63,10 +64,10 @@ class CorpusControllerDriftSearchTest {
 
     @Test
     void driftSearchReturnsTheDistinctNoAnswerShapeWhenCommunitiesExistButNoneMatch() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("corpus-2", List.of(new UploadedDocument("doc.txt", "Some content.")));
-        corpusStore.put(corpus);
-        corpusStore.markReady(corpus.id());
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
 
         InMemoryGraphStoreAdapter graphStore = new InMemoryGraphStoreAdapter();
         graphStore.persistCommunities(corpus.id(), List.of(
@@ -74,7 +75,7 @@ class CorpusControllerDriftSearchTest {
 
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
+                null, corpusRegistry, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "zzqqxx nonsense gibberish flimflam", "mode", "DRIFT"));
@@ -99,13 +100,13 @@ class CorpusControllerDriftSearchTest {
 
     @Test
     void driftSearchUsesOnlyCommunitiesAndEntitiesForTheSelectedCorpus() {
-        CorpusStore corpusStore = new CorpusStore();
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus firstCorpus = new Corpus("corpus-1", List.of(new UploadedDocument("a.txt", "A")));
         Corpus secondCorpus = new Corpus("corpus-2", List.of(new UploadedDocument("b.txt", "B")));
-        corpusStore.put(firstCorpus);
-        corpusStore.put(secondCorpus);
-        corpusStore.markReady(firstCorpus.id());
-        corpusStore.markReady(secondCorpus.id());
+        corpusRegistry.put(firstCorpus);
+        corpusRegistry.put(secondCorpus);
+        corpusRegistry.markReady(firstCorpus.id());
+        corpusRegistry.markReady(secondCorpus.id());
 
         InMemoryGraphStoreAdapter graphStore = new InMemoryGraphStoreAdapter();
         graphStore.persistCommunities(firstCorpus.id(), List.of(
@@ -116,7 +117,7 @@ class CorpusControllerDriftSearchTest {
         graphStore.persistEntities(secondCorpus.id(), List.of(new Entity("Professor Moriarty", "Person")));
 
         CorpusController controller = new CorpusController(
-                null, corpusStore, List.of(), null, null, stubLlmPort(), graphStore, new RetrievalTraceStore(), null, null, null);
+                null, corpusRegistry, List.of(), null, null, stubLlmPort(), graphStore, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 firstCorpus.id(), Map.of("question", "Tell me about Irene Adler", "mode", "DRIFT"));

@@ -5,8 +5,9 @@ import java.util.List;
 /**
  * A Corpus of uploaded documents queued for Knowledge Graph construction.
  *
- * <p>A Corpus is <em>not</em> a Neo4j node — its identity lives here, in an
- * in-memory {@code CorpusStore} owned by {@code graphrag-web}, while the
+ * <p>A Corpus is reconstructed here from Neo4j-backed bookkeeping — its
+ * identity is durably persisted by {@code Neo4jCorpusRegistry} in
+ * {@code graphrag-adapter-neo4j} (Story 12.4), while the
  * Entities/Relationships later extracted from it become the Neo4j source of
  * truth (Story 2.4+).
  *

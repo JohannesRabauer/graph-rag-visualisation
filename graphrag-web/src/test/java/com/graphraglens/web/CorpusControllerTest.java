@@ -1,5 +1,6 @@
 package com.graphraglens.web;
 
+import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.port.GraphStorePort;
@@ -68,7 +69,7 @@ class CorpusControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private CorpusStore corpusStore;
+    private Neo4jCorpusRegistry corpusRegistry;
 
     @Autowired
     private GraphStorePort graphStorePort;
@@ -103,11 +104,14 @@ class CorpusControllerTest {
                 .getContentAsString();
 
         String corpusId = JsonPath.read(responseBody, "$.corpusId");
-        Optional<Corpus> stored = corpusStore.get(corpusId);
+        Optional<Corpus> stored = corpusRegistry.get(corpusId);
 
+        // Story 12.4: Neo4jCorpusRegistry never persists raw document bytes, only
+        // documentNames() -- a registry lookup reconstructs Corpus.documents() as
+        // empty-content placeholders, so content is asserted from the immediate
+        // upload response/ingest result elsewhere, never from a registry re-fetch.
         assertThat(stored).isPresent();
         assertThat(stored.get().documentNames()).containsExactly("test.txt");
-        assertThat(stored.get().documents().get(0).content()).isEqualTo("hello world");
     }
 
     @Test
@@ -124,10 +128,13 @@ class CorpusControllerTest {
                 .getContentAsString();
 
         String corpusId = JsonPath.read(responseBody, "$.corpusId");
-        Optional<Corpus> stored = corpusStore.get(corpusId);
+        Optional<Corpus> stored = corpusRegistry.get(corpusId);
 
+        // Story 12.4: the registry never persists raw PDF-extracted text, only the
+        // filename -- extraction itself is covered by the response's documentNames
+        // assertion above and by PdfDocumentParserAdapter's own unit tests.
         assertThat(stored).isPresent();
-        assertThat(stored.get().documents().get(0).content()).contains("A PDF report for testing.");
+        assertThat(stored.get().documentNames()).containsExactly("report.pdf");
     }
 
     @Test
@@ -153,17 +160,17 @@ class CorpusControllerTest {
                 .getContentAsString();
 
         String corpusId = JsonPath.read(responseBody, "$.corpusId");
-        Optional<Corpus> stored = corpusStore.get(corpusId);
+        Optional<Corpus> stored = corpusRegistry.get(corpusId);
 
+        // Story 12.4: the registry never persists raw document text, only
+        // documentNames() -- the demo dataset's actual text content is covered by
+        // DemoDatasetService's own tests, not by a post-ingestion registry re-fetch.
         assertThat(stored).isPresent();
         assertThat(stored.get().name()).isEqualTo("Sherlock Holmes — Demo Dataset");
         assertThat(stored.get().documentNames()).containsExactly(
                 "A Scandal in Bohemia.txt",
                 "The Adventure of the Speckled Band.txt",
                 "The Final Problem.txt");
-        assertThat(stored.get().documents()).allSatisfy(document ->
-                assertThat(document.content()).isNotBlank());
-        assertThat(stored.get().documents().get(0).content()).contains("Irene Adler");
     }
 
     @Test
@@ -178,11 +185,11 @@ class CorpusControllerTest {
                 .getContentAsString();
 
         String corpusId = JsonPath.read(responseBody, "$.corpusId");
-        assertThat(corpusStore.isOffline(corpusId)).isTrue();
+        assertThat(corpusRegistry.isOffline(corpusId)).isTrue();
 
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
                 .emit(eq(corpusId), eq("ingestion-complete"), any());
-        assertThat(corpusStore.status(corpusId)).isEqualTo(CorpusStore.CorpusWorkflowStatus.READY);
+        assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.READY);
     }
 
     @Test
@@ -195,7 +202,7 @@ class CorpusControllerTest {
                 .getContentAsString();
 
         String corpusId = JsonPath.read(responseBody, "$.corpusId");
-        assertThat(corpusStore.isOffline(corpusId)).isFalse();
+        assertThat(corpusRegistry.isOffline(corpusId)).isFalse();
     }
 
     @Test
@@ -209,7 +216,7 @@ class CorpusControllerTest {
 
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
                 .emit(eq(corpusId), eq("ingestion-complete"), any());
-        assertThat(corpusStore.status(corpusId)).isEqualTo(CorpusStore.CorpusWorkflowStatus.READY);
+        assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.READY);
 
         mockMvc.perform(post("/api/corpora/" + corpusId + "/query")
                         .contentType("application/json")
@@ -232,7 +239,7 @@ class CorpusControllerTest {
         // Knowledge-graph construction must still run to completion...
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
                 .emit(eq(corpusId), eq("ingestion-complete"), any());
-        assertThat(corpusStore.status(corpusId)).isEqualTo(CorpusStore.CorpusWorkflowStatus.READY);
+        assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.READY);
 
         // ...and the vector-index failure must never be surfaced as a corpus/progress error.
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("error"), any());
@@ -432,11 +439,11 @@ class CorpusControllerTest {
 
     @Test
     void queryingBeforeIngestionCompletesReturnsConflictWithReadinessGuidance() throws Exception {
-        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("building-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
-        isolatedCorpusStore.put(corpus);
+        isolatedCorpusRegistry.put(corpus);
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
+                null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
@@ -447,11 +454,11 @@ class CorpusControllerTest {
 
     @Test
     void driftQueryWhileGraphIsStillBuildingReturnsTheExistingConflictResponse() {
-        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("building-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
-        isolatedCorpusStore.put(corpus);
+        isolatedCorpusRegistry.put(corpus);
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
+                null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "DRIFT"));
@@ -463,12 +470,12 @@ class CorpusControllerTest {
 
     @Test
     void queryingAfterFailedIngestionReturnsConflictWithFailureGuidance() {
-        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("failed-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
-        isolatedCorpusStore.put(corpus);
-        isolatedCorpusStore.markFailed(corpus.id());
+        isolatedCorpusRegistry.put(corpus);
+        isolatedCorpusRegistry.markFailed(corpus.id());
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
+                null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Is it ready?", "mode", "LOCAL"));
@@ -479,13 +486,13 @@ class CorpusControllerTest {
 
     @Test
     void localSearchReadsOnlyGraphDataFromTheSelectedCorpus() {
-        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpusA = new Corpus("corpus-a", List.of(new io.graphrag.core.domain.UploadedDocument("a.txt", "A")));
         Corpus corpusB = new Corpus("corpus-b", List.of(new io.graphrag.core.domain.UploadedDocument("b.txt", "B")));
-        isolatedCorpusStore.put(corpusA);
-        isolatedCorpusStore.put(corpusB);
-        isolatedCorpusStore.markReady(corpusA.id());
-        isolatedCorpusStore.markReady(corpusB.id());
+        isolatedCorpusRegistry.put(corpusA);
+        isolatedCorpusRegistry.put(corpusB);
+        isolatedCorpusRegistry.markReady(corpusA.id());
+        isolatedCorpusRegistry.markReady(corpusB.id());
 
         com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter scopedGraphStore =
                 new com.graphraglens.adapter.neo4j.InMemoryGraphStoreAdapter();
@@ -493,7 +500,7 @@ class CorpusControllerTest {
         scopedGraphStore.persistEntities(corpusB.id(), List.of(new io.graphrag.core.domain.Entity("Professor Moriarty", "Person")));
 
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore(), null, null, null);
+                null, isolatedCorpusRegistry, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpusA.id(), Map.of("question", "Who is Moriarty?", "mode", "LOCAL"));
@@ -620,13 +627,13 @@ class CorpusControllerTest {
 
     @Test
     void driftSearchReturnsTheDistinctNoAnswerShapeWhenNoCommunitiesExistYet() {
-        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("ready-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
-        isolatedCorpusStore.put(corpus);
-        isolatedCorpusStore.markReady(corpus.id());
+        isolatedCorpusRegistry.put(corpus);
+        isolatedCorpusRegistry.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore, null, null, null);
+                null, isolatedCorpusRegistry, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Try DRIFT", "mode", "DRIFT"));
@@ -651,12 +658,12 @@ class CorpusControllerTest {
 
     @Test
     void unrecognizedModesListDriftInTheValidationError() {
-        CorpusStore isolatedCorpusStore = new CorpusStore();
+        Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("ready-corpus", List.of(new io.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
-        isolatedCorpusStore.put(corpus);
-        isolatedCorpusStore.markReady(corpus.id());
+        isolatedCorpusRegistry.put(corpus);
+        isolatedCorpusRegistry.markReady(corpus.id());
         CorpusController controller = new CorpusController(
-                null, isolatedCorpusStore, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
+                null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
                 corpus.id(), Map.of("question", "Try something else", "mode", "FOO"));
@@ -685,17 +692,31 @@ class CorpusControllerTest {
 
     @Test
     void uploadingAMixOfSupportedAndUnsupportedFilesReturns400AndRegistersNoCorpus() throws Exception {
-        int sizeBefore = corpusStore.size();
         MockMultipartFile valid = new MockMultipartFile(
                 "files", "ok.txt", "text/plain", "hello".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile invalid = new MockMultipartFile(
                 "files", "bad.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "nope".getBytes(StandardCharsets.UTF_8));
 
+        // Validation fails while reading the files, before ingestCorpus.ingest()/corpusRegistry.put()
+        // ever runs, so no corpusId is ever minted for this request -- there is nothing to look
+        // up afterward to prove that. The 400 + file-naming error below is the observable contract,
+        // plus a direct count of CorpusMeta nodes below to prove no corpus was registered.
+        long corpusMetaCountBefore = countCorpusMetaNodes();
+
         mockMvc.perform(multipart("/api/corpora").file(valid).file(invalid))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("bad.docx")));
 
-        assertThat(corpusStore.size()).isEqualTo(sizeBefore);
+        assertThat(countCorpusMetaNodes()).isEqualTo(corpusMetaCountBefore);
+    }
+
+    private static long countCorpusMetaNodes() {
+        try (org.neo4j.driver.Session session = SharedNeo4jTestContainer.driver().session()) {
+            return session.run("MATCH (c:CorpusMeta) RETURN count(c) AS count")
+                    .single()
+                    .get("count")
+                    .asLong();
+        }
     }
 
     @Test
