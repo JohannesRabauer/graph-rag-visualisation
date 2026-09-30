@@ -71,6 +71,30 @@ class MainScreenDetailPanelUiTest extends UiTestSupport {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void clickingACommunityHullShowsItsDescriptionAndMembersAndTappingAgainCloses() {
+        loadDemoDatasetAndWaitReady();
+
+        Locator panel = page.locator("#entity-detail-panel");
+        java.util.List<String> communityIds = (java.util.List<String>) page.evaluate(
+                "() => Object.keys(window.GraphCanvas.layoutSpacingMetrics().communities)");
+        org.assertj.core.api.Assertions.assertThat(communityIds).isNotEmpty();
+        String hullId = "community::" + communityIds.get(0);
+
+        tap(hullId);
+        assertThat(panel).hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
+        assertThat(page.locator("#entity-detail-eyebrow")).hasText("Community");
+        assertThat(page.locator("#entity-detail-description-section")).isVisible();
+        assertThat(page.locator("#entity-detail-description")).not().isEmpty();
+        assertThat(page.locator("#entity-detail-relationships-heading")).hasText("Members");
+        assertThat(page.locator("#entity-detail-relationships li").first()).isVisible();
+        assertThat(page.locator("#entity-detail-tags-section")).isHidden();
+
+        tap(hullId);
+        assertThat(panel).not().hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
+    }
+
+    @Test
     void detailPanelAndRetrievalTraceReplayCoexistOnTheSameCanvas() {
         // Explicit design decision: unlike a design where opening one closes
         // the other, both stay visible together on the merged canvas.

@@ -57,6 +57,12 @@
   var entityDetailType = document.getElementById('entity-detail-type');
   var entityDetailRelationships = document.getElementById('entity-detail-relationships');
   var entityDetailTags = document.getElementById('entity-detail-tags');
+  var entityDetailEyebrow = document.getElementById('entity-detail-eyebrow');
+  var entityDetailDescriptionSection = document.getElementById('entity-detail-description-section');
+  var entityDetailDescription = document.getElementById('entity-detail-description');
+  var entityDetailRelationshipsHeading = document.getElementById('entity-detail-relationships-heading');
+  var entityDetailTagsSection = document.getElementById('entity-detail-tags-section');
+  var selectedCommunityId = null;
   var selectedEntityIdentity = null;
   // Story 10.3: the currently-open Entity's `type`, kept alongside
   // `selectedEntityIdentity` so a live toggle change can re-run
@@ -373,6 +379,7 @@
   function closeEntityDetailPanel() {
     selectedEntityIdentity = null;
     selectedEntityType = null;
+    selectedCommunityId = null;
     if (!entityDetailPanel) {
       return;
     }
@@ -456,12 +463,60 @@
     entityDetailTags.appendChild(chip);
   }
 
+  function setDetailMode(mode) {
+    var isCommunity = mode === 'community';
+    if (entityDetailEyebrow) {
+      entityDetailEyebrow.textContent = isCommunity ? 'Community' : 'Entity';
+    }
+    if (entityDetailRelationshipsHeading) {
+      entityDetailRelationshipsHeading.textContent = isCommunity ? 'Members' : 'Relationships';
+    }
+    if (entityDetailDescriptionSection) {
+      entityDetailDescriptionSection.hidden = !isCommunity;
+    }
+    if (entityDetailTagsSection) {
+      entityDetailTagsSection.hidden = isCommunity;
+    }
+  }
+
+  function openCommunityDetailPanel(community) {
+    if (!entityDetailPanel) {
+      return;
+    }
+    selectedCommunityId = community.communityId;
+    selectedEntityIdentity = null;
+    selectedEntityType = null;
+    setDetailMode('community');
+    var members = community.members || [];
+    if (entityDetailName) {
+      entityDetailName.textContent = community.name || community.communityId;
+    }
+    if (entityDetailType) {
+      entityDetailType.textContent = members.length + (members.length === 1 ? ' entity' : ' entities');
+    }
+    if (entityDetailDescription) {
+      entityDetailDescription.textContent = community.summary || 'No description available.';
+    }
+    if (entityDetailRelationships) {
+      entityDetailRelationships.textContent = '';
+      members.forEach(function (member) {
+        var item = document.createElement('li');
+        item.textContent = member.name + (member.type ? ' (' + member.type + ')' : '');
+        entityDetailRelationships.appendChild(item);
+      });
+    }
+    entityDetailPanel.classList.add('is-open');
+    entityDetailPanel.setAttribute('aria-hidden', 'false');
+  }
+
   function openEntityDetailPanel(nodeData) {
     if (!entityDetailPanel) {
       return;
     }
     selectedEntityIdentity = nodeData.identity;
     selectedEntityType = nodeData.type;
+    selectedCommunityId = null;
+    setDetailMode('entity');
     if (entityDetailName) {
       entityDetailName.textContent = nodeData.name || nodeData.identity;
     }
@@ -487,6 +542,16 @@
         return;
       }
       openEntityDetailPanel(nodeData);
+    });
+  }
+
+  if (window.GraphCanvas && typeof window.GraphCanvas.onCommunityTap === 'function') {
+    window.GraphCanvas.onCommunityTap(function (community) {
+      if (selectedCommunityId === community.communityId) {
+        closeEntityDetailPanel();
+        return;
+      }
+      openCommunityDetailPanel(community);
     });
   }
 

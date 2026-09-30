@@ -25,6 +25,7 @@
   // are unaffected. Stored as module state (not re-wired per `init()` call)
   // so registering before or after `init()` both work.
   var nodeTapCallback = null;
+  var communityTapCallback = null;
   var backgroundTapCallback = null;
   // Roving-focus state for keyboard navigation (see `init`'s container
   // keydown wiring below): the id of the node currently carrying the
@@ -413,7 +414,7 @@
       var node = evt.target;
       setKeyboardFocus(node.id());
       if (node.hasClass('community-hull')) {
-        focusCommunity(communityIdFromParentId(node.id()));
+        activateCommunityHull(node);
         return;
       }
       if (nodeTapCallback) {
@@ -657,6 +658,10 @@
     });
   }
 
+  function onCommunityTap(callback) {
+    communityTapCallback = typeof callback === 'function' ? callback : null;
+  }
+
   function onNodeTap(callback) {
     nodeTapCallback = typeof callback === 'function' ? callback : null;
   }
@@ -719,7 +724,7 @@
       return;
     }
     if (node.hasClass('community-hull')) {
-      focusCommunity(communityIdFromParentId(node.id()));
+      activateCommunityHull(node);
       return;
     }
     if (nodeTapCallback) {
@@ -729,6 +734,27 @@
         type: node.data('type')
       });
     }
+  }
+
+  function activateCommunityHull(node) {
+    var communityId = communityIdFromParentId(node.id());
+    focusCommunity(communityId);
+    if (!communityTapCallback) {
+      return;
+    }
+    var legend = communityLegendEntries[communityId] || {};
+    communityTapCallback({
+      communityId: communityId,
+      name: legend.name || communityId,
+      summary: legend.fullSummary || node.data('summary') || '',
+      members: node.children().map(function (child) {
+        return {
+          identity: child.id(),
+          name: child.data('name') || child.id(),
+          type: child.data('type')
+        };
+      })
+    });
   }
 
   function handleContainerFocus() {
@@ -1447,6 +1473,7 @@
     highlightStep: highlightStep,
     clearStepHighlights: clearStepHighlights,
     onNodeTap: onNodeTap,
+    onCommunityTap: onCommunityTap,
     onBackgroundTap: onBackgroundTap,
     focusCommunity: focusCommunity,
     searchEntities: searchEntities,

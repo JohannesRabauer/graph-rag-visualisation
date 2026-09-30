@@ -175,14 +175,18 @@
 
         <aside id="entity-detail-panel" class="node-detail-panel" aria-hidden="true">
           <button type="button" id="entity-detail-close" class="node-detail-close" aria-label="Close entity details">×</button>
-          <p class="node-detail-eyebrow">Entity</p>
+          <p id="entity-detail-eyebrow" class="node-detail-eyebrow">Entity</p>
           <h2 id="entity-detail-name" class="node-detail-name"></h2>
           <p id="entity-detail-type" class="node-detail-type"></p>
-          <div class="node-detail-section">
-            <p class="node-detail-heading">Relationships</p>
-            <ul id="entity-detail-relationships" class="node-detail-relationships"></ul>
+          <div id="entity-detail-description-section" class="node-detail-section" hidden>
+            <p class="node-detail-heading">Description</p>
+            <p id="entity-detail-description" class="node-detail-description"></p>
           </div>
           <div class="node-detail-section">
+            <p id="entity-detail-relationships-heading" class="node-detail-heading">Relationships</p>
+            <ul id="entity-detail-relationships" class="node-detail-relationships"></ul>
+          </div>
+          <div id="entity-detail-tags-section" class="node-detail-section">
             <p class="node-detail-heading">Tags</p>
             <div id="entity-detail-tags" class="node-detail-tags"></div>
           </div>
