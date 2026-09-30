@@ -1,0 +1,12 @@
+<article class="help-article" data-topic="entity-detail">
+<p class="help-eyebrow">The graph</p>
+<h2>Entity detail panel</h2>
+<p class="help-abstract">Click any entity on the canvas to open a panel with its name, type, relationships and tags. Close it with the x.</p>
+<h3>Overview</h3>
+<svg class="help-svg" viewBox="0 0 400 200" role="img" aria-label="Entity detail panel: name, type, relationships, tags"><defs><marker id="hs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="hs-arrow-head"/></marker></defs><rect x="80" y="8" width="240" height="34" rx="8" class="hs-box hs-box--local"/><text x="200.0" y="30.0" text-anchor="middle" class="hs-text">Entity name</text><rect x="80" y="50" width="240" height="28" rx="8" class="hs-box hs-box--muted"/><text x="200.0" y="69.0" text-anchor="middle" class="hs-text">Type</text><rect x="80" y="86" width="240" height="50" rx="8" class="hs-box hs-box--edge"/><text x="200.0" y="107.0" text-anchor="middle" class="hs-text">Relationships:</text><text x="200.0" y="125.0" text-anchor="middle" class="hs-text">this entity - TYPE - other</text><rect x="80" y="144" width="240" height="44" rx="8" class="hs-box hs-box--muted"/><text x="200.0" y="171.0" text-anchor="middle" class="hs-text">Tags (coloured by type)</text></svg><p>Relationship rows lead you to the neighbours worth trying in a <a href="#" data-help="local-search">Local Search</a>.</p>
+<h3>The idea</h3>
+<p>Inspecting a node and its edges is the most direct way to check whether the extracted graph matches the source text.</p>
+<h3>In this demo</h3>
+<p>This screen builds its graph incrementally from progress events, so the panel lists the relationships it has accumulated for the selected <code data-class="Entity">Entity</code> from <code data-class="Relationship">Relationship</code> events rather than fetching them. When you switch corpus, any open panel is closed. The panel sits over the right edge of the canvas; the help pane is a separate column beside it and never overlaps.</p>
+<div class="help-callout help-callout--simplify"><p><strong>Simplifications</strong></p><ul><li>While a corpus is still building, the list can be incomplete.</li></ul></div>
+</article>

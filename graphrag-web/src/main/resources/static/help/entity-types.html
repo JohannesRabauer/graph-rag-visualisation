@@ -1,0 +1,12 @@
+<article class="help-article" data-topic="entity-types">
+<p class="help-eyebrow">The graph</p>
+<h2>Entity types and colours</h2>
+<p class="help-abstract">Each entity has a type such as person or place. One switch in the settings menu colours nodes and tags by type, so the same type always has the same colour.</p>
+<h3>Overview</h3>
+<svg class="help-svg" viewBox="0 0 400 170" role="img" aria-label="Entities coloured by type: same type, same colour"><defs><marker id="hs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="hs-arrow-head"/></marker></defs><circle cx="60" cy="50" r="16" style="fill:var(--entity-type-1)"/><circle cx="140" cy="50" r="16" style="fill:var(--entity-type-2)"/><circle cx="230" cy="50" r="16" style="fill:var(--entity-type-1)"/><circle cx="310" cy="50" r="16" style="fill:var(--entity-type-3)"/><text x="60" y="92" text-anchor="middle" class="hs-text hs-text--small">Person</text><text x="140" y="92" text-anchor="middle" class="hs-text hs-text--small">Place</text><text x="230" y="92" text-anchor="middle" class="hs-text hs-text--small">Person</text><text x="310" y="92" text-anchor="middle" class="hs-text hs-text--small">Object</text><text x="200" y="140" text-anchor="middle" class="hs-text hs-text--small">Type names come from the extractor, not a fixed list.</text></svg><p>The settings button is the gear at the top right of the canvas.</p>
+<h3>The idea</h3>
+<p>Typed entities let a graph answer structured questions ("which people?") and make a large graph readable at a glance.</p>
+<h3>In this demo</h3>
+<p>The type is whatever <code data-class="LlmPort">LlmPort</code> returned for the entity, stored on <code data-class="Entity">Entity</code>. The toggle "Color-code entity types" only changes drawing; it does not change the graph or any search. Type colours are deliberately duskier than the pastel community regions so the two colour languages stay distinguishable (see <a href="#" data-help="communities">communities</a>). A separate toggle turns the community formation animation on and off. The type is also part of what Local Search scores against, next to the name.</p>
+<div class="help-callout help-callout--simplify"><p><strong>Simplifications</strong></p><ul><li>Only a handful of type colours exist; more types than that reuse colours.</li></ul></div>
+</article>
