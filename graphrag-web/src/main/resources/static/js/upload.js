@@ -46,6 +46,14 @@
   var activeCorpusOffline = false;
   var currentSearchMode = 'LOCAL';
 
+  // help.js (the contextual help pane) reads no state from this closure; it
+  // follows these two document events instead.
+  function announceCorpus() {
+    document.dispatchEvent(new CustomEvent('graphrag:corpus', {
+      detail: { corpusId: activeCorpusId, offline: activeCorpusOffline }
+    }));
+  }
+
   // Entity detail panel (merged onto the main screen 2026-09-20 UX pass —
   // formerly the separate Explore page's own component, Story 6.2, which
   // fetched its graph in one bulk request). This screen builds its graph
@@ -103,6 +111,14 @@
       }
     });
   });
+
+  // Browsers restore radio state on reload/back without firing `change`.
+  function syncModeFromDom() {
+    var checked = document.querySelector('input[name="search-mode"]:checked');
+    setModeHint(checked ? (checked.value || 'LOCAL') : 'LOCAL');
+  }
+  syncModeFromDom();
+  window.addEventListener('pageshow', syncModeFromDom);
 
   if (entityDetailClose) {
     entityDetailClose.addEventListener('click', function () {
@@ -862,6 +878,7 @@
     activeCorpusId = null;
     activeCorpusReady = false;
     activeCorpusOffline = false;
+    announceCorpus();
 
     setModeHint('LOCAL');
     modeInputs.forEach(function (input) {
@@ -1030,6 +1047,7 @@
     }
     activeCorpusId = body && body.corpusId ? body.corpusId : activeCorpusId;
     activeCorpusReady = false;
+    announceCorpus();
     renderWorkflowStatus('BUILDING');
     if (canvasIdle) {
       canvasIdle.hidden = true;
@@ -1224,11 +1242,42 @@
       compareCta.title = compareCtaExplanation;
       compareCta.setAttribute('aria-label', compareCtaExplanation);
       compareCta.textContent = '\u21BB Compare with Vector Search';
-      message.appendChild(compareCta);
+      var compareRow = document.createElement('div');
+      compareRow.className = 'compare-row';
+      compareRow.appendChild(compareCta);
+      var compareHelp = document.createElement('button');
+      compareHelp.type = 'button';
+      compareHelp.className = 'help-btn';
+      compareHelp.dataset.help = 'vector-vs-graphrag';
+      compareHelp.setAttribute('aria-label', 'Help: vector search versus GraphRAG');
+      compareHelp.textContent = '?';
+      compareRow.appendChild(compareHelp);
+      message.appendChild(compareRow);
     }
+
+    // Help pane hooks: a "?" beside the answer (reading-an-answer) and, on
+    // the Compare button, the vector-vs-graphrag topic.
+    var answerHelp = document.createElement('button');
+    answerHelp.type = 'button';
+    answerHelp.className = 'help-btn help-btn--answer';
+    answerHelp.dataset.help = 'reading-an-answer';
+    answerHelp.setAttribute('aria-label', 'Help: reading an answer');
+    answerHelp.textContent = '?';
+    message.appendChild(answerHelp);
 
     chatThread.appendChild(message);
     chatThread.scrollTop = chatThread.scrollHeight;
+
+    document.dispatchEvent(new CustomEvent('graphrag:answer', {
+      detail: {
+        mode: activeMode,
+        traceId: traceId || null,
+        stepCount: traceStepCount || 0,
+        question: question || null,
+        corpusId: activeCorpusId,
+        answer: answerText
+      }
+    }));
   }
 
   function connectProgressStream(corpusId) {
@@ -1505,6 +1554,7 @@
     activeCorpusId = corpusMeta.id;
     activeCorpusReady = false;
     activeCorpusOffline = false;
+    announceCorpus();
     if (composerOfflineNote) {
       composerOfflineNote.hidden = true;
     }

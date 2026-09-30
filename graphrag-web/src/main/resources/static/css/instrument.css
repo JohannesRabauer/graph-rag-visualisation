@@ -2249,3 +2249,398 @@ body {
   font-size: var(--font-mono-size);
   color: var(--ink-400);
 }
+
+/* ============================================================
+   Contextual help system: "?" buttons and the docked help pane.
+   The pane is a flex sibling after .graph-stage inside .canvas
+   (mirrors .chat-panel's sizing model), so the graph re-fits via its
+   ResizeObserver when the pane opens. Below 960px it overlays instead.
+   ============================================================ */
+.help-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--panel);
+  color: var(--ink-600);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.help-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.help-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.help-btn[hidden] {
+  display: none;
+}
+
+.help-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.help-row .upload-label {
+  margin-bottom: 0;
+}
+
+.mode-choice-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.compare-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.compare-row .compare-cta {
+  flex: 1;
+  width: auto;
+}
+
+.message.answer {
+  position: relative;
+}
+
+.help-btn--answer {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+}
+
+.help-btn--tabbar {
+  margin-left: auto;
+  align-self: center;
+  margin-right: var(--space-3);
+}
+
+.canvas-settings {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.canvas-settings:has(.canvas-settings-toggle[hidden]) .help-btn--settings {
+  display: none;
+}
+
+.corpus-chip[hidden] ~ .help-btn--corpus {
+  display: none;
+}
+
+.help-btn--float {
+  position: absolute;
+  right: var(--space-5);
+  z-index: 3;
+}
+
+.help-btn--legend {
+  bottom: var(--space-4);
+}
+
+.help-btn--drift-tree {
+  bottom: 80px;
+}
+
+.graph-legend[hidden] + .help-btn--legend,
+.drift-tree[hidden] + .help-btn--drift-tree {
+  display: none;
+}
+
+.help-btn--panel {
+  position: absolute;
+  top: calc(36px + var(--space-3));
+  right: var(--space-6);
+}
+
+.help-btn--replay {
+  position: absolute;
+  top: var(--space-2);
+  right: calc(var(--space-3) + 28px);
+}
+
+.help-btn--detail {
+  position: absolute;
+  top: var(--space-2);
+  right: calc(var(--space-3) + 28px);
+}
+
+.workflow-status .help-btn {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+.help-pane {
+  width: 440px;
+  flex-shrink: 0;
+  height: 100%;
+  position: relative;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 8;
+}
+
+.help-pane[hidden] {
+  display: none;
+}
+
+.help-pane:focus {
+  outline: none;
+}
+
+.help-pane-close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink-600);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.help-pane-close:hover {
+  color: var(--ink-900);
+  background: var(--chrome);
+}
+
+.help-pane-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.help-pane-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-5) var(--space-8);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-900);
+}
+
+.help-article h2 {
+  margin: 0 var(--space-8) var(--space-2) 0;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.help-article h3 {
+  margin: var(--space-6) 0 var(--space-2);
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.help-article p {
+  margin: 0 0 var(--space-3);
+}
+
+.help-article ul,
+.help-article ol {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-6);
+}
+
+.help-article li {
+  margin-bottom: var(--space-1);
+}
+
+.help-article code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--chrome);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
+.help-article a {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.help-eyebrow {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-eyebrow);
+  font-size: 12px;
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+.help-abstract {
+  font-size: 17px;
+  color: var(--ink-600);
+}
+
+.help-callout {
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.help-callout > :last-child {
+  margin-bottom: 0;
+}
+
+.help-callout--simplify {
+  background: var(--active-soft);
+  border-left-color: var(--active);
+}
+
+.help-live {
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
+.help-live-title {
+  margin: 0 0 var(--space-2);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.help-live-note {
+  margin: 0;
+  color: var(--ink-600);
+}
+
+.help-live-captions {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  font-size: 16px;
+}
+
+.help-unavailable {
+  margin: var(--space-8) var(--space-2);
+  color: var(--ink-600);
+}
+
+.help-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: var(--space-3) 0;
+}
+
+.hs-box {
+  fill: var(--panel);
+  stroke: var(--node-line);
+  stroke-width: 1.5;
+}
+
+.hs-box--local {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+}
+
+.hs-box--global {
+  fill: var(--global-soft);
+  stroke: var(--global);
+}
+
+.hs-box--drift {
+  fill: var(--drift-soft);
+  stroke: var(--drift);
+}
+
+.hs-box--edge {
+  fill: var(--chrome);
+  stroke: var(--ink-600);
+  stroke-dasharray: 5 3;
+}
+
+.hs-box--muted {
+  fill: var(--chrome);
+  stroke: var(--line-strong);
+}
+
+.hs-box--best {
+  stroke-width: 3;
+}
+
+.hs-text {
+  fill: var(--ink-900);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+.hs-text--small {
+  font-size: 13px;
+  fill: var(--ink-600);
+}
+
+.hs-text--bold {
+  font-weight: 700;
+}
+
+.hs-line {
+  stroke: var(--ink-600);
+  stroke-width: 2;
+  fill: none;
+}
+
+.hs-arrow-head {
+  fill: var(--ink-600);
+}
+
+.hs-dot {
+  fill: var(--accent);
+}
+
+@media (max-width: 960px) {
+  .help-pane {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(440px, 100%);
+    z-index: 30;
+    box-shadow: -8px 0 24px rgba(20, 24, 28, 0.18);
+  }
+}
+
+.workflow-status--announce-only .help-btn {
+  display: none;
+}
+
+/* While a replay scrubber is docked at the bottom, lift the legend "?" above it. */
+.graph-stage:has(#replay-scrubber:not([hidden])) .help-btn--legend {
+  bottom: 120px;
+}

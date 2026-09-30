@@ -26,6 +26,7 @@
             <ul class="corpus-history-list" id="corpus-history-list"></ul>
           </div>
         </div>
+        <button type="button" class="help-btn help-btn--corpus" data-help="corpus-chip-history" aria-label="Help: the corpus chip and history">?</button>
         <button type="button" id="workflow-restart-button" class="workflow-restart-button" hidden>Start over with a new corpus</button>
       </div>
     </header>
@@ -33,6 +34,7 @@
       <aside class="chat-panel" id="chat-panel" aria-label="Question chat" hidden>
         <div class="thread" id="chat-thread" aria-live="polite"></div>
         <div class="composer-head">
+          <div class="mode-choice-row">
           <div class="mode-choice" role="radiogroup" aria-label="Search mode">
             <label class="mode-choice-option">
               <input type="radio" name="search-mode" value="LOCAL" checked>
@@ -50,6 +52,8 @@
               <span class="mode-choice-label">Drift Search</span>
             </label>
           </div>
+          <button type="button" class="help-btn" data-help="mode-chooser" aria-label="Help: choosing a search mode">?</button>
+          </div>
           <p class="mode-hint" id="mode-hint">Local Search traverses specific Entities and Relationships around your question.</p>
         </div>
         <p class="composer-offline-note" id="composer-offline-note" hidden>
@@ -65,6 +69,7 @@
         <div class="canvas-tab-bar" id="canvas-tab-bar" role="tablist" aria-label="Canvas view" hidden>
           <button type="button" class="canvas-tab" id="tab-knowledge-graph" role="tab" aria-selected="true" tabindex="0">Knowledge Graph</button>
           <button type="button" class="canvas-tab" id="tab-vector-space" role="tab" aria-selected="false" tabindex="-1" hidden>Vector Space</button>
+          <button type="button" class="help-btn help-btn--tabbar" data-help="kg-overview" aria-label="Help: the knowledge graph">?</button>
         </div>
 
         <div class="canvas-top-right-stack" id="canvas-top-right-stack">
@@ -76,6 +81,7 @@
                 aria-label="Matching Entities" hidden></ul>
           </div>
           <div class="canvas-settings" id="canvas-settings">
+            <button type="button" class="help-btn help-btn--settings" data-help="entity-types" aria-label="Help: entity types and colours">?</button>
             <button type="button" class="canvas-icon-button canvas-settings-toggle" id="canvas-settings-toggle"
                     aria-label="Canvas view settings" aria-haspopup="true" aria-expanded="false"
                     aria-controls="canvas-settings-popover" hidden>
@@ -120,13 +126,22 @@
           <p class="eyebrow">Knowledge Graph — Resting</p>
           <p class="subtitle">Watch a Knowledge Graph get built, clustered, and searched — the mechanics most GraphRAG tools keep hidden.</p>
           <div class="upload-control">
-            <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) or PDF (.pdf) Corpus to get started</label>
+            <div class="help-row">
+              <label class="upload-label" for="corpus-file-input">Upload a plain text (.txt) or PDF (.pdf) Corpus to get started</label>
+              <button type="button" class="help-btn" data-help="upload" aria-label="Help: uploading a corpus">?</button>
+            </div>
             <input type="file" id="corpus-file-input" multiple accept=".txt,.pdf">
-            <button type="button" id="demo-dataset-button" class="demo-dataset-button">Use the built-in Sherlock Holmes Demo Dataset</button>
-            <button type="button" id="demo-offline-button" class="demo-offline-button">
-              <span class="demo-offline-badge">Offline</span>
-              Use the Offline Demo — no API calls
-            </button>
+            <div class="help-row">
+              <button type="button" id="demo-dataset-button" class="demo-dataset-button">Use the built-in Sherlock Holmes Demo Dataset</button>
+              <button type="button" class="help-btn" data-help="demo-offline" aria-label="Help: the demo datasets">?</button>
+            </div>
+            <div class="help-row">
+              <button type="button" id="demo-offline-button" class="demo-offline-button">
+                <span class="demo-offline-badge">Offline</span>
+                Use the Offline Demo — no API calls
+              </button>
+              <button type="button" class="help-btn" data-help="demo-offline" aria-label="Help: the offline demo">?</button>
+            </div>
           </div>
           <p class="state-durability-note">Retrieval Traces live only in this app's memory — restarting it clears them. Corpora persist in Neo4j and survive a restart; pick up a previous one from the corpus history list.</p>
         </div>
@@ -134,19 +149,23 @@
         <div id="graph-canvas" hidden aria-hidden="true"></div>
         <p class="graph-canvas-empty" id="graph-canvas-empty" hidden aria-hidden="true"></p>
         <div class="drift-tree" id="drift-tree" hidden aria-hidden="true"></div>
+        <button type="button" class="help-btn help-btn--float help-btn--drift-tree" data-help="drift-tree" aria-label="Help: the drift tree">?</button>
 
         <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Resting</p>
         <div class="workflow-status" id="workflow-status" role="status" aria-live="polite" hidden>
           <p id="workflow-status-text">Knowledge Graph — Building. Questions stay disabled until ingestion completes.</p>
+          <button type="button" class="help-btn" data-help="ingestion-progress" aria-label="Help: ingestion progress">?</button>
           <div id="workflow-recovery-actions" hidden>
             <button type="button" id="workflow-retry-button">Retry progress stream</button>
           </div>
         </div>
 
         <div id="graph-legend" class="graph-legend" hidden aria-hidden="true"></div>
+        <button type="button" class="help-btn help-btn--float help-btn--legend" data-help="communities" aria-label="Help: communities">?</button>
 
         <div id="vector-space-panel" class="vector-space-panel" role="tabpanel" aria-labelledby="tab-vector-space" hidden>
           <p class="graph-eyebrow">Vector Space — answer ready</p>
+          <button type="button" class="help-btn help-btn--panel" data-help="vector-space" aria-label="Help: the vector space view">?</button>
           <div id="vector-space-answer" class="vector-space-answer"></div>
           <div id="vector-space-scatter-wrap" class="vector-space-scatter-wrap">
             <svg id="vector-space-scatter" class="vector-space-scatter" viewBox="0 0 600 400"
@@ -161,6 +180,7 @@
 
         <div class="replay-scrubber" id="replay-scrubber" role="group" aria-label="Retrieval Trace replay controls" hidden>
           <button type="button" class="replay-close" id="replay-close" aria-label="Close Replay">&times;</button>
+          <button type="button" class="help-btn help-btn--replay" data-help="trace-replay" aria-label="Help: trace replay">?</button>
           <div class="replay-transport">
             <button type="button" class="replay-transport-button" id="replay-step-back" aria-label="Step back">&#8249;</button>
             <button type="button" class="replay-transport-button replay-play-pause" id="replay-play-pause" aria-label="Play" aria-pressed="false">&#9654;</button>
@@ -175,7 +195,8 @@
 
         <aside id="entity-detail-panel" class="node-detail-panel" aria-hidden="true">
           <button type="button" id="entity-detail-close" class="node-detail-close" aria-label="Close entity details">×</button>
-          <p id="entity-detail-eyebrow" class="node-detail-eyebrow">Entity</p>
+          <button type="button" class="help-btn help-btn--detail" data-help="entity-detail" aria-label="Help: the entity panel">?</button>
+          <p  id="entity-detail-eyebrow" class="node-detail-eyebrow">Entity</p>
           <h2 id="entity-detail-name" class="node-detail-name"></h2>
           <p id="entity-detail-type" class="node-detail-type"></p>
           <div id="entity-detail-description-section" class="node-detail-section" hidden>
@@ -192,6 +213,11 @@
           </div>
         </aside>
       </div>
+
+      <aside id="help-pane" class="help-pane" role="complementary" aria-label="Help" tabindex="-1" hidden>
+        <button type="button" id="help-pane-close" class="help-pane-close" aria-label="Close help">&times;</button>
+        <div id="help-pane-content" class="help-pane-content"></div>
+      </aside>
     </main>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
@@ -201,5 +227,6 @@
   <script th:src="@{/js/vector-space.js}" src="/js/vector-space.js"></script>
   <script th:src="@{/js/replay.js}" src="/js/replay.js"></script>
   <script th:src="@{/js/upload.js}" src="/js/upload.js"></script>
+  <script th:src="@{/js/help.js}" src="/js/help.js"></script>
 </body>
 </html>

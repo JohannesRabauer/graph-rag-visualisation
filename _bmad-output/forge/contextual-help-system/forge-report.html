@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forge Report: Contextual Help System</title>
+<style>
+  :root{--bg:#f6f2e9;--ink:#1f1d1a;--muted:#6b665d;--card:#fffdf8;--line:#ddd5c4;--seal:#1f6b4a;--seal2:#164d35;--warn:#9a5b00}
+  @media (prefers-color-scheme:dark){:root{--bg:#161512;--ink:#ece7dc;--muted:#a39d90;--card:#201e19;--line:#3a362d;--seal:#3fae7d;--seal2:#2c8560;--warn:#e0a13a}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Georgia,'Times New Roman',serif}
+  .page{max-width:820px;margin:0 auto;padding:32px 16px 64px}
+  header{display:flex;gap:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:20px;margin-bottom:24px}
+  h1{margin:0 0 4px;font-size:28px;line-height:1.2}
+  .sub{color:var(--muted);font-family:system-ui,sans-serif;font-size:14px;margin:0}
+  h2{font-size:14px;letter-spacing:.09em;text-transform:uppercase;font-family:system-ui,sans-serif;color:var(--muted);margin:32px 0 10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+  ul{margin:0;padding-left:20px} li{margin:6px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .who{font-family:system-ui,sans-serif;font-size:14px}
+  .who b{font-size:15px} .who .role{color:var(--muted)} .who p{margin:6px 0 0;font-family:Georgia,serif;font-style:italic;font-size:14px}
+  .weak li::marker{color:var(--warn)}
+  code{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:var(--line);padding:1px 5px;border-radius:4px}
+  svg.seal text{font-family:system-ui,sans-serif}
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <div>
+    <h1>Contextual Help System for GraphRAG Lens</h1>
+    <p class="sub">Forge session, 2026-09-30 · Root · goal: make the idea better · existing project</p>
+  </div>
+  <svg class="seal" width="150" height="150" viewBox="0 0 150 150" role="img" aria-label="Outcome stamp: HARDENED">
+    <g transform="rotate(-8 75 75)">
+      <circle cx="75" cy="75" r="68" fill="none" stroke="var(--seal)" stroke-width="5"/>
+      <circle cx="75" cy="75" r="58" fill="none" stroke="var(--seal2)" stroke-width="1.5" stroke-dasharray="3 4"/>
+      <text x="75" y="52" text-anchor="middle" font-size="11" letter-spacing="3" fill="var(--seal)">FORGED</text>
+      <text x="75" y="84" text-anchor="middle" font-size="22" font-weight="800" letter-spacing="1" fill="var(--seal)">HARDENED</text>
+      <path d="M50 100 l17 16 l33 -34" fill="none" stroke="var(--seal)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </svg>
+</header>
+
+<h2>Outcome</h2>
+<div class="card">
+  <p style="margin:0">Every meaningful control or area of the UI gets a "?" that opens a docked help pane. The pane teaches a concept and shows, for the search modes, what actually happened in the user's own data. It works for one person who is both the reader and the live presenter, and it stays honest about what Lens simplifies compared with textbook GraphRAG.</p>
+</div>
+
+<h2>Locked decisions</h2>
+<div class="card"><ul>
+  <li><b>Pane:</b> docked, non-modal, stays open. Another "?" swaps the content. Esc or close dismisses it. It becomes an overlay on narrow widths, and type is projector-legible.</li>
+  <li><b>Two layers per topic:</b> a generic layer (header, abstract, overview, hand-drawn SVG) and a live "in your data" layer from the last answer's retrieval trace. The live layer has an empty state and follows new answers.</li>
+  <li><b>Honest content:</b> "The idea" (canonical GraphRAG), "In this demo" (what Lens really does) and a simplifications callout.</li>
+  <li><b>Live layer in v1:</b> Local, Global and Drift only. Everything else is generic.</li>
+  <li><b>Storage:</b> one HTML file per topic in <code>static/help/</code> plus a <code>data-help</code> registry and one small vanilla-JS module.</li>
+  <li><b>Drift guards:</b> a test that every "?" maps to a topic and back, and a test that classes named in "In this demo" still exist.</li>
+  <li><b>17 topics</b>, with Local, Global and Drift as separate articles plus a comparison guide.</li>
+  <li><b>Three phases:</b> pane, registry, guards and the search-mode articles first; then graph and looking-inside topics; then data-in topics.</li>
+</ul></div>
+
+<h2>Rejected, and why</h2>
+<div class="card"><ul>
+  <li><b>Generic-only diagrams:</b> they never show real results.</li>
+  <li><b>Live-only diagrams:</b> they are empty before the first question, and static examples would show Holmes on other datasets.</li>
+  <li><b>Canonical-only content:</b> the code disagrees with it. Local Search is one keyword-matched seed and one hop.</li>
+  <li><b>Modal or auto-closing pane:</b> the audience loses sight of the graph.</li>
+  <li><b>Generated diagrams and a content system:</b> high cost for little value.</li>
+</ul></div>
+
+<h2>Weak points that survived</h2>
+<div class="card"><ul class="weak">
+  <li>It is unknown whether the offline demo's pre-recorded answers carry a retrieval trace. If not, the live layer is empty there.</li>
+  <li>The class-existence guard cannot prove the prose is still true. Renames get caught, but silent behaviour changes do not.</li>
+  <li>Global Search's trace holds only community steps, so its live layer is thin.</li>
+  <li>Seventeen long articles are real writing and review work, and accuracy review sits with Root.</li>
+</ul></div>
+
+<h2>Also done</h2>
+<div class="card"><p style="margin:0">Fixed the search-mode bug: a browser-restored radio left the JS mode stuck on Local. The fix is <code>syncModeFromDom()</code> in <code>upload.js</code>, with regression test <code>RestoredSearchModeUiTest</code>, which fails without the fix and passes with it.</p></div>
+
+<h2>Who pressure-tested it</h2>
+<div class="grid">
+  <div class="card who"><b>📋 John</b> <span class="role">Product Manager</span><p>"Who opens these panels, and at what moment?"</p></div>
+  <div class="card who"><b>🎓 Marguerite Voss</b> <span class="role">generated · workshop instructor</span><p>"A header, abstract and overview with diagrams is a reading experience, not a tooltip."</p></div>
+  <div class="card who"><b>📏 Level</b> <span class="role">Claim Checker</span><p>"That's a claim about the code. Check it before anyone commits."</p></div>
+  <div class="card who"><b>😤 Grumbal</b> <span class="role">The Adversary</span><p>"Your presenter is about to say 'exactly how it works' over a diagram that isn't."</p></div>
+  <div class="card who"><b>🎯 Yui</b> <span class="role">The Craftsman</span><p>"In three months half your 'how it works' text will be false."</p></div>
+  <div class="card who"><b>🚢 Dana</b> <span class="role">The Pragmatist</span><p>"Ship a vertical slice first. Don't build a CMS."</p></div>
+  <div class="card who"><b>🎨 Sally</b> <span class="role">UX Designer</span><p>"If it's a modal, the audience can't see the graph light up."</p></div>
+</div>
+</div>
+</body>
+</html>

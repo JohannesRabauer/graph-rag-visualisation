@@ -58,3 +58,13 @@ underlying graph data and the app's Corpus/workflow-status records are
 still there — only any trace to replay is gone. Re-run a query to capture a
 fresh trace if you need one. If you're mid-demo, restarting only loses the
 Retrieval Trace history, not your Corpora.
+
+## Definition of done
+
+- Changing how a feature behaves (especially retrieval behaviour in the
+  Local, Global, Drift or vector-baseline answer classes) means updating its
+  help topic under `graphrag-web/src/main/resources/static/help/` in the same
+  change. Topics name the classes they describe in `<code data-class="...">`;
+  `HelpRegistryGuardTest` fails when a cited class disappears or a `?` button
+  has no topic, but it cannot tell whether the prose is still true.
+- Every new `?` button (`data-help="<topic>"`) needs a matching topic file.

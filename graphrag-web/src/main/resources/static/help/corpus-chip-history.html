@@ -1,0 +1,12 @@
+<article class="help-article" data-topic="corpus-chip-history">
+<p class="help-eyebrow">Corpora</p>
+<h2>Corpus chip and history</h2>
+<p class="help-abstract">The chip names the corpus you are looking at. The history list brings back any corpus you built before, without re-ingesting it.</p>
+<h3>Overview</h3>
+<svg class="help-svg" viewBox="0 0 400 190" role="img" aria-label="Corpus chip in the header and a history list of earlier corpora"><defs><marker id="hs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="hs-arrow-head"/></marker></defs><rect x="20" y="14" width="360" height="34" rx="8" class="hs-box hs-box--local"/><text x="200.0" y="36.0" text-anchor="middle" class="hs-text">Chip: name, number of documents</text><rect x="20" y="66" width="360" height="30" rx="8" class="hs-box hs-box--muted"/><text x="200.0" y="86.0" text-anchor="middle" class="hs-text">Corpus history</text><rect x="40" y="102" width="340" height="28" rx="8" class="hs-box hs-box--muted"/><text x="210.0" y="121.0" text-anchor="middle" class="hs-text">Corpus A (Ready)</text><rect x="40" y="136" width="340" height="28" rx="8" class="hs-box hs-box--muted"/><text x="210.0" y="155.0" text-anchor="middle" class="hs-text">Corpus B (Ready)</text><text x="200" y="182" text-anchor="middle" class="hs-text hs-text--small">Pick one to restore its graph</text></svg><p>"Start over with a new corpus" clears the current view and returns to the upload screen.</p>
+<h3>The idea</h3>
+<p>Indexing is the expensive part of GraphRAG, so a real system persists the index and reuses it across sessions.</p>
+<h3>In this demo</h3>
+<p>Corpora are stored durably in Neo4j through <code data-class="Neo4jCorpusRegistry">Neo4jCorpusRegistry</code>, so they survive a restart. Picking one from the list calls the activate endpoint on <code data-class="CorpusController">CorpusController</code> and redraws its graph from the stored data. On page load the most recently activated corpus is restored automatically. The offline demo is not listed.</p><p>Retrieval traces are not persisted. They live only in memory (<code data-class="RetrievalTraceStore">RetrievalTraceStore</code>), so a restart clears them and the live layer of the help articles starts empty again.</p>
+<div class="help-callout help-callout--simplify"><p><strong>Simplifications</strong></p><ul><li>Switching corpus clears the chat thread and the last-answer memory shown by the help pane.</li></ul></div>
+</article>
