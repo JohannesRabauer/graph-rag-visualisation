@@ -14,5 +14,8 @@ hs_err_pid*.log
 .classpath
 .project
 
+# Neo4j bind-mounted data
+neo4j-data/
+
 # OS
 .DS_Store

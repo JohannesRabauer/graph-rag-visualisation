@@ -165,6 +165,7 @@
           appendAnswer(answerText, result.body.mode || 'VECTOR',
               result.body.traceId, result.body.traceStepCount, null, result.body.queryProjection);
           revealVectorSpaceTab(answerText);
+          renderComparePanel(answerMsg, answerText, result.body.traceId);
         } else {
           showErrorBanner(errorMessage(result.body));
         }
@@ -178,6 +179,108 @@
         cta.textContent = '\u21BB Compare with Vector Search';
       });
   });
+
+  function fetchTraceSteps(traceId) {
+    if (!traceId) {
+      return Promise.resolve([]);
+    }
+    return fetch('/api/traces/' + traceId)
+      .then(function (response) { return response.ok ? response.json() : { steps: [] }; })
+      .then(function (body) { return (body && body.steps) || []; })
+      .catch(function () { return []; });
+  }
+
+  function countKinds(steps) {
+    var counts = {};
+    steps.forEach(function (s) { counts[s.kind] = (counts[s.kind] || 0) + 1; });
+    return counts;
+  }
+
+  function plural(n, word) {
+    return n + ' ' + word + (n === 1 ? '' : 's');
+  }
+
+  function graphTouchSummary(steps) {
+    var c = countKinds(steps);
+    var parts = [];
+    if (c.COMMUNITY) { parts.push(plural(c.COMMUNITY, 'community')); }
+    if (c.SUB_QUESTION_SPAWNED) { parts.push(plural(c.SUB_QUESTION_SPAWNED, 'sub-question')); }
+    if (c.ENTITY) { parts.push(plural(c.ENTITY, 'entity')); }
+    if (c.RELATIONSHIP) { parts.push(plural(c.RELATIONSHIP, 'relationship hop')); }
+    return parts.length ? 'Touched ' + parts.join(', ') + '.' : 'Touched nothing in the graph.';
+  }
+
+  function vectorTouchSummary(steps) {
+    var chunks = steps.filter(function (s) { return s.kind === 'VECTOR_CHUNK'; });
+    if (!chunks.length) {
+      return 'No matching chunks.';
+    }
+    return 'Ranked every chunk by similarity and kept the top ' + chunks.length
+        + ' (best ' + (chunks[0].label || '').replace('score=', 'score ') + ').';
+  }
+
+  function comparePanelColumn(className, title, answerText, touch) {
+    var col = document.createElement('div');
+    col.className = 'compare-col ' + className;
+    var heading = document.createElement('p');
+    heading.className = 'compare-col-title';
+    heading.textContent = title;
+    var body = document.createElement('p');
+    body.className = 'compare-col-answer';
+    body.textContent = answerText;
+    var meta = document.createElement('p');
+    meta.className = 'compare-col-touch';
+    meta.textContent = touch;
+    col.appendChild(heading);
+    col.appendChild(body);
+    col.appendChild(meta);
+    return col;
+  }
+
+  // Side-by-side result of "Compare with Vector Search", inserted right under
+  // the graph answer so the two mechanisms can be read against each other.
+  function renderComparePanel(answerMsg, vectorAnswerText, vectorTraceId) {
+    var replay = answerMsg.querySelector('.replay-cta');
+    var graphTraceId = replay ? replay.dataset.traceId : null;
+    var graphAnswerEl = answerMsg.querySelector(':scope > span');
+    var graphAnswerText = graphAnswerEl ? graphAnswerEl.textContent : '';
+    var modeLabel = answerTagLabel(answerMsg.dataset.mode).replace(' · Answer', '');
+
+    Promise.all([fetchTraceSteps(graphTraceId), fetchTraceSteps(vectorTraceId)])
+      .then(function (traces) {
+        var existing = answerMsg.querySelector('.compare-panel');
+        if (existing) {
+          existing.remove();
+        }
+        var panel = document.createElement('div');
+        panel.className = 'compare-panel';
+        var columns = document.createElement('div');
+        columns.className = 'compare-columns';
+        columns.appendChild(comparePanelColumn('compare-col--graph', modeLabel + ' · via the graph',
+            graphAnswerText, graphTouchSummary(traces[0])));
+        columns.appendChild(comparePanelColumn('compare-col--vector', 'Vector Search · no graph',
+            vectorAnswerText, vectorTouchSummary(traces[1])));
+        panel.appendChild(columns);
+
+        var takeaway = document.createElement('p');
+        takeaway.className = 'compare-takeaway';
+        takeaway.textContent = 'Graph modes follow connections between entities and communities; vector search '
+            + 'only ranks text by similarity. Replay either answer to watch its mechanism.';
+        panel.appendChild(takeaway);
+
+        var showVector = document.createElement('button');
+        showVector.type = 'button';
+        showVector.className = 'compare-show-vector';
+        showVector.textContent = 'Show chunks in Vector Space →';
+        showVector.addEventListener('click', function () { switchCanvasTab('vector-space'); });
+        panel.appendChild(showVector);
+
+        answerMsg.appendChild(panel);
+        if (chatThread) {
+          chatThread.scrollTop = chatThread.scrollHeight;
+        }
+      });
+  }
 
   // spec-11-7 (#36): the settings popover collapses the community-formation
   // and entity-type-color toggles behind one small, constant-size button \u2014

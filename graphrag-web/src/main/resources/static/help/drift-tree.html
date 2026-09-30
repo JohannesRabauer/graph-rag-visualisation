@@ -7,6 +7,6 @@
 <h3>The idea</h3>
 <p>Drift is iterative and branching, so a flat list of steps hides its structure. A tree shows which follow-up came from which context.</p>
 <h3>In this demo</h3>
-<p>The tree is built in the browser from the trace: each <code>SUB_QUESTION_SPAWNED</code> step opens a branch, and the first <code>SYNTHESIS</code> step closes them, exactly the grouping <code data-class="AnswerDriftSearch">AnswerDriftSearch</code> writes. Stepping through the replay highlights the branch being played. It only appears for traces that contain sub-questions.</p>
+<p>The tree is built in the browser from the trace: each <code>SUB_QUESTION_SPAWNED</code> step opens a branch, and the first <code>SYNTHESIS</code> step closes them, exactly the grouping <code data-class="AnswerDriftSearch">AnswerDriftSearch</code> writes. The nodes are numbered to match the three drift phases: 1 Community pass, 2 Sub-question plus local search (one per branch), 3 Synthesis. Stepping through the replay highlights the phase being played, and the replay bar names it in plain words above the step caption. It only appears for traces that contain sub-questions.</p>
 <div class="help-callout help-callout--simplify"><p><strong>Simplifications</strong></p><ul><li>The tree comes from the trace; it is not a separate model of the reasoning.</li></ul></div>
 </article>

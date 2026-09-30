@@ -4,3 +4,5 @@ _bmad/
 _bmad-output/
 .claude/
 *.md
+
+neo4j-data/

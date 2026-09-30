@@ -98,7 +98,8 @@
       return;
     }
 
-    var root = createNode('Community pass', 'drift-tree-root');
+    var root = createNode('1 · Community pass', 'drift-tree-root');
+    root.title = 'Every community summary is scored against the question; the best ones spawn a branch each.';
     var topStem = document.createElement('div');
     topStem.className = 'drift-tree-stem';
     var branches = document.createElement('div');
@@ -119,6 +120,9 @@
       branchEl.dataset.branchIndex = String(index);
 
       var topLine = createLine('drift-tree-line-top');
+      var tag = document.createElement('span');
+      tag.className = 'drift-tree-tag';
+      tag.textContent = '2 · Sub-question ' + (index + 1) + ' + local search';
       var node = createNode(branch.label, 'drift-tree-branch-node');
       var resolved = document.createElement('span');
       resolved.className = 'drift-tree-resolved';
@@ -126,6 +130,7 @@
       var bottomLine = createLine('drift-tree-line-bottom');
 
       branchEl.appendChild(topLine);
+      branchEl.appendChild(tag);
       branchEl.appendChild(node);
       branchEl.appendChild(resolved);
       branchEl.appendChild(bottomLine);
@@ -134,7 +139,8 @@
 
     var bottomStem = document.createElement('div');
     bottomStem.className = 'drift-tree-stem';
-    var finalNode = createNode('Re-rank + synthesize', 'drift-tree-final');
+    var finalNode = createNode('3 · Synthesis', 'drift-tree-final');
+    finalNode.title = 'The first branch whose local search followed a relationship becomes the answer.';
 
     container.appendChild(root);
     container.appendChild(topStem);

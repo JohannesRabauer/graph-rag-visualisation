@@ -8,7 +8,8 @@ services:
       - "7474:7474"
       - "7687:7687"
     volumes:
-      - neo4j_data:/data
+      - ./neo4j-data/data:/data
+      - ./neo4j-data/logs:/logs
     healthcheck:
       test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-graphraglens}", "RETURN 1"]
       interval: 10s
@@ -28,6 +29,3 @@ services:
     depends_on:
       neo4j:
         condition: service_healthy
-
-volumes:
-  neo4j_data:

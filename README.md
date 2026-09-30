@@ -43,10 +43,14 @@ service's own `NEO4J_AUTH` default) and aborts startup with a clear error if
 Neo4j is unreachable, rather than silently falling back to any in-memory
 behavior.
 
+Neo4j's data and logs are bind-mounted to `./neo4j-data/` next to
+`docker-compose.yml` (git-ignored), so they survive container restarts and
+recreation, and you can back the folder up or delete it directly.
+
 Caveat: `NEO4J_AUTH`/the Neo4j password is only applied when Neo4j's data
-volume is first created. If you change it after the first run, also run
-`docker compose down -v` first — otherwise the running database keeps its
-original credentials and silently diverges from `docker-compose.yml`.
+directory is first created. If you change it after the first run, stop the
+stack and delete `./neo4j-data/` first — otherwise the running database keeps
+its original credentials and silently diverges from `docker-compose.yml`.
 
 Caveat: restarting the `app` container clears every captured Retrieval
 Trace — it lives only in the `app` process's own memory

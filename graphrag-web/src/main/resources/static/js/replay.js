@@ -22,6 +22,8 @@
   var tickTrack = document.getElementById('replay-tick-track');
   var stepCounterEl = document.getElementById('replay-step-counter');
   var captionEl = document.getElementById('replay-caption');
+  var phaseEl = document.getElementById('replay-phase');
+  var hintEl = document.getElementById('replay-hint');
   var graphEyebrow = document.getElementById('graph-eyebrow');
 
   if (!scrubber || !stepBackButton || !playPauseButton || !stepForwardButton) {
@@ -50,6 +52,17 @@
   var loadError = false;
   var isVectorTrace = false;
   var queryProjection = null;
+
+  // The bar grows with its wrapped caption; publish its height so the drift
+  // tree and help buttons stacked above it never overlap it.
+  if (window.ResizeObserver && scrubber.parentElement) {
+    var stage = scrubber.parentElement;
+    new ResizeObserver(function () {
+      if (!scrubber.hidden) {
+        stage.style.setProperty('--replay-h', scrubber.offsetHeight + 'px');
+      }
+    }).observe(scrubber);
+  }
 
   // Delegated so it keeps working for every Replay CTA `upload.js` appends
   // later, without either file needing to know about the other's timing.
@@ -351,6 +364,58 @@
           : total === 0
               ? 'Nothing was touched for this answer.'
               : captionFor(steps[currentIndex], currentIndex, total);
+    }
+    updatePhaseAndHint();
+  }
+
+  function isDriftTrace() {
+    return steps.some(function (s) { return s.kind === 'SUB_QUESTION_SPAWNED'; });
+  }
+
+  function updatePhaseAndHint() {
+    var phase = '';
+    var hint = '';
+    if (!loadError && steps.length > 0 && !isVectorTrace && isDriftTrace()) {
+      var firstBranch = -1;
+      var synthesis = -1;
+      var branchNumber = 0;
+      var branchTotal = 0;
+      steps.forEach(function (s, i) {
+        if (s.kind === 'SUB_QUESTION_SPAWNED') {
+          branchTotal += 1;
+          if (firstBranch === -1) {
+            firstBranch = i;
+          }
+          if (i <= currentIndex) {
+            branchNumber += 1;
+          }
+        } else if (s.kind === 'SYNTHESIS' && synthesis === -1) {
+          synthesis = i;
+        }
+      });
+      var step = steps[currentIndex];
+      if (currentIndex < firstBranch) {
+        phase = 'Drift 1/3 · Community pass';
+        hint = 'Every community summary is scored against your question. The best-scoring ones'
+            + ' (highlighted on the graph) each get their own branch.';
+      } else if (synthesis !== -1 && currentIndex >= synthesis) {
+        phase = 'Drift 3/3 · Synthesis';
+        hint = 'The first branch whose local search followed a relationship becomes the answer.';
+      } else {
+        phase = 'Drift 2/3 · Branch ' + branchNumber + ' of ' + branchTotal;
+        hint = step.kind === 'SUB_QUESTION_SPAWNED'
+            ? 'The community (highlighted) is turned into a focused sub-question for this branch.'
+            : 'Local search for this branch’s sub-question: it matches entities and follows'
+                + ' their relationships on the graph.';
+      }
+    }
+    if (phaseEl) {
+      phaseEl.textContent = phase;
+      phaseEl.hidden = !phase;
+    }
+    if (hintEl) {
+      hintEl.textContent = hint;
+      hintEl.hidden = !hint;
     }
   }
 

@@ -181,16 +181,20 @@
         <div class="replay-scrubber" id="replay-scrubber" role="group" aria-label="Retrieval Trace replay controls" hidden>
           <button type="button" class="replay-close" id="replay-close" aria-label="Close Replay">&times;</button>
           <button type="button" class="help-btn help-btn--replay" data-help="trace-replay" aria-label="Help: trace replay">?</button>
+          <div class="replay-meta" aria-live="polite">
+            <span class="replay-phase" id="replay-phase" hidden></span>
+            <div class="replay-text">
+              <span class="replay-caption" id="replay-caption">Nothing was touched for this answer.</span>
+              <span class="replay-hint" id="replay-hint" hidden></span>
+            </div>
+          </div>
           <div class="replay-transport">
             <button type="button" class="replay-transport-button" id="replay-step-back" aria-label="Step back">&#8249;</button>
             <button type="button" class="replay-transport-button replay-play-pause" id="replay-play-pause" aria-label="Play" aria-pressed="false">&#9654;</button>
             <button type="button" class="replay-transport-button" id="replay-step-forward" aria-label="Step forward">&#8250;</button>
           </div>
           <div class="replay-track" id="replay-tick-track" role="group" aria-label="Retrieval Trace steps"></div>
-          <div class="replay-meta" aria-live="polite">
-            <span class="replay-step-counter" id="replay-step-counter">00 / 00</span>
-            <span class="replay-caption" id="replay-caption">Nothing was touched for this answer.</span>
-          </div>
+          <span class="replay-step-counter" id="replay-step-counter">00 / 00</span>
         </div>
 
         <aside id="entity-detail-panel" class="node-detail-panel" aria-hidden="true">

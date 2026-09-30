@@ -227,12 +227,18 @@
             'text-valign': 'bottom',
             'text-margin-y': 4,
             width: 18,
-            height: 18
+            height: 18,
+            'transition-property': 'background-color border-color border-width width height',
+            'transition-duration': '0.25s',
+            'transition-timing-function': 'ease-in-out'
           }
         },
         {
           selector: 'edge',
           style: {
+            'transition-property': 'line-color target-arrow-color width',
+            'transition-duration': '0.25s',
+            'transition-timing-function': 'ease-in-out',
             width: 1,
             'line-color': readCssVar('--node-line', '#4B5563'),
             'target-arrow-color': readCssVar('--node-line', '#4B5563'),
