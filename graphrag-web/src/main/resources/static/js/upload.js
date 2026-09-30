@@ -6,6 +6,9 @@
   var demoOfflineButton = document.getElementById('demo-offline-button');
   var composerOfflineNote = document.getElementById('composer-offline-note');
   var corpusChip = document.getElementById('corpus-chip');
+  var corpusHistoryToggle = document.getElementById('corpus-history-toggle');
+  var corpusHistoryPopover = document.getElementById('corpus-history-popover');
+  var corpusHistoryList = document.getElementById('corpus-history-list');
   var errorBanner = document.getElementById('error-banner');
   var canvasIdle = document.getElementById('canvas-idle');
   var chatPanel = document.getElementById('chat-panel');
@@ -626,6 +629,9 @@
         .then(function (result) {
           if (result.ok) {
             showCorpusChip(result.body);
+            if (corpusHistoryToggle) {
+              corpusHistoryToggle.hidden = false;
+            }
           } else {
             showErrorBanner(errorMessage(result.body));
           }
@@ -670,6 +676,9 @@
         .then(function (result) {
           if (result.ok) {
             showCorpusChip(result.body);
+            if (corpusHistoryToggle) {
+              corpusHistoryToggle.hidden = false;
+            }
           } else {
             showErrorBanner(errorMessage(result.body));
           }
@@ -720,6 +729,9 @@
       .then(function (result) {
         if (result.ok) {
           showCorpusChip(result.body);
+          if (corpusHistoryToggle) {
+            corpusHistoryToggle.hidden = false;
+          }
         } else {
           showErrorBanner(errorMessage(result.body));
         }
@@ -851,6 +863,9 @@
     if (canvasTabBar) {
       canvasTabBar.hidden = true;
     }
+    // Story 12.7: corpusHistoryToggle is deliberately left visible here —
+    // the corpus-history switcher should stay reachable from the idle
+    // screen too, so a returning user can jump back into a prior corpus.
     var entitySearchEl = document.getElementById('entity-search');
     if (entitySearchEl) {
       entitySearchEl.hidden = true;
@@ -1309,4 +1324,363 @@
       workflowRecoveryActions.hidden = true;
     }
   }
+
+  // ---------------------------------------------------------------------
+  // Story 12.7: corpus history switcher + auto-restore on load.
+  //
+  // `activateCorpus` is a third whole-state-change path alongside
+  // `showCorpusChip` (fresh ingestion) and `resetToIdleState` (start over,
+  // Story 10.4) — reselecting a *previously*-ingested corpus without
+  // re-ingesting or reloading the page. Neither of those two functions is
+  // modified: this shares their teardown *steps* (close EventSource/Replay,
+  // close the entity detail panel, clear `activeRelationships`) via its own
+  // copy of that short sequence, rather than refactoring either of them.
+  // ---------------------------------------------------------------------
+
+  function renderCorpusChipFromHistory(corpusMeta) {
+    if (!corpusChip) {
+      return;
+    }
+    corpusChip.textContent = '';
+
+    var dot = document.createElement('span');
+    dot.className = 'status-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    corpusChip.appendChild(dot);
+
+    var label = document.createElement('span');
+    label.textContent = corpusMeta.name || corpusMeta.id;
+    corpusChip.appendChild(label);
+
+    corpusChip.hidden = false;
+  }
+
+  // Same reveal set `showCorpusChip` applies to the graph-canvas surface —
+  // duplicated here (not extracted) so `showCorpusChip` itself stays
+  // untouched.
+  function revealCorpusCanvasSurface() {
+    if (chatPanel) {
+      chatPanel.hidden = false;
+    }
+    if (communityToggleWrap) {
+      communityToggleWrap.hidden = false;
+    }
+    if (communityVisualizationToggle) {
+      communityVisualizationToggle.checked = true;
+    }
+    if (entityTypeToggleWrap) {
+      entityTypeToggleWrap.hidden = false;
+    }
+    if (entityTypeColorToggle) {
+      entityTypeColorToggle.checked = true;
+    }
+    if (canvasSettingsToggle) {
+      canvasSettingsToggle.hidden = false;
+    }
+    if (canvasZoomControls) {
+      canvasZoomControls.hidden = false;
+    }
+    if (graphCanvasEl) {
+      graphCanvasEl.hidden = false;
+      graphCanvasEl.setAttribute('aria-hidden', 'false');
+    }
+    if (canvasTabBar) {
+      canvasTabBar.hidden = false;
+    }
+    var entitySearchEl = document.getElementById('entity-search');
+    if (entitySearchEl) {
+      entitySearchEl.hidden = false;
+    }
+    if (graphEyebrow) {
+      graphEyebrow.hidden = false;
+    }
+    if (window.GraphCanvas) {
+      window.GraphCanvas.init({ interactive: true });
+      window.GraphCanvas.setHullsVisible(true);
+      window.GraphCanvas.setEntityTypeColoringEnabled(true);
+    }
+  }
+
+  /**
+   * Reselects a corpus already known to the durable registry
+   * (`GET /api/corpora`'s row shape: `id`/`name`/`status`/`createdAt`/
+   * `lastActivatedAt`). Branches on `status`:
+   *  - `BUILDING`: reconnects the existing live progress stream, resuming
+   *    to watch it finish — never re-ingests.
+   *  - `READY`: bulk-fetches `GET /api/corpora/{id}/graph` (same payload
+   *    shapes as the `entity-extracted`/`relationship-extracted`/
+   *    `community-detected` SSE events) and loops the same
+   *    `GraphCanvas.addEntity`/`addRelationship`/`addCommunity` functions
+   *    the live SSE handlers already call.
+   *  - `FAILED`: renders the existing failure/recovery UI, no graph.
+   *
+   * Never tears down to `#canvas-idle` — that stays owned by
+   * `resetToIdleState` alone. Does not itself call
+   * `POST /api/corpora/{id}/activate` — both call sites (the page-load
+   * bootstrap and the switcher's row click handler) do that themselves.
+   */
+  function activateCorpus(corpusMeta) {
+    if (!corpusMeta || !corpusMeta.id) {
+      return;
+    }
+    hideErrorBanner();
+
+    // Shared teardown steps (see comment above) — stop any previous
+    // corpus's live activity before switching.
+    if (activeProgressSource) {
+      activeProgressSource.close();
+      activeProgressSource = null;
+    }
+    if (window.Replay) {
+      window.Replay.close();
+    }
+    closeEntityDetailPanel();
+    activeRelationships = [];
+
+    activeCorpusId = corpusMeta.id;
+    activeCorpusReady = false;
+    activeCorpusOffline = false;
+    if (composerOfflineNote) {
+      composerOfflineNote.hidden = true;
+    }
+    if (chatInput) {
+      chatInput.disabled = false;
+      chatInput.placeholder = 'Ask a question about the Corpus…';
+    }
+    if (sendButton) {
+      sendButton.disabled = false;
+    }
+    if (chatThread) {
+      chatThread.textContent = '';
+    }
+
+    renderCorpusChipFromHistory(corpusMeta);
+    if (workflowRestartButton) {
+      workflowRestartButton.hidden = false;
+    }
+    if (corpusHistoryToggle) {
+      corpusHistoryToggle.hidden = false;
+    }
+    if (canvasIdle) {
+      canvasIdle.hidden = true;
+    }
+
+    // Preserves resetToIdleState's documented ordering constraint:
+    // switchCanvasTab('knowledge-graph') must run BEFORE the explicit
+    // Vector Space hides below — if Vector Space was ever revealed for the
+    // previous corpus, its own tab-switch cleanup would otherwise silently
+    // re-show whatever this switch is about to hide.
+    switchCanvasTab('knowledge-graph');
+    if (tabVectorSpace) {
+      tabVectorSpace.setAttribute('hidden', '');
+    }
+    if (vectorSpacePanel) {
+      vectorSpacePanel.hidden = true;
+    }
+    if (vectorSpaceAnswer) {
+      vectorSpaceAnswer.textContent = '';
+    }
+
+    revealCorpusCanvasSurface();
+
+    if (corpusMeta.status === 'BUILDING') {
+      setIngestionBusy(true);
+      renderWorkflowStatus('BUILDING');
+      connectProgressStream(corpusMeta.id);
+      return;
+    }
+
+    if (corpusMeta.status === 'FAILED') {
+      setIngestionBusy(false);
+      renderWorkflowStatus('FAILED', 'Graph construction failed for this corpus. Retry stream or restart with a new corpus.');
+      return;
+    }
+
+    if (corpusMeta.status === 'READY') {
+      // READY: bulk-load once via the new endpoint, replaying the same
+      // payload shapes the SSE handlers already know how to consume — no new
+      // GraphCanvas API (Design Notes).
+      setIngestionBusy(true);
+      renderWorkflowStatus('BUILDING');
+      var requestedCorpusId = corpusMeta.id;
+
+      fetch('/api/corpora/' + corpusMeta.id + '/graph')
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error('Failed to load corpus graph');
+          }
+          return response.json();
+        })
+        .then(function (body) {
+          // Stale response guard: a second switch while this fetch was in
+          // flight must not render into a canvas that has since moved on.
+          if (requestedCorpusId !== activeCorpusId) {
+            return;
+          }
+          if (window.GraphCanvas) {
+            (body.entities || []).forEach(function (entity) {
+              window.GraphCanvas.addEntity(entity.identity, entity.name, entity.type);
+            });
+            (body.relationships || []).forEach(function (relationship) {
+              window.GraphCanvas.addRelationship(
+                  relationship.sourceIdentity, relationship.source,
+                  relationship.targetIdentity, relationship.target, relationship.type);
+              activeRelationships.push(relationship);
+            });
+            (body.communities || []).forEach(function (community) {
+              window.GraphCanvas.addCommunity(
+                  community.communityId, community.summary, community.memberEntityIdentities);
+            });
+          }
+          setIngestionBusy(false);
+          activeCorpusReady = true;
+          renderWorkflowStatus('READY');
+        })
+        .catch(function () {
+          if (requestedCorpusId !== activeCorpusId) {
+            return;
+          }
+          setIngestionBusy(false);
+          showErrorBanner('The corpus graph could not be loaded. Please try again.');
+        });
+      return;
+    }
+
+    console.warn('Unknown corpus status: ' + corpusMeta.status);
+  }
+
+  function closeCorpusHistoryPopover() {
+    if (!corpusHistoryPopover || corpusHistoryPopover.hidden) {
+      return;
+    }
+    corpusHistoryPopover.hidden = true;
+    if (corpusHistoryToggle) {
+      corpusHistoryToggle.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function renderCorpusHistoryRows(corpora) {
+    if (!corpusHistoryList) {
+      return;
+    }
+    corpusHistoryList.textContent = '';
+
+    if (!corpora || corpora.length === 0) {
+      var empty = document.createElement('li');
+      empty.className = 'corpus-history-empty';
+      empty.textContent = 'No previous corpora yet.';
+      corpusHistoryList.appendChild(empty);
+      return;
+    }
+
+    corpora.forEach(function (corpusMeta) {
+      var row = document.createElement('li');
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'corpus-history-row';
+      if (corpusMeta.id === activeCorpusId) {
+        button.classList.add('is-active');
+      }
+
+      var name = document.createElement('span');
+      name.className = 'corpus-history-row-name';
+      name.textContent = corpusMeta.name || corpusMeta.id;
+      button.appendChild(name);
+
+      var status = document.createElement('span');
+      status.className = 'corpus-history-row-status';
+      if (corpusMeta.status === 'FAILED') {
+        status.classList.add('corpus-history-row-status--failed');
+      }
+      status.textContent = corpusMeta.status;
+      button.appendChild(status);
+
+      button.addEventListener('click', function () {
+        closeCorpusHistoryPopover();
+        if (corpusMeta.id === activeCorpusId) {
+          return;
+        }
+        activateCorpus(corpusMeta);
+        fetch('/api/corpora/' + corpusMeta.id + '/activate', { method: 'POST' }).catch(function (error) {
+          console.warn('Failed to record corpus activation', error);
+        });
+      });
+
+      row.appendChild(button);
+      corpusHistoryList.appendChild(row);
+    });
+  }
+
+  function openCorpusHistoryPopover() {
+    if (!corpusHistoryPopover) {
+      return;
+    }
+    corpusHistoryPopover.hidden = false;
+    if (corpusHistoryToggle) {
+      corpusHistoryToggle.setAttribute('aria-expanded', 'true');
+    }
+    fetch('/api/corpora')
+      .then(function (response) { return response.json(); })
+      .then(function (body) {
+        renderCorpusHistoryRows(body && body.corpora);
+      })
+      .catch(function () {
+        renderCorpusHistoryRows([]);
+      });
+  }
+
+  if (corpusHistoryToggle) {
+    corpusHistoryToggle.addEventListener('click', function () {
+      if (corpusHistoryPopover && corpusHistoryPopover.hidden) {
+        openCorpusHistoryPopover();
+      } else {
+        closeCorpusHistoryPopover();
+      }
+    });
+  }
+
+  document.addEventListener('click', function (event) {
+    if (!corpusHistoryPopover || corpusHistoryPopover.hidden) {
+      return;
+    }
+    var target = event.target;
+    var withinPopover = target && target.closest && target.closest('#corpus-history-popover');
+    var onToggle = target && target.closest && target.closest('#corpus-history-toggle');
+    if (!withinPopover && !onToggle) {
+      closeCorpusHistoryPopover();
+    }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      closeCorpusHistoryPopover();
+    }
+  });
+
+  // Story 12.7: page-load bootstrap — auto-restore whichever corpus was
+  // most recently activated. `GET /api/corpora` is already ordered
+  // most-recently-activated-first (Neo4jCorpusRegistry.list()), so the
+  // first entry (if any) is it. A fresh app with no corpora yet leaves
+  // #canvas-idle exactly as it is today — nothing else runs.
+  fetch('/api/corpora')
+    .then(function (response) { return response.json(); })
+    .then(function (body) {
+      var corpora = (body && body.corpora) || [];
+      if (corpora.length === 0) {
+        return;
+      }
+      if (corpusHistoryToggle) {
+        corpusHistoryToggle.hidden = false;
+      }
+      var mostRecent = corpora[0];
+      activateCorpus(mostRecent);
+      // Opening the app counts as activating the restored corpus too.
+      fetch('/api/corpora/' + mostRecent.id + '/activate', { method: 'POST' }).catch(function (error) {
+        console.warn('Failed to record corpus activation', error);
+      });
+    })
+    .catch(function () {
+      // Auto-restore is a nicety — #canvas-idle's own upload controls
+      // remain fully usable if this fails.
+    });
 })();

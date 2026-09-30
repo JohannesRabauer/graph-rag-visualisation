@@ -4,6 +4,7 @@ import com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort;
 import com.graphraglens.adapter.langchain4j.LangChain4jLlmPort;
 import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Community;
+import io.graphrag.core.domain.CommunityMembership;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.EmbeddedChunk;
 import io.graphrag.core.domain.Entity;
@@ -53,6 +54,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * Upload entry point for a Corpus. It accepts plain text and PDF uploads,
@@ -152,6 +154,58 @@ public class CorpusController {
                 .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
         corpusStore.activate(corpusId);
         return ResponseEntity.ok(Map.of("id", corpusId, "activated", true));
+    }
+
+    /**
+     * Story 12.7: a bulk read of a corpus's entire graph, shaped exactly
+     * like the {@code entity-extracted}/{@code relationship-extracted}/
+     * {@code community-detected} SSE payloads already emitted during live
+     * ingestion (same field names) -- so the corpus switcher's {@code
+     * READY} branch can loop the same {@code GraphCanvas.addEntity}/
+     * {@code addRelationship}/{@code addCommunity} functions the live SSE
+     * handlers already call, instead of a new bulk-render API (Design
+     * Notes). Read-only over the already-real corpus-scoped {@link
+     * GraphStorePort} methods -- never touches {@code lastActivatedAt}.
+     */
+    @GetMapping("/api/corpora/{corpusId}/graph")
+    public ResponseEntity<Map<String, Object>> graph(@PathVariable("corpusId") String corpusId) {
+        Corpus corpus = corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+
+        Neo4jCorpusRegistry.CorpusWorkflowStatus workflowStatus = corpusStore.status(corpus.id());
+        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.BUILDING) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_BUILDING_MESSAGE));
+        }
+        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_FAILED_MESSAGE));
+        }
+
+        Collection<Entity> entities = graphStorePort.entities(corpusId);
+        Collection<Relationship> relationships = graphStorePort.relationships(corpusId);
+        Collection<Community> communities = graphStorePort.communities(corpusId);
+        Collection<CommunityMembership> memberships = graphStorePort.communityMemberships(corpusId);
+
+        Map<String, List<String>> memberEntityIdentitiesByCommunity = memberships.stream()
+                .collect(Collectors.groupingBy(
+                        CommunityMembership::communityId,
+                        Collectors.mapping(CommunityMembership::entityIdentity, Collectors.toList())));
+
+        List<Map<String, Object>> entityPayload = entities.stream()
+                .map(this::entityEventPayload)
+                .toList();
+        List<Map<String, Object>> relationshipPayload = relationships.stream()
+                .map(this::relationshipEventPayload)
+                .toList();
+        List<Map<String, Object>> communityPayload = communities.stream()
+                .map(community -> communityEventPayload(community,
+                        memberEntityIdentitiesByCommunity.getOrDefault(community.id(), List.of())))
+                .toList();
+
+        return ResponseEntity.ok(Map.of(
+                "corpusId", corpusId,
+                "entities", entityPayload,
+                "relationships", relationshipPayload,
+                "communities", communityPayload));
     }
 
     private Map<String, Object> corpusSummaryPayload(Neo4jCorpusRegistry.CorpusSummary summary) {

@@ -16,6 +16,16 @@
       </div>
       <div class="app-bar-right">
         <div class="corpus-chip" id="corpus-chip" role="status" hidden></div>
+        <div class="corpus-history" id="corpus-history">
+          <button type="button" id="corpus-history-toggle" class="corpus-history-toggle"
+                  aria-haspopup="true" aria-expanded="false" aria-controls="corpus-history-popover" hidden>
+            Corpus history
+          </button>
+          <div class="corpus-history-popover" id="corpus-history-popover"
+               role="group" aria-label="Previously ingested corpora" hidden>
+            <ul class="corpus-history-list" id="corpus-history-list"></ul>
+          </div>
+        </div>
         <button type="button" id="workflow-restart-button" class="workflow-restart-button" hidden>Start over with a new corpus</button>
       </div>
     </header>
@@ -118,7 +128,7 @@
               Use the Offline Demo — no API calls
             </button>
           </div>
-          <p class="state-durability-note">Corpora and Retrieval Traces live only in this app's memory — restarting it clears them (Neo4j's own data volume aside).</p>
+          <p class="state-durability-note">Retrieval Traces live only in this app's memory — restarting it clears them. Corpora persist in Neo4j and survive a restart; pick up a previous one from the corpus history list.</p>
         </div>
 
         <div id="graph-canvas" hidden aria-hidden="true"></div>

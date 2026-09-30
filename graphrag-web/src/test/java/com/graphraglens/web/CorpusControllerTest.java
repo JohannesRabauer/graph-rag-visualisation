@@ -765,6 +765,66 @@ class CorpusControllerTest {
     }
 
     @Test
+    void graphEndpointReturnsEntitiesRelationshipsAndCommunitiesWithMembersGroupedByCommunity() throws Exception {
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        String graphBody = mockMvc.perform(get("/api/corpora/{corpusId}/graph", corpusId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.corpusId").value(corpusId))
+                .andExpect(jsonPath("$.entities").isArray())
+                .andExpect(jsonPath("$.relationships").isArray())
+                .andExpect(jsonPath("$.communities").isArray())
+                .andExpect(jsonPath("$.entities[0]").value(org.hamcrest.Matchers.aMapWithSize(3)))
+                .andExpect(jsonPath("$.entities[0]", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.hasKey("identity"),
+                        org.hamcrest.Matchers.hasKey("name"),
+                        org.hamcrest.Matchers.hasKey("type"))))
+                .andExpect(jsonPath("$.relationships[0]", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.hasKey("sourceIdentity"),
+                        org.hamcrest.Matchers.hasKey("source"),
+                        org.hamcrest.Matchers.hasKey("targetIdentity"),
+                        org.hamcrest.Matchers.hasKey("target"),
+                        org.hamcrest.Matchers.hasKey("type"))))
+                .andExpect(jsonPath("$.communities[0]", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.hasKey("communityId"),
+                        org.hamcrest.Matchers.hasKey("summary"),
+                        org.hamcrest.Matchers.hasKey("memberEntityIdentities"))))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        List<Map<String, Object>> communities = JsonPath.read(graphBody, "$.communities");
+        List<io.graphrag.core.domain.CommunityMembership> memberships =
+                new java.util.ArrayList<>(graphStorePort.communityMemberships(corpusId));
+        for (Map<String, Object> community : communities) {
+            String communityId = String.valueOf(community.get("communityId"));
+            List<String> expectedMembers = memberships.stream()
+                    .filter(membership -> membership.communityId().equals(communityId))
+                    .map(io.graphrag.core.domain.CommunityMembership::entityIdentity)
+                    .toList();
+            @SuppressWarnings("unchecked")
+            List<String> actualMembers = (List<String>) community.get("memberEntityIdentities");
+            assertThat(actualMembers).containsExactlyInAnyOrderElementsOf(expectedMembers);
+        }
+    }
+
+    @Test
+    void graphEndpointForAnUnknownCorpusReturns404WithAPlainLanguageError() throws Exception {
+        mockMvc.perform(get("/api/corpora/{corpusId}/graph", "nonexistent-corpus"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value(
+                        "No corpus was found for id nonexistent-corpus"));
+    }
+
+    @Test
     void activatingAnUnknownCorpusReturns404WithAPlainLanguageError() throws Exception {
         mockMvc.perform(post("/api/corpora/{corpusId}/activate", "nonexistent-corpus"))
                 .andExpect(status().isNotFound())

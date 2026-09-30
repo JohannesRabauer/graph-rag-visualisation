@@ -12,6 +12,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.neo4j.driver.Session;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -92,6 +93,22 @@ abstract class UiTestSupport {
 
     @BeforeEach
     void newPage() {
+        // Story 12.7 (auto-restore on load) means a fresh `page.navigate("/")`
+        // is no longer neutral: if any earlier test method (in this class or
+        // an earlier one -- the Neo4j container backing every UiTestSupport
+        // class in this module is a JVM-wide singleton, see
+        // SharedNeo4jTestContainer) left a corpus registered, the very next
+        // navigation would silently auto-restore it and hide #canvas-idle's
+        // upload controls before this test ever gets to use them. Wiping the
+        // whole graph before each test method restores every existing test's
+        // original assumption -- a fresh "/" load always starts idle.
+        try (Session session = SharedNeo4jTestContainer.driver().session()) {
+            session.executeWrite(tx -> {
+                tx.run("MATCH (n) DETACH DELETE n");
+                return null;
+            });
+        }
+
         page = browser.newPage();
         page.route("**/cytoscape@3.28.1/dist/cytoscape.min.js", (Route route) -> route.fulfill(
                 new Route.FulfillOptions()
