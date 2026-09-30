@@ -98,6 +98,14 @@
     });
   });
 
+  // Browsers restore radio state on reload/back without firing `change`.
+  function syncModeFromDom() {
+    var checked = document.querySelector('input[name="search-mode"]:checked');
+    setModeHint(checked ? (checked.value || 'LOCAL') : 'LOCAL');
+  }
+  syncModeFromDom();
+  window.addEventListener('pageshow', syncModeFromDom);
+
   if (entityDetailClose) {
     entityDetailClose.addEventListener('click', function () {
       closeEntityDetailPanel();
