@@ -4,7 +4,6 @@ type: 'feature'
 created: '2026-10-01'
 status: 'done'
 baseline_revision: '80eee5c5cff857062fe6dcec45a144cdb8b9fcc7'
-baseline_commit: '80eee5c5cff857062fe6dcec45a144cdb8b9fcc7'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -100,6 +99,22 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-01 — Review pass
+- verdicts: 12 findings — high 0, medium 0, low 2, false 10, maybe-false 0
+- findings:
+  - `[false]` `[reject]` `text-unit-extracted` payload does not expose `textUnitId`/`ordinal` — the intent's Never list forbids changing that SSE payload; sources travel on entity payloads instead.
+  - `[false]` `[reject]` Compatibility constructor's `""`/`-1` defaults leak into source metadata — the only production caller (`ExtractEntitiesAndRelationships:104`) passes the real id and ordinal; the 3-arg form is test-only.
+  - `[false]` `[reject]` Blank ids pollute `sourceLabelsById` — same as above: no production path emits a blank id, and entities never carry a blank source id.
+  - `[false]` `[reject]` Unknown source ids are dropped instead of shown as fallback rows — the intent mandates "Ids whose unit is unknown to the controller are omitted".
+  - `[false]` `[reject]` A duplicate relationship with an empty description erases the tooltip — events carry cumulative merged values and `GraphElementMerger.mergeDescriptions` never drops existing text, so a later event's description is never emptier.
+  - `[false]` `[reject]` Relationship description only reachable via `title` — the intent explicitly specifies `title` as the surface; a different surface is a spec change.
+  - `[false]` `[reject]` Failed passage fetches are cached, so there is no retry — the intent says "fetches the text once and caches it per row while the panel shows that entity"; reselecting the entity resets the cache.
+  - `[false]` `[reject]` Source toggles lack `aria-controls` — the passage `p` is the button's next sibling inside the same `li`, and `aria-expanded` is set; no assistive-technology failure was demonstrated, and adding ids would be new surface.
+  - `[false]` `[reject]` Neo4j `textUnit` lacks `LIMIT 1` — text-unit ids are unique per corpus (`{corpusId}::doc-i::tu-n`), so at most one record matches.
+  - `[false]` `[reject]` No size guard on passage text — text units are produced by the bounded chunker (~one passage), so an oversized unit cannot be reached.
+  - `[low]` `[patch]` (verification-gap) `entity-retyped` payload `sources` unverified — extended the retype assertion in `CorpusControllerTest` to require non-empty, corpus-scoped `sources` with `documentName` and `ordinal`.
+  - `[low]` `[patch]` (verification-gap) the UI test's wildcard route never checked that passage fetches use the active corpus id — `EntityDetailSourcesUiTest` now captures the demo corpus id and asserts both passage requests target `/api/corpora/{corpusId}/text-units/`.
+
 ## Design Notes
 
 Labels travel with the entity payload so the panel can list sources without a request per row; only the passage text is fetched lazily. Displaying `ordinal + 1` keeps one numbering scheme across the status line ("Extracting passage {index}"), the failure log ("passage N") and the panel. The SSE path labels from `TextUnitProgress` because every source id of an emitted entity belongs to a unit already reported in this run (units are reported before their entities).
@@ -110,3 +125,47 @@ Labels travel with the entity payload so the panel can list sources without a re
 - `mvn -q -pl graphrag-core -am test` -- expected: core suite green.
 - `mvn -q -pl graphrag-adapter-neo4j -am test "-Dapi.version=1.44" "-Dmaven.test.failure.ignore=true"` -- expected: green except the known `Neo4jCorpusRegistryTest` ×2.
 - `mvn -q -pl graphrag-web test "-Dapi.version=1.44" "-Dmaven.test.failure.ignore=true"` (after installing upstream modules, or with `-am`) -- expected: `CorpusControllerTest` and `EntityDetailSourcesUiTest` green; only the known flaky UI tests (`CanvasSettingsPopoverUiTest`, `EntityTypeColorToggleUiTest`, `MainScreenDetailPanelUiTest`, `DriftTreeReplayUiTest`, `EntitySearchUiTest`, `CorpusSwitcherUiTest`) may fail.
+
+## Auto Run Result
+
+**Summary:** Entity payloads (`entity-extracted`, `entity-retyped`, `/graph`) now carry labelled `sources` (`textUnitId`, `documentName`, raw `ordinal`) in `sourceTextUnitIds` order. A new corpus-scoped `GET /api/corpora/{corpusId}/text-units/{textUnitId}` returns one passage. In entity mode the detail panel shows the description, a "Source passages" list labelled `{document} · passage {ordinal+1}` whose text is fetched lazily when a row expands ("Passage not available" on failure), and relationship descriptions as row tooltips. Re-emitted and retyped entities update the open panel.
+
+**Files changed:**
+- `graphrag-core/.../TextUnitProgress.java`: adds `textUnitId` and `ordinal`, keeping the 3-argument constructor.
+- `graphrag-core/.../ExtractEntitiesAndRelationships.java`: reports each unit's id and ordinal.
+- `graphrag-core/.../GraphStorePort.java`: default `textUnit(corpusId, id)` lookup.
+- `graphrag-adapter-neo4j/.../Neo4jGraphStoreAdapter.java`, `InMemoryGraphStoreAdapter.java`: corpus-scoped `textUnit` overrides (one Neo4j `MATCH`).
+- `graphrag-web/.../CorpusController.java`: `sources` on entity payloads (per-run label map on SSE, one `textUnits` read on `/graph`) and the new text-unit endpoint with 404s.
+- `graphrag-web/.../templates/index.html`: the "Source passages" section.
+- `graphrag-web/.../static/js/upload.js`: per-entity detail state, description and source rendering, lazy passage cache, relationship tooltips, updates on re-emit and retype.
+- `graphrag-web/.../static/css/instrument.css`: source row styles.
+- `graphrag-web/.../help/entity-detail.html`: help article covers descriptions and source passages.
+- Tests: `ExtractEntitiesAndRelationshipsTest`, both adapter tests, `CorpusControllerTest` (source values and order for SSE, `/graph` and retype; the endpoint), and the new `EntityDetailSourcesUiTest` (lazy fetch, failure, tooltip present and absent, legacy entity, re-emit while open via a fake `EventSource`, corpus-scoped fetch URL).
+
+**Review findings:** 12 findings (blind 10, edge-case 0, verification-gap 2, intent-alignment descriptive only).
+- Patched 2 (both `low`): retype `sources` assertions, and the passage-URL corpus-id assertion.
+- Deferred 0.
+- Rejected 10 (all `false`):
+  - Unchanged `text-unit-extracted` payload: the intent requires it.
+  - `""`/`-1` compatibility defaults and blank-id map pollution: no production caller can produce them.
+  - Unknown ids omitted: the intent mandates it.
+  - Tooltip erased by an empty duplicate: merged descriptions never shrink.
+  - Tooltip-only relationship description: the intent specifies `title`.
+  - Failure caching: the intent specifies fetch-once caching.
+  - No `aria-controls`: no demonstrated assistive-technology failure.
+  - Neo4j without `LIMIT 1`: ids are unique per corpus.
+  - No passage size guard: units are bounded by the chunker.
+
+**Follow-up review recommended:** `false`. Patched counts are high 0, medium 0, low 2.
+
+**Verification:**
+- `mvn -q install -Dapi.version=1.44 -Dmaven.test.failure.ignore=true` with `OPENAI_API_KEY` cleared. All core, adapter and web suites pass except the known failures:
+  - `Neo4jCorpusRegistryTest` ×2.
+  - Flaky UI tests: `CanvasSettingsPopoverUiTest`, `CorpusSwitcherUiTest`, `EntityTypeColorToggleUiTest`.
+  - `MainScreenDetailPanelUiTest` (1 test): its last assertion expects a community-hull tap to leave the panel closed. It fails the same way with the baseline `upload.js` (`80eee5c`), so 13.4 did not cause it.
+- Targeted runs: `CorpusControllerTest` 41/41, `EntityDetailSourcesUiTest` 2/2, `HelpPaneUiTest` 11/11, `PassageProgressStatusUiTest` 3/3, `MainControllerTest` 8/8, `ExtractEntitiesAndRelationshipsTest` 15/15, `Neo4jGraphStoreAdapterTest` 14/14, `InMemoryGraphStoreAdapterTest` 6/6.
+
+**Residual risks:**
+- UI tests use synthetic SSE and passage responses, not the real extraction pipeline end to end.
+- A failed passage fetch stays cached until the entity is re-selected.
+- `MainScreenDetailPanelUiTest`'s stale hull-tap assertion remains a known failure.

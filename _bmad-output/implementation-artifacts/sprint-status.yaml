@@ -126,11 +126,11 @@ development_status:
   12-7-build-the-corpus-history-switcher-and-auto-restore-on-load: review
   epic-12-retrospective: optional
 
-  epic-13: in-progress
+  epic-13: done
   13-1-extract-the-knowledge-graph-passage-by-passage: done
   13-2-give-every-entity-and-relationship-a-description-and-sources: done
   13-3-resolve-duplicate-entities-before-they-reach-neo4j: done
-  13-4-show-descriptions-and-source-passages-in-the-detail-panel: review
+  13-4-show-descriptions-and-source-passages-in-the-detail-panel: done
   epic-13-retrospective: optional
 
   epic-14: backlog

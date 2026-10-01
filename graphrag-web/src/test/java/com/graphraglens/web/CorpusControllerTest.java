@@ -376,6 +376,29 @@ class CorpusControllerTest {
         assertThat(sources).isNotEmpty();
         assertThat(sources.getFirst()).containsKeys("textUnitId", "documentName", "ordinal");
 
+        Map<String, TextUnit> unitsById = graphStorePort.textUnits(corpusId).stream()
+                .collect(java.util.stream.Collectors.toMap(TextUnit::id, unit -> unit));
+        Map<String, io.graphrag.core.domain.Entity> storedByIdentity = graphStorePort.entities(corpusId).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        io.graphrag.core.domain.Entity::normalizedIdentity, entity -> entity, (a, b) -> a));
+        for (int i = 0; i < eventTypes.size(); i++) {
+            if (!"entity-extracted".equals(eventTypes.get(i))) {
+                continue;
+            }
+            Map<String, Object> payload = payloads.get(i);
+            List<Map<String, Object>> eventSources = (List<Map<String, Object>>) payload.get("sources");
+            List<String> eventIds = eventSources.stream().map(source -> (String) source.get("textUnitId")).toList();
+            for (Map<String, Object> source : eventSources) {
+                TextUnit unit = unitsById.get((String) source.get("textUnitId"));
+                assertThat(unit).isNotNull();
+                assertThat(source.get("documentName")).isEqualTo(unit.documentName());
+                assertThat(source.get("ordinal")).isEqualTo(unit.ordinal());
+            }
+            // Cumulative merges only append ids, so an event's sources are a prefix of the final list.
+            List<String> finalIds = storedByIdentity.get((String) payload.get("identity")).sourceTextUnitIds();
+            assertThat(finalIds.subList(0, eventIds.size())).isEqualTo(eventIds);
+        }
+
         Map<String, Object> relationshipPayload = payloads.get(eventTypes.indexOf("relationship-extracted"));
         assertThat(relationshipPayload).containsKeys("sourceIdentity", "source", "targetIdentity", "target", "type",
                 "description");
@@ -408,7 +431,13 @@ class CorpusControllerTest {
                                 && "jaguar::organization".equals(payload.get("identity"))
                                 && "Jaguar".equals(payload.get("name"))
                                 && "Organization".equals(payload.get("type"))
-                                && payload.containsKey("description")));
+                                && payload.containsKey("description")
+                                && payload.get("sources") instanceof List<?> sources
+                                && !sources.isEmpty()
+                                && sources.stream().allMatch(source -> source instanceof Map<?, ?> label
+                                        && String.valueOf(label.get("textUnitId")).startsWith(corpusId + "::")
+                                        && String.valueOf(label.get("documentName")).startsWith("jaguar-")
+                                        && Integer.valueOf(0).equals(label.get("ordinal")))));
     }
 
     /**
@@ -993,6 +1022,25 @@ class CorpusControllerTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
+
+        Map<String, TextUnit> unitsById = graphStorePort.textUnits(corpusId).stream()
+                .collect(java.util.stream.Collectors.toMap(TextUnit::id, unit -> unit));
+        List<Map<String, Object>> graphEntities = JsonPath.read(graphBody, "$.entities");
+        for (Map<String, Object> graphEntity : graphEntities) {
+            io.graphrag.core.domain.Entity stored = graphStorePort.entities(corpusId).stream()
+                    .filter(entity -> entity.normalizedIdentity().equals(graphEntity.get("identity")))
+                    .findFirst()
+                    .orElseThrow();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> graphSources = (List<Map<String, Object>>) graphEntity.get("sources");
+            assertThat(graphSources.stream().map(source -> source.get("textUnitId")).toList())
+                    .isEqualTo(stored.sourceTextUnitIds());
+            for (Map<String, Object> source : graphSources) {
+                TextUnit unit = unitsById.get((String) source.get("textUnitId"));
+                assertThat(source.get("documentName")).isEqualTo(unit.documentName());
+                assertThat(source.get("ordinal")).isEqualTo(unit.ordinal());
+            }
+        }
 
         List<Map<String, Object>> communities = JsonPath.read(graphBody, "$.communities");
         List<io.graphrag.core.domain.CommunityMembership> memberships =
