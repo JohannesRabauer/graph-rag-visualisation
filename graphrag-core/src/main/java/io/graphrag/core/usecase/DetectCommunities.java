@@ -4,27 +4,29 @@ import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
 import io.graphrag.core.domain.Entity;
-import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.port.GraphStorePort;
 import io.graphrag.core.port.LlmPort;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Queue;
-import java.util.Set;
 import java.util.function.BiConsumer;
 
 /**
- * Creates simple connected-component communities from the persisted knowledge graph.
+ * Detects Communities in a corpus's persisted knowledge graph, summarizes and
+ * persists them, and reports each one to an optional callback.
+ *
+ * <p>The grouping itself comes from {@link GraphStorePort#detectCommunities(String)}:
+ * connected components by default, or a modularity-based algorithm such as GDS
+ * Leiden when the graph store provides one. Whatever order the port returns,
+ * Community ids are always {@code community-1..n}, assigned in the order of each
+ * group's first member in {@link GraphStorePort#entities(String)}, and members
+ * keep that entity order, so ids are deterministic for any adapter. An Entity
+ * the port leaves out of every group becomes its own single-member Community.</p>
  */
 public class DetectCommunities {
 
@@ -52,64 +54,26 @@ public class DetectCommunities {
      * lose already-detected Communities.
      */
     public List<Community> detect(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
-        Collection<Entity> entities = graphStorePort.entities(corpus.id());
-        if (entities == null || entities.isEmpty()) {
+        Collection<Entity> stored = graphStorePort.entities(corpus.id());
+        if (stored == null || stored.isEmpty()) {
+            return List.of();
+        }
+        List<Entity> entities = stored.stream().filter(Objects::nonNull).toList();
+        if (entities.isEmpty()) {
             return List.of();
         }
 
-        Map<String, Set<String>> adjacency = new HashMap<>();
-        for (Entity entity : entities) {
-            adjacency.computeIfAbsent(normalizedIdentity(entity), ignored -> new LinkedHashSet<>());
-        }
+        List<List<Entity>> groups = orderedGroups(entities, graphStorePort.detectCommunities(corpus.id()));
 
-        for (Relationship relationship : graphStorePort.relationships(corpus.id())) {
-            String source = normalizedIdentity(relationship.source(), relationship.sourceType());
-            String target = normalizedIdentity(relationship.target(), relationship.targetType());
-            adjacency.computeIfAbsent(source, ignored -> new LinkedHashSet<>()).add(target);
-            adjacency.computeIfAbsent(target, ignored -> new LinkedHashSet<>()).add(source);
-        }
-
-        Set<String> visited = new HashSet<>();
         List<Community> communities = new ArrayList<>();
         List<CommunityMembership> memberships = new ArrayList<>();
         int index = 1;
-
-        for (Entity entity : entities) {
-            String identity = normalizedIdentity(entity);
-            if (visited.contains(identity)) {
-                continue;
-            }
-
-            Queue<String> pending = new ArrayDeque<>();
-            pending.add(identity);
-            visited.add(identity);
-            List<Entity> members = new ArrayList<>();
-            members.add(entity);
-
-            while (!pending.isEmpty()) {
-                String current = pending.remove();
-                for (Entity other : entities) {
-                    if (normalizedIdentity(other).equals(current) && !members.contains(other)) {
-                        members.add(other);
-                    }
-                }
-                for (String neighbor : adjacency.getOrDefault(current, Set.of())) {
-                    if (visited.add(neighbor)) {
-                        pending.add(neighbor);
-                    }
-                    for (Entity other : entities) {
-                        if (normalizedIdentity(other).equals(neighbor) && !members.contains(other)) {
-                            members.add(other);
-                        }
-                    }
-                }
-            }
-
+        for (List<Entity> members : groups) {
             String communityId = "community-" + index++;
             String summary = summarizeCommunity(members);
             communities.add(new Community(communityId, summary));
             for (Entity member : members) {
-                memberships.add(new CommunityMembership(communityId, normalizedIdentity(member)));
+                memberships.add(new CommunityMembership(communityId, member.normalizedIdentity()));
             }
         }
 
@@ -158,13 +122,42 @@ public class DetectCommunities {
         return "This community centers on " + names + ".";
     }
 
-    private static String normalizedIdentity(Entity entity) {
-        return normalizedIdentity(entity.name(), entity.type());
-    }
+    /**
+     * Maps the port's identity groups back to the Entities carrying those
+     * identities (duplicates kept), in entity order, and orders the groups by
+     * the entity index of their first member. An identity claimed by several
+     * groups stays with the first; Entities no group mentions become
+     * singletons; groups without any known Entity are dropped.
+     */
+    private static List<List<Entity>> orderedGroups(List<Entity> entities, List<List<String>> identityGroups) {
+        Map<String, Integer> groupByIdentity = new HashMap<>();
+        if (identityGroups != null) {
+            int groupIndex = 0;
+            for (List<String> group : identityGroups) {
+                if (group != null) {
+                    for (String identity : group) {
+                        if (identity != null) {
+                            groupByIdentity.putIfAbsent(identity, groupIndex);
+                        }
+                    }
+                }
+                groupIndex++;
+            }
+        }
 
-    private static String normalizedIdentity(String name, String type) {
-        String safeName = name == null ? "" : name.trim();
-        String safeType = type == null ? "Unknown" : type.trim();
-        return safeName.toLowerCase(Locale.ROOT) + "::" + safeType.toLowerCase(Locale.ROOT);
+        // Insertion order of this map is the entity index of each group's first member.
+        Map<Object, List<Entity>> membersByGroup = new LinkedHashMap<>();
+        for (Entity entity : entities) {
+            String identity = entity.normalizedIdentity();
+            Object key = groupByIdentity.containsKey(identity)
+                    ? groupByIdentity.get(identity)
+                    : "singleton::" + identity;
+            List<Entity> members = membersByGroup.computeIfAbsent(key, ignored -> new ArrayList<>());
+            // Same-identity Entities with differing details are kept; exact repeats are not (as before).
+            if (!members.contains(entity)) {
+                members.add(entity);
+            }
+        }
+        return membersByGroup.values().stream().map(List::copyOf).toList();
     }
 }

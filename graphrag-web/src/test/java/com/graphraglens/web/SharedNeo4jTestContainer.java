@@ -34,6 +34,8 @@ public final class SharedNeo4jTestContainer {
     static final Neo4jContainer<?> INSTANCE =
             new Neo4jContainer<>(DockerImageName.parse("neo4j:2026.08.1-community"))
                     .withAdminPassword(PASSWORD)
+                    // GDS for Leiden community detection (Story 14.1) on the real adapter.
+                    .withEnv("NEO4J_PLUGINS", "[\"graph-data-science\"]")
                     .withReuse(true);
 
     private static volatile Driver driver;

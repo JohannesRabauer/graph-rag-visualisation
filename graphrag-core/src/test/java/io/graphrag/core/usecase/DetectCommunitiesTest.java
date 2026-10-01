@@ -88,7 +88,81 @@ class DetectCommunitiesTest {
         assertTrue(holmesWatsonMembers.contains("dr. watson::person"));
     }
 
-    private static final class RecordingGraphStore implements GraphStorePort {
+    @Test
+    void honoursAPortOverrideAndOrdersItsGroupsAndMembersByEntityOrder() {
+        List<Entity> entities = List.of(
+                new Entity("A", "Node"), new Entity("B", "Node"), new Entity("C", "Node"),
+                new Entity("D", "Node"), new Entity("E", "Node"));
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, List.of(
+                new Relationship("A", "Node", "links", "B", "Node"),
+                new Relationship("B", "Node", "links", "C", "Node"),
+                new Relationship("C", "Node", "links", "D", "Node"))) {
+            @Override
+            public List<List<String>> detectCommunities(String corpusId) {
+                // Arbitrary order, as e.g. Leiden returns it; E is left out on purpose.
+                return List.of(
+                        List.of(id("D"), id("B")),
+                        List.of(id("C"), id("A")));
+            }
+        };
+        Map<String, List<String>> callbackInvocations = new LinkedHashMap<>();
+
+        List<Community> communities = new DetectCommunities(graphStore).detect(
+                new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content"))),
+                (community, members) -> callbackInvocations.put(community.id(), members));
+
+        assertEquals(List.of("community-1", "community-2", "community-3"),
+                communities.stream().map(Community::id).toList());
+        assertEquals(Map.of(
+                "community-1", List.of(id("A"), id("C")),
+                "community-2", List.of(id("B"), id("D")),
+                "community-3", List.of(id("E"))), callbackInvocations);
+        assertEquals(List.of(
+                new CommunityMembership("community-1", id("A")),
+                new CommunityMembership("community-1", id("C")),
+                new CommunityMembership("community-2", id("B")),
+                new CommunityMembership("community-2", id("D")),
+                new CommunityMembership("community-3", id("E"))), graphStore.persistedMemberships);
+    }
+
+    @Test
+    void defaultPortGroupsTwoBridgedCliquesIntoOneCommunityAndKeepsAnIsolatedEntityAlone() {
+        List<Entity> entities = new ArrayList<>();
+        for (String name : List.of("A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4", "Loner")) {
+            entities.add(new Entity(name, "Node"));
+        }
+        List<Relationship> relationships = new ArrayList<>();
+        relationships.addAll(clique("A1", "A2", "A3", "A4"));
+        relationships.addAll(clique("B1", "B2", "B3", "B4"));
+        relationships.add(new Relationship("A4", "Node", "bridges", "B1", "Node"));
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, relationships);
+        Map<String, List<String>> callbackInvocations = new LinkedHashMap<>();
+
+        List<Community> communities = new DetectCommunities(graphStore).detect(
+                new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content"))),
+                (community, members) -> callbackInvocations.put(community.id(), members));
+
+        assertEquals(2, communities.size());
+        assertEquals(List.of(id("A1"), id("A2"), id("A3"), id("A4"), id("B1"), id("B2"), id("B3"), id("B4")),
+                callbackInvocations.get("community-1"));
+        assertEquals(List.of(id("Loner")), callbackInvocations.get("community-2"));
+    }
+
+    private static List<Relationship> clique(String... names) {
+        List<Relationship> relationships = new ArrayList<>();
+        for (int i = 0; i < names.length; i++) {
+            for (int j = i + 1; j < names.length; j++) {
+                relationships.add(new Relationship(names[i], "Node", "links", names[j], "Node"));
+            }
+        }
+        return relationships;
+    }
+
+    private static String id(String name) {
+        return Entity.identityOf(name, "Node");
+    }
+
+    private static class RecordingGraphStore implements GraphStorePort {
         private final List<Entity> storedEntities;
         private final List<Relationship> storedRelationships;
         private final List<Community> persistedCommunities = new ArrayList<>();

@@ -47,6 +47,14 @@ usable fallback; only the abstract methods listed below are required.
 | `EmbeddingPort` | Turns chunk text into a dense embedding vector. | `float[] embed(String text)` |
 | `VectorStorePort` | Persists and queries a corpus's embedded chunks and its fitted 2D projection model. | `void persistChunks(String corpusId, Collection<EmbeddedChunk> chunks)` |
 
+`GraphStorePort.detectCommunities(String corpusId)` is the grouping that
+`DetectCommunities` summarizes and persists. Its default is connected
+components over `entities(corpusId)`/`relationships(corpusId)`; override it to
+plug in a modularity-based algorithm (the Neo4j adapter uses GDS Leiden). It
+returns groups of member identities (`Entity.normalizedIdentity()`); their
+order does not matter, because `DetectCommunities` numbers Communities by each
+group's first member in `entities(corpusId)`.
+
 ## Usage: wiring the ports and running the pipeline
 
 The use cases in `io.graphrag.core.usecase` are called in this order: ingest

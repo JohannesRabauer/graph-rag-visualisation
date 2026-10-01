@@ -5,6 +5,30 @@ All notable changes to `graphrag-core` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `GraphStorePort.detectCommunities(String corpusId)`: returns the corpus's
+  Entities grouped into Communities, as lists of member identities
+  (`Entity.normalizedIdentity()` format). The default implementation is the
+  connected-components grouping `DetectCommunities` used before, so existing
+  implementations need no change. A graph store may override it with a native
+  algorithm (the Neo4j adapter uses GDS Leiden). Additive, minor change.
+
+### Changed
+
+- `DetectCommunities` now gets its grouping from
+  `GraphStorePort.detectCommunities(...)` instead of running its own BFS.
+  Community ids stay `community-1..n`, assigned in the order of each group's
+  first member in `entities(corpusId)`, with members in that order, whatever
+  order the port returns; an Entity the port leaves out becomes a
+  single-member Community. With the default port, Community ids and member
+  sets are unchanged, but members are now listed in `entities(corpusId)`
+  order instead of BFS discovery order; this also changes the order of the
+  `onCommunityDetected` member lists, of the persisted memberships, and of the
+  names in the fallback (no-LLM) summary.
+
 ## [1.0.0] - 2026-09-27
 
 ### Changed

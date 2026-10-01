@@ -550,12 +550,87 @@ class CorpusControllerTest {
         ResponseEntity<Map<String, Object>> response = controller.upload(List.<org.springframework.web.multipart.MultipartFile>of(file));
         String corpusId = String.valueOf(response.getBody().get("corpusId"));
 
-        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"), any());
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
+                eq(Map.of("error", CorpusController.EXTRACTION_FAILURE_MESSAGE)));
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
         assertThat(calledOrdinals).containsExactly(0, 1);
         assertThat(graphStorePort.textUnits(corpusId)).hasSize(1);
         assertThat(output.getAll()).contains("engine-notes.txt").contains("passage 2");
+    }
+
+    @Test
+    void aFailingCommunityDetectionMarksTheCorpusFailedAndEmitsAnErrorNamingCommunityDetection() {
+        LlmPort extractingLlmPort = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return new GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public GraphExtraction extract(io.graphrag.core.domain.TextUnit unit, List<String> entityTypes) {
+                return new GraphExtraction(List.of(new io.graphrag.core.domain.Entity("Ada Lovelace", "Person")),
+                        List.of());
+            }
+        };
+        // Simulates GDS being unavailable: the real adapter, with Leiden failing (Story 14.1).
+        GraphStorePort gdsUnavailable =
+                new com.graphraglens.adapter.neo4j.Neo4jGraphStoreAdapter(SharedNeo4jTestContainer.driver()) {
+                    @Override
+                    public List<List<String>> detectCommunities(String corpusId) {
+                        throw new IllegalStateException("Community detection (GDS Leiden) failed for corpus "
+                                + corpusId + ": There is no procedure with the name `gds.graph.project` registered");
+                    }
+                };
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, extractingLlmPort, gdsUnavailable, new RetrievalTraceStore(),
+                constructVectorIndex, null, null);
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "engine-notes.txt", "text/plain", "Ada Lovelace wrote notes.".getBytes(StandardCharsets.UTF_8));
+
+        ResponseEntity<Map<String, Object>> response = controller.upload(List.<org.springframework.web.multipart.MultipartFile>of(file));
+        String corpusId = String.valueOf(response.getBody().get("corpusId"));
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
+                eq(Map.of("error", CorpusController.COMMUNITY_DETECTION_FAILURE_MESSAGE)));
+        verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
+        verify(corpusProgressService, never()).emit(eq(corpusId), eq("community-detected"), any());
+        assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
+    }
+
+    @Test
+    void aFailingCommunitySummaryKeepsTheLlmFailureMessage() {
+        LlmPort failingSummaries = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return new GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public GraphExtraction extract(io.graphrag.core.domain.TextUnit unit, List<String> entityTypes) {
+                return new GraphExtraction(List.of(new io.graphrag.core.domain.Entity("Ada Lovelace", "Person")),
+                        List.of());
+            }
+
+            @Override
+            public String summarizeCommunity(java.util.Collection<io.graphrag.core.domain.Entity> members) {
+                throw new com.graphraglens.adapter.langchain4j.OpenAiLlmPort.LlmCallFailedException(
+                        "OpenAI community summarization call failed", new IllegalStateException("simulated outage"));
+            }
+        };
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, failingSummaries, graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null);
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "engine-notes.txt", "text/plain", "Ada Lovelace wrote notes.".getBytes(StandardCharsets.UTF_8));
+
+        ResponseEntity<Map<String, Object>> response = controller.upload(List.<org.springframework.web.multipart.MultipartFile>of(file));
+        String corpusId = String.valueOf(response.getBody().get("corpusId"));
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
+                eq(Map.of("error", CorpusController.EXTRACTION_FAILURE_MESSAGE)));
+        verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
+        assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
     }
 
     @Test

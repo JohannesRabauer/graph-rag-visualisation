@@ -2,9 +2,11 @@ package com.graphraglens.adapter.neo4j;
 
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
+import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.TextUnit;
+import io.graphrag.core.usecase.DetectCommunities;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -16,11 +18,17 @@ import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,7 +41,9 @@ class Neo4jGraphStoreAdapterTest {
 
     @Container
     private static final Neo4jContainer<?> NEO4J =
-            new Neo4jContainer<>("neo4j:2026.08.1-community").withoutAuthentication();
+            new Neo4jContainer<>("neo4j:2026.08.1-community")
+                    .withoutAuthentication()
+                    .withEnv("NEO4J_PLUGINS", "[\"graph-data-science\"]");
 
     private static Driver driver;
 
@@ -298,5 +308,196 @@ class Neo4jGraphStoreAdapterTest {
         assertEquals(1, restarted.relationships(corpusId).size());
         assertEquals(1, restarted.communities(corpusId).size());
         assertEquals(1, restarted.communityMemberships(corpusId).size());
+    }
+
+    // -- Community detection (GDS Leiden) ---------------------------------------
+
+    @Test
+    void leidenSplitsTwoBridgedCliquesIntoTwoCommunitiesWhereConnectedComponentsGiveOne() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-leiden-" + System.nanoTime();
+        persistBridgedCliques(adapter, corpusId);
+        Set<Set<String>> expected = Set.of(
+                Set.of(id("A1"), id("A2"), id("A3"), id("A4")),
+                Set.of(id("B1"), id("B2"), id("B3"), id("B4")));
+
+        assertEquals(expected, asSets(adapter.detectCommunities(corpusId)));
+
+        List<Community> communities = new DetectCommunities(adapter).detect(new Corpus(corpusId, List.of()));
+        assertEquals(List.of("community-1", "community-2"), communities.stream().map(Community::id).toList());
+        assertEquals(2, adapter.communities(corpusId).size());
+        Map<String, Set<String>> membersByCommunity = new HashMap<>();
+        for (CommunityMembership membership : adapter.communityMemberships(corpusId)) {
+            membersByCommunity.computeIfAbsent(membership.communityId(), ignored -> new HashSet<>())
+                    .add(membership.entityIdentity());
+        }
+        assertEquals(expected, Set.copyOf(membersByCommunity.values()));
+        assertTrue(projectionsFor(corpusId).isEmpty());
+    }
+
+    @Test
+    void leidenHonoursRelationshipWeights() {
+        // Same topology in both corpora: two 4-cliques joined by the A4-B1 bridge.
+        // With uniform weights Leiden returns the two cliques; with a very heavy
+        // bridge, A4 and B1 must end up in the same Community.
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String uniformCorpusId = "corpus-leiden-uniform-" + System.nanoTime();
+        String weightedCorpusId = "corpus-leiden-weighted-" + System.nanoTime();
+        List<Relationship> cliques = new ArrayList<>();
+        cliques.addAll(clique("A1", "A2", "A3", "A4"));
+        cliques.addAll(clique("B1", "B2", "B3", "B4"));
+        adapter.persistRelationships(uniformCorpusId, cliques);
+        adapter.persistRelationships(uniformCorpusId, List.of(
+                new Relationship("A4", "Node", "bridges", "B1", "Node", "", List.of(), 1)));
+        adapter.persistRelationships(weightedCorpusId, cliques);
+        adapter.persistRelationships(weightedCorpusId, List.of(
+                new Relationship("A4", "Node", "bridges", "B1", "Node", "", List.of(), 1000)));
+
+        Set<Set<String>> uniformGroups = asSets(adapter.detectCommunities(uniformCorpusId));
+        Set<Set<String>> weightedGroups = asSets(adapter.detectCommunities(weightedCorpusId));
+
+        assertEquals(Set.of(
+                Set.of(id("A1"), id("A2"), id("A3"), id("A4")),
+                Set.of(id("B1"), id("B2"), id("B3"), id("B4"))), uniformGroups);
+        assertTrue(weightedGroups.stream().anyMatch(group -> group.contains(id("A4")) && group.contains(id("B1"))),
+                () -> "weighted grouping: " + weightedGroups);
+        assertNotEquals(uniformGroups, weightedGroups);
+    }
+
+    @Test
+    void leidenIsReproducibleForTheSameGraph() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-leiden-repro-" + System.nanoTime();
+        persistBridgedCliques(adapter, corpusId);
+
+        assertEquals(asSets(adapter.detectCommunities(corpusId)), asSets(adapter.detectCommunities(corpusId)));
+    }
+
+    @Test
+    void leidenKeepsAnIsolatedEntityAsItsOwnCommunity() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-leiden-isolated-" + System.nanoTime();
+        persistBridgedCliques(adapter, corpusId);
+        adapter.persistEntities(corpusId, List.of(new Entity("Loner", "Node")));
+
+        List<List<String>> groups = adapter.detectCommunities(corpusId);
+
+        assertTrue(groups.contains(List.of(id("Loner"))), () -> "groups: " + groups);
+        assertEquals(3, groups.size(), () -> "groups: " + groups);
+        assertEquals(9, groups.stream().mapToInt(List::size).sum());
+    }
+
+    @Test
+    void edgelessCorpusYieldsOneSingletonPerEntity() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-leiden-edgeless-" + System.nanoTime();
+        adapter.persistEntities(corpusId, List.of(
+                new Entity("X", "Node"), new Entity("Y", "Node"), new Entity("Z", "Node")));
+
+        assertEquals(Set.of(Set.of(id("X")), Set.of(id("Y")), Set.of(id("Z"))),
+                asSets(adapter.detectCommunities(corpusId)));
+        assertTrue(projectionsFor(corpusId).isEmpty());
+    }
+
+    @Test
+    void emptyCorpusYieldsNoCommunities() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+
+        assertTrue(adapter.detectCommunities("corpus-leiden-empty-" + System.nanoTime()).isEmpty());
+    }
+
+    @Test
+    void leidenIgnoresOtherCorporaAndLeavesThemUntouched() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-leiden-own-" + System.nanoTime();
+        String otherCorpusId = "corpus-leiden-other-" + System.nanoTime();
+        persistBridgedCliques(adapter, corpusId);
+        adapter.persistRelationships(otherCorpusId, List.of(
+                new Relationship("A1", "Node", "links", "Other", "Node"),
+                new Relationship("Other", "Node", "links", "B1", "Node")));
+
+        List<List<String>> groups = adapter.detectCommunities(corpusId);
+
+        assertFalse(groups.stream().flatMap(List::stream).anyMatch(id("Other")::equals));
+        assertEquals(8, groups.stream().mapToInt(List::size).sum());
+        assertEquals(3, adapter.entities(otherCorpusId).size());
+        assertEquals(2, adapter.relationships(otherCorpusId).size());
+        assertTrue(adapter.communities(otherCorpusId).isEmpty());
+        assertTrue(projectionsFor(otherCorpusId).isEmpty());
+    }
+
+    @Test
+    void leidenFailureAfterProjectionPropagatesAndLeavesNoProjectionBehind() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver) {
+            @Override
+            String leidenStreamCypher() {
+                return "CALL gds.leiden.stream($graphName, {relationshipWeightProperty: 'doesNotExist', "
+                        + "randomSeed: $randomSeed, concurrency: 1}) "
+                        + "YIELD nodeId, communityId RETURN '' AS identity, communityId";
+            }
+        };
+        String corpusId = "corpus-leiden-fail-" + System.nanoTime();
+        persistBridgedCliques(adapter, corpusId);
+
+        IllegalStateException failure =
+                assertThrows(IllegalStateException.class, () -> adapter.detectCommunities(corpusId));
+
+        assertTrue(failure.getMessage().startsWith("Community detection"), failure::getMessage);
+        assertTrue(projectionsFor(corpusId).isEmpty());
+    }
+
+    @Test
+    void projectionNameIsSanitizedAndUniquePerCall() {
+        String first = Neo4jGraphStoreAdapter.projectionName("my corpus/x:1");
+        String second = Neo4jGraphStoreAdapter.projectionName("my corpus/x:1");
+
+        assertTrue(first.matches("[A-Za-z0-9_-]+"), first);
+        assertTrue(first.contains("my_corpus_x_1"), first);
+        assertNotEquals(first, second);
+    }
+
+    private static void persistBridgedCliques(Neo4jGraphStoreAdapter adapter, String corpusId) {
+        List<Entity> entities = new ArrayList<>();
+        for (String name : List.of("A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4")) {
+            entities.add(new Entity(name, "Node"));
+        }
+        List<Relationship> relationships = new ArrayList<>();
+        relationships.addAll(clique("A1", "A2", "A3", "A4"));
+        relationships.addAll(clique("B1", "B2", "B3", "B4"));
+        relationships.add(new Relationship("A4", "Node", "bridges", "B1", "Node"));
+        adapter.persistEntities(corpusId, entities);
+        adapter.persistRelationships(corpusId, relationships);
+    }
+
+    private static List<Relationship> clique(String... names) {
+        List<Relationship> relationships = new ArrayList<>();
+        for (int i = 0; i < names.length; i++) {
+            for (int j = i + 1; j < names.length; j++) {
+                relationships.add(new Relationship(names[i], "Node", "links", names[j], "Node"));
+            }
+        }
+        return relationships;
+    }
+
+    private static String id(String name) {
+        return Entity.identityOf(name, "Node");
+    }
+
+    private static Set<Set<String>> asSets(List<List<String>> groups) {
+        Set<Set<String>> result = new HashSet<>();
+        for (List<String> group : groups) {
+            result.add(Set.copyOf(group));
+        }
+        return result;
+    }
+
+    private static List<String> projectionsFor(String corpusId) {
+        String sanitized = corpusId.replaceAll("[^A-Za-z0-9_-]", "_");
+        try (var session = driver.session()) {
+            return session.executeRead(tx -> tx.run("CALL gds.graph.list() YIELD graphName RETURN graphName")
+                    .list(record -> record.get("graphName").asString())).stream()
+                    .filter(name -> name.contains(sanitized))
+                    .toList();
+        }
     }
 }

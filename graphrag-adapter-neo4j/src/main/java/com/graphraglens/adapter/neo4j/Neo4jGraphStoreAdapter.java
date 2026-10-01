@@ -16,10 +16,14 @@ import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Real Neo4j-backed implementation of {@link GraphStorePort}, using the
@@ -47,6 +51,12 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     private static final Logger LOG = System.getLogger(Neo4jGraphStoreAdapter.class.getName());
 
     private static final String RELATIONSHIP_TYPE = "RELATIONSHIP";
+
+    /** Fixed Leiden seed so repeated runs over the same graph group identically. */
+    static final long LEIDEN_RANDOM_SEED = 42L;
+
+    /** Prefix of every in-memory GDS projection this adapter creates. */
+    static final String PROJECTION_PREFIX = "graphrag-communities-";
 
     private final Driver driver;
 
@@ -433,5 +443,128 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 return result;
             });
         }
+    }
+
+    // -- Community detection (GDS Leiden, AD-4) --------------------------------
+
+    /**
+     * Groups the corpus's Entities with GDS Leiden over a corpus-scoped,
+     * undirected projection weighted by {@code r.weight} (missing weights
+     * count as 1). The projection is uniquely named per call and always
+     * dropped afterwards, even when Leiden fails. There is deliberately no
+     * fallback to connected components: when GDS is unavailable or Leiden
+     * throws, the failure propagates as an {@link IllegalStateException}
+     * naming community detection.
+     *
+     * <p>Entities without relationships, and any Entity the Leiden stream
+     * omits, become single-member groups. A corpus without relationships is
+     * answered with singletons without calling GDS at all.</p>
+     */
+    @Override
+    public List<List<String>> detectCommunities(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return List.of();
+        }
+        try (Session session = driver.session()) {
+            List<String> identities = session.executeRead(tx -> tx.run(
+                    "MATCH (e:Entity {corpusId: $corpusId}) RETURN e.normalizedIdentity AS identity",
+                    Map.of("corpusId", corpusId)).list(record -> record.get("identity").asString()));
+            if (identities.isEmpty()) {
+                return List.of();
+            }
+            long relationshipCount = session.executeRead(tx -> tx.run(
+                    "MATCH (:Entity {corpusId: $corpusId})-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->"
+                            + "(:Entity {corpusId: $corpusId}) RETURN count(r) AS count",
+                    Map.of("corpusId", corpusId)).single().get("count").asLong());
+            if (relationshipCount == 0) {
+                return identities.stream().map(List::of).toList();
+            }
+
+            String graphName = projectionName(corpusId);
+            Map<Long, List<String>> groupsByCommunityId;
+            IllegalStateException failure = null;
+            try {
+                session.executeWrite(tx -> tx.run(
+                        "MATCH (s:Entity {corpusId: $corpusId}) "
+                                + "OPTIONAL MATCH (s)-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->"
+                                + "(t:Entity {corpusId: $corpusId}) "
+                                + "WITH gds.graph.project($graphName, s, t, "
+                                + "{relationshipProperties: {weight: toFloat(coalesce(r.weight, 1))}}, "
+                                + "{undirectedRelationshipTypes: ['*']}) AS g "
+                                + "RETURN g.nodeCount AS nodeCount",
+                        Map.of("corpusId", corpusId, "graphName", graphName)).consume());
+                // executeWrite: routed to the same (leader) member that holds the projection.
+                // The map is built inside the transaction function so a driver retry starts fresh.
+                groupsByCommunityId = session.executeWrite(tx -> {
+                    Map<Long, List<String>> byCommunityId = new LinkedHashMap<>();
+                    for (Record record : tx.run(leidenStreamCypher(),
+                            Map.of("graphName", graphName, "randomSeed", LEIDEN_RANDOM_SEED)).list()) {
+                        byCommunityId
+                                .computeIfAbsent(record.get("communityId").asLong(), ignored -> new ArrayList<>())
+                                .add(record.get("identity").asString());
+                    }
+                    return byCommunityId;
+                });
+            } catch (RuntimeException e) {
+                failure = new IllegalStateException(
+                        "Community detection (GDS Leiden) failed for corpus " + corpusId + ": " + e.getMessage(), e);
+                throw failure;
+            } finally {
+                dropProjection(session, graphName, failure);
+            }
+
+            List<List<String>> groups = new ArrayList<>();
+            Set<String> grouped = new LinkedHashSet<>();
+            for (List<String> group : groupsByCommunityId.values()) {
+                groups.add(List.copyOf(group));
+                grouped.addAll(group);
+            }
+            for (String identity : identities) {
+                if (!grouped.contains(identity)) {
+                    groups.add(List.of(identity));
+                }
+            }
+            return List.copyOf(groups);
+        }
+    }
+
+    /**
+     * Drops the projection, tolerating a missing one. When dropping fails
+     * while another failure is already propagating (e.g. GDS is not
+     * installed at all), the drop failure is attached as suppressed instead
+     * of masking the original cause.
+     */
+    private static void dropProjection(Session session, String graphName, RuntimeException pending) {
+        try {
+            session.executeWrite(tx -> tx.run(
+                    "CALL gds.graph.drop($graphName, false) YIELD graphName RETURN graphName",
+                    Map.of("graphName", graphName)).consume());
+        } catch (RuntimeException dropFailure) {
+            if (pending != null) {
+                pending.addSuppressed(dropFailure);
+                return;
+            }
+            throw new IllegalStateException(
+                    "Community detection could not drop GDS projection " + graphName + ": "
+                            + dropFailure.getMessage(), dropFailure);
+        }
+    }
+
+    /**
+     * The Leiden stream query, run against the projection named
+     * {@code $graphName}; it must yield {@code identity} and
+     * {@code communityId}. Package-private so a test can make Leiden fail
+     * after the projection exists.
+     */
+    String leidenStreamCypher() {
+        return "CALL gds.leiden.stream($graphName, {relationshipWeightProperty: 'weight', "
+                + "randomSeed: $randomSeed, concurrency: 1}) "
+                + "YIELD nodeId, communityId "
+                + "RETURN gds.util.asNode(nodeId).normalizedIdentity AS identity, communityId "
+                + "ORDER BY communityId";
+    }
+
+    static String projectionName(String corpusId) {
+        return PROJECTION_PREFIX + corpusId.replaceAll("[^A-Za-z0-9_-]", "_") + "-" + UUID.randomUUID();
     }
 }

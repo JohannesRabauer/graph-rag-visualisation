@@ -2,6 +2,7 @@ package com.graphraglens.web;
 
 import com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort;
 import com.graphraglens.adapter.langchain4j.LangChain4jLlmPort;
+import com.graphraglens.adapter.langchain4j.OpenAiLlmPort;
 import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
@@ -69,8 +70,11 @@ import java.util.stream.Collectors;
 public class CorpusController {
 
     private static final Logger LOG = LoggerFactory.getLogger(CorpusController.class);
-    private static final String EXTRACTION_FAILURE_MESSAGE =
+    static final String EXTRACTION_FAILURE_MESSAGE =
             "The LLM call failed during knowledge graph extraction. Nothing was retried — try again when ready.";
+    static final String COMMUNITY_DETECTION_FAILURE_MESSAGE =
+            "Community detection failed after the knowledge graph was extracted (is the Neo4j Graph Data Science "
+                    + "plugin available?). Nothing was retried — try again when ready.";
     private static final String GRAPH_BUILDING_MESSAGE =
             "The graph is still building for this corpus. Wait for “Knowledge Graph — Ready”, then ask your question.";
     private static final String GRAPH_FAILED_MESSAGE =
@@ -471,6 +475,7 @@ public class CorpusController {
 
     private void startKnowledgeGraphConstruction(Corpus corpus, LlmPort llmPortToUse) {
         CompletableFuture.runAsync(() -> {
+            boolean detectingCommunities = false;
             try {
                 Map<String, SourceLabel> sourceLabelsById = new java.util.concurrent.ConcurrentHashMap<>();
                 new BuildKnowledgeGraph(llmPortToUse, graphStorePort).run(corpus,
@@ -486,20 +491,41 @@ public class CorpusController {
                                 relationshipEventPayload(relationship)),
                         (previousIdentity, entity) -> corpusProgressService.emit(corpus.id(), "entity-retyped",
                                 entityRetypedEventPayload(previousIdentity, entity, sourceLabelsById::get)));
+                detectingCommunities = true;
                 new DetectCommunities(graphStorePort, llmPortToUse).run(corpus,
                         (community, memberEntityIdentities) -> corpusProgressService.emit(corpus.id(), "community-detected",
                                 communityEventPayload(community, memberEntityIdentities)));
+                detectingCommunities = false;
                 corpusStore.markReady(corpus.id());
                 corpusProgressService.emit(corpus.id(), "ingestion-complete",
                         Map.of("message", "Knowledge graph construction and community detection completed for " + corpus.name()));
             } catch (Exception ex) {
-                // The exception message names the failing document and passage (Story 13.1).
-                LOG.warn("Knowledge graph construction failed for corpus {}: {}", corpus.id(), ex.getMessage(), ex);
+                // The exception message names the failing document and passage (Story 13.1),
+                // or the community-detection stage (Story 14.1) -- no fallback grouping is attempted.
+                LOG.warn("{} failed for corpus {}: {}",
+                        detectingCommunities && !isLlmFailure(ex) ? "Community detection" : "Knowledge graph construction",
+                        corpus.id(), ex.getMessage(), ex);
                 corpusStore.markFailed(corpus.id());
                 corpusProgressService.emit(corpus.id(), "error",
-                        Map.of("error", EXTRACTION_FAILURE_MESSAGE));
+                        Map.of("error", detectingCommunities && !isLlmFailure(ex)
+                                ? COMMUNITY_DETECTION_FAILURE_MESSAGE
+                                : EXTRACTION_FAILURE_MESSAGE));
             }
         });
+    }
+
+    /**
+     * Whether {@code failure} (or any cause) is an LLM call failure, e.g. a
+     * failed community summarization, which keeps the LLM wording even when
+     * it is thrown during the community-detection stage.
+     */
+    private static boolean isLlmFailure(Throwable failure) {
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current instanceof OpenAiLlmPort.LlmCallFailedException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void startVectorIndexConstruction(Corpus corpus) {
