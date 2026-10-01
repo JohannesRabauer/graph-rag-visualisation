@@ -2,10 +2,33 @@
   'use strict';
 
   var container = document.getElementById('drift-tree');
+  var pane = document.getElementById('drift-pane');
+  var closeButton = document.getElementById('drift-pane-close');
+  var toggleButton = document.getElementById('replay-drift-toggle');
   var model = emptyModel();
+  // Set when the viewer hides the pane; the replay bar's toggle flips it.
+  // Reset on `clear()`, so the next Drift replay opens with the tree shown.
+  var dismissed = false;
 
-  if (!container) {
+  if (!container || !pane) {
     return;
+  }
+
+  if (closeButton) {
+    closeButton.addEventListener('click', function () {
+      dismissed = true;
+      showContainer();
+      if (toggleButton) {
+        toggleButton.focus();
+      }
+    });
+  }
+
+  if (toggleButton) {
+    toggleButton.addEventListener('click', function () {
+      dismissed = !dismissed;
+      showContainer();
+    });
   }
 
   function emptyModel() {
@@ -54,14 +77,24 @@
     };
   }
 
+  // There is a tree to show: the toggle appears, and the pane follows the
+  // viewer's last choice.
   function showContainer() {
-    container.hidden = false;
-    container.setAttribute('aria-hidden', 'false');
+    pane.hidden = dismissed;
+    if (toggleButton) {
+      toggleButton.hidden = false;
+      toggleButton.setAttribute('aria-pressed', dismissed ? 'false' : 'true');
+      toggleButton.textContent = dismissed ? 'Show drift tree' : 'Hide drift tree';
+    }
   }
 
   function hideContainer() {
-    container.hidden = true;
-    container.setAttribute('aria-hidden', 'true');
+    pane.hidden = true;
+    // A pane the Vector Space tab hid must not reappear empty on switching back.
+    delete pane.dataset.hiddenByTabSwitch;
+    if (toggleButton) {
+      toggleButton.hidden = true;
+    }
   }
 
   function ensureBuilt(steps) {
@@ -201,6 +234,7 @@
     container.textContent = '';
     hideContainer();
     model = emptyModel();
+    dismissed = false;
   }
 
   window.DriftTree = {

@@ -148,8 +148,6 @@
 
         <div id="graph-canvas" hidden aria-hidden="true"></div>
         <p class="graph-canvas-empty" id="graph-canvas-empty" hidden aria-hidden="true"></p>
-        <div class="drift-tree" id="drift-tree" hidden aria-hidden="true"></div>
-        <button type="button" class="help-btn help-btn--float help-btn--drift-tree" data-help="drift-tree" aria-label="Help: the drift tree">?</button>
 
         <p class="graph-eyebrow" id="graph-eyebrow" hidden>Knowledge Graph — Resting</p>
         <div class="workflow-status" id="workflow-status" role="status" aria-live="polite" hidden>
@@ -195,6 +193,8 @@
           </div>
           <div class="replay-track" id="replay-tick-track" role="group" aria-label="Retrieval Trace steps"></div>
           <span class="replay-step-counter" id="replay-step-counter">00 / 00</span>
+          <button type="button" class="replay-drift-toggle" id="replay-drift-toggle"
+                  aria-controls="drift-pane" aria-pressed="true" hidden>Drift tree</button>
         </div>
 
         <aside id="entity-detail-panel" class="node-detail-panel" aria-hidden="true">
@@ -217,6 +217,15 @@
           </div>
         </aside>
       </div>
+
+      <aside id="drift-pane" class="drift-pane" aria-label="Drift Search tree" hidden>
+        <div class="drift-pane-head">
+          <p class="drift-pane-title">Drift Search tree</p>
+          <button type="button" class="help-btn" data-help="drift-tree" aria-label="Help: the drift tree">?</button>
+          <button type="button" id="drift-pane-close" class="drift-pane-close" aria-label="Hide the drift tree">&times;</button>
+        </div>
+        <div class="drift-tree" id="drift-tree"></div>
+      </aside>
 
       <aside id="help-pane" class="help-pane" role="complementary" aria-label="Help" tabindex="-1" hidden>
         <button type="button" id="help-pane-close" class="help-pane-close" aria-label="Close help">&times;</button>

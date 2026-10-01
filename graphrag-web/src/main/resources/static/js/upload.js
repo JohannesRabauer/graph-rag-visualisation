@@ -410,11 +410,11 @@
       tabVectorSpace.setAttribute('aria-selected', showVector ? 'true' : 'false');
       tabVectorSpace.tabIndex = showVector ? 0 : -1;
     }
-    // graph-canvas, drift-tree, replay-scrubber, entity-detail-panel —
+    // graph-canvas, drift-pane, replay-scrubber, entity-detail-panel —
     // all part of the Knowledge Graph tab surface.
     var kgEls = [
       document.getElementById('graph-canvas'),
-      document.getElementById('drift-tree'),
+      document.getElementById('drift-pane'),
       document.getElementById('graph-legend'),
       document.getElementById('graph-eyebrow'),
       document.getElementById('canvas-settings-toggle'),

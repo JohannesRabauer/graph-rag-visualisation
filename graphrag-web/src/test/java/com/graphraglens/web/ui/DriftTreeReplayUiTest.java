@@ -92,6 +92,39 @@ class DriftTreeReplayUiTest extends UiTestSupport {
     }
 
     @Test
+    void theDriftPaneCanBeHiddenAndShownAgainFromTheReplayBar() {
+        loadDemoDatasetAndWaitReady();
+
+        page.locator("label.mode-choice-option:has(input[value='DRIFT'])").click();
+        page.locator("#chat-input").fill("Tell me about Holmes.");
+        page.locator("#chat-form .send-button").click();
+
+        Locator replayCta = page.locator(".replay-cta");
+        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        replayCta.click();
+
+        Locator pane = page.locator("#drift-pane");
+        Locator toggle = page.locator("#replay-drift-toggle");
+        assertThat(pane).isVisible();
+        // Docked beside the graph, not painted over it.
+        org.assertj.core.api.Assertions.assertThat(page.locator("#drift-pane").evaluate(
+                "el => el.parentElement.classList.contains('canvas')")).isEqualTo(true);
+        assertThat(toggle).hasAttribute("aria-pressed", "true");
+
+        page.locator("#drift-pane-close").click();
+        assertThat(pane).isHidden();
+        assertThat(toggle).isVisible();
+        assertThat(toggle).hasAttribute("aria-pressed", "false");
+
+        toggle.click();
+        assertThat(pane).isVisible();
+        assertThat(toggle).hasAttribute("aria-pressed", "true");
+
+        page.locator("#replay-close").click();
+        assertThat(pane).isHidden();
+    }
+
+    @Test
     void localReplayKeepsTheDriftTreeHidden() {
         loadDemoDatasetAndWaitReady();
 

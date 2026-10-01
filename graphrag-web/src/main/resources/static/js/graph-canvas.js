@@ -1162,6 +1162,172 @@
     }, extra || {});
   }
 
+  // Gap (model px) left between two packed islands' bounding boxes.
+  var PACK_GAP = 28;
+
+  // `cose` only arranges nodes *within* a connected piece of the graph; how
+  // far apart it leaves disconnected pieces (a Community with no edge to any
+  // other, a lone Entity) is down to its random annealing, and on a typical,
+  // edge-sparse corpus that scattered Communities across far-flung corners of
+  // the canvas. So `cose` now only shapes each island, and this pass packs
+  // the islands next to each other, row by row (tallest first), in a block
+  // roughly matching the canvas's aspect ratio. An island is every Entity
+  // linked by an edge or a shared Community, so a Community and everything
+  // connected to it always move as one unit and keep their internal shape.
+  // Returns the packed position of every entity node, keyed by id.
+  function packedIslandPositions() {
+    var entities = cy.nodes(':childless').not('.community-hull');
+    var root = {};
+    function find(id) {
+      while (root[id] !== id) {
+        root[id] = root[root[id]];
+        id = root[id];
+      }
+      return id;
+    }
+    function union(a, b) {
+      if (root[a] !== undefined && root[b] !== undefined) {
+        root[find(a)] = find(b);
+      }
+    }
+    entities.forEach(function (node) {
+      root[node.id()] = node.id();
+    });
+    entities.forEach(function (node) {
+      var hull = node.parent();
+      if (hull.length > 0) {
+        union(node.id(), hull.children()[0].id());
+      }
+    });
+    cy.edges().forEach(function (edge) {
+      union(edge.source().id(), edge.target().id());
+    });
+
+    var islandsByRoot = {};
+    entities.forEach(function (node) {
+      var key = find(node.id());
+      islandsByRoot[key] = islandsByRoot[key] || cy.collection();
+      islandsByRoot[key] = islandsByRoot[key].union(node).union(node.parent());
+    });
+
+    var islands = Object.keys(islandsByRoot).map(function (key) {
+      // The rendered box (labels and hull padding included), so packed
+      // hulls never overlap.
+      var box = islandsByRoot[key].boundingBox();
+      return { eles: islandsByRoot[key], box: box };
+    });
+    islands.sort(function (a, b) {
+      return (b.box.h - a.box.h) || (b.box.w - a.box.w);
+    });
+
+    var totalArea = 0;
+    var widest = 0;
+    islands.forEach(function (island) {
+      totalArea += (island.box.w + PACK_GAP) * (island.box.h + PACK_GAP);
+      widest = Math.max(widest, island.box.w);
+    });
+    var aspect = cy.width() / Math.max(1, cy.height());
+    var rowWidth = Math.max(widest, Math.sqrt(totalArea * aspect));
+
+    var positions = {};
+    var x = 0;
+    var y = 0;
+    var rowHeight = 0;
+    islands.forEach(function (island) {
+      if (x > 0 && x + island.box.w > rowWidth) {
+        x = 0;
+        y += rowHeight + PACK_GAP;
+        rowHeight = 0;
+      }
+      var dx = x - island.box.x1;
+      var dy = y - island.box.y1;
+      island.eles.filter(':childless').forEach(function (node) {
+        var p = node.position();
+        positions[node.id()] = { x: p.x + dx, y: p.y + dy };
+      });
+      x += island.box.w + PACK_GAP;
+      rowHeight = Math.max(rowHeight, island.box.h);
+    });
+    return positions;
+  }
+
+  var LAYOUT_PADDING = 32;
+  var LAYOUT_ANIMATION_MS = 400;
+  var activeLayout = null;
+
+  // The zoom/pan that fits a model-space bounding box into the viewport —
+  // what `cy.fit` would do, but for positions the nodes have not reached yet.
+  function viewportFitting(box) {
+    var zoom = Math.min(
+      (cy.width() - 2 * LAYOUT_PADDING) / Math.max(1, box.w),
+      (cy.height() - 2 * LAYOUT_PADDING) / Math.max(1, box.h));
+    zoom = Math.max(cy.minZoom(), Math.min(cy.maxZoom(), zoom));
+    return {
+      zoom: zoom,
+      pan: {
+        x: (cy.width() - zoom * (box.x1 + box.x2)) / 2,
+        y: (cy.height() - zoom * (box.y1 + box.y2)) / 2
+      }
+    };
+  }
+
+  // Runs `cose` (synchronously, off-screen: positions are snapshotted and
+  // restored around it), packs its islands, then moves the real nodes to the
+  // packed positions and fits the view to them — animated for the app,
+  // instant for tests. Returns the final `preset` layout for the caller to
+  // `run()` (after hooking its `layoutstop`, if needed).
+  function runPackedLayout(animate) {
+    // A corpus streams in many mutations, each queueing a layout: settle the
+    // previous one first, or its still-running animation would keep pulling
+    // nodes towards stale positions on top of this one's.
+    if (activeLayout) {
+      activeLayout.stop();
+      activeLayout = null;
+    }
+    cy.stop(true);
+    var entities = cy.nodes(':childless');
+    entities.stop(true);
+    var before = {};
+    entities.forEach(function (node) {
+      var p = node.position();
+      before[node.id()] = { x: p.x, y: p.y };
+    });
+    cy.layout(cyLayoutOptions({ fit: false, animate: false })).run();
+    var packed = packedIslandPositions();
+    entities.forEach(function (node) {
+      if (packed[node.id()]) {
+        node.position(packed[node.id()]);
+      }
+    });
+    // Measured with the nodes already in place, so hull padding and labels
+    // count towards the fit.
+    var target = viewportFitting(cy.elements().boundingBox());
+    if (animate) {
+      entities.forEach(function (node) {
+        node.position(before[node.id()]);
+      });
+      cy.animate(target, { duration: LAYOUT_ANIMATION_MS });
+    } else {
+      cy.viewport(target);
+    }
+    var layout = entities.layout({
+      name: 'preset',
+      positions: function (node) {
+        return packed[node.id()] || node.position();
+      },
+      fit: false,
+      animate: animate,
+      animationDuration: LAYOUT_ANIMATION_MS
+    });
+    activeLayout = layout;
+    layout.one('layoutstop', function () {
+      if (activeLayout === layout) {
+        activeLayout = null;
+      }
+    });
+    return layout;
+  }
+
   // Tracks whether the debounced, animated `cose` layout `queueLayout`
   // triggers is still actually running (as opposed to merely queued) — a
   // corpus streams in many entity/relationship/community SSE events in
@@ -1181,7 +1347,7 @@
         return;
       }
       layoutRunning = true;
-      var layout = cy.layout(cyLayoutOptions({ animate: true, animationDuration: 400 }));
+      var layout = runPackedLayout(true);
       layout.one('layoutstop', function () {
         layoutRunning = false;
       });
@@ -1218,7 +1384,7 @@
     if (!cy) {
       return false;
     }
-    cy.layout(cyLayoutOptions({ animate: false })).run();
+    runPackedLayout(false).run();
     return true;
   }
 
