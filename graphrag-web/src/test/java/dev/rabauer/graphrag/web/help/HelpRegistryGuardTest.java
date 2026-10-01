@@ -79,7 +79,7 @@ class HelpRegistryGuardTest {
         Set<String> orphanFiles = new TreeSet<>(files);
         orphanFiles.removeAll(referenced);
 
-        assertThat(files).as("topic files").hasSize(17);
+        assertThat(files).as("topic files").hasSize(16);
         assertThat(missingFiles).as("data-help values without a topic file").isEmpty();
         assertThat(orphanFiles).as("topic files nobody references").isEmpty();
     }

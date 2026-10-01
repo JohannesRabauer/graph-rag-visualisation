@@ -132,6 +132,18 @@ class CorpusControllerCompareTest {
                 .andExpect(jsonPath("$.vector.citations[0].documentName").value("story.txt"))
                 .andExpect(jsonPath("$.vector.citations[0].excerpt").value("Irene Adler left London."))
                 .andExpect(jsonPath("$.vector.queryProjection.length()").value(2))
+                .andExpect(jsonPath("$.vector.scoredChunkCount").value(2))
+                .andExpect(jsonPath("$.vector.ranking.length()").value(2))
+                .andExpect(jsonPath("$.vector.ranking[0].rank").value(1))
+                .andExpect(jsonPath("$.vector.ranking[0].chunkId").value("compare-live::chunk-0"))
+                .andExpect(jsonPath("$.vector.ranking[0].documentName").value("story.txt"))
+                .andExpect(jsonPath("$.vector.ranking[0].excerpt").value("Irene Adler left London."))
+                .andExpect(jsonPath("$.vector.ranking[0].score").value(org.hamcrest.Matchers.closeTo(1.0, 1e-6)))
+                .andExpect(jsonPath("$.vector.ranking[0].used").value(true))
+                .andExpect(jsonPath("$.vector.ranking[1].rank").value(2))
+                .andExpect(jsonPath("$.vector.ranking[1].chunkId").value("compare-live::chunk-1"))
+                .andExpect(jsonPath("$.vector.ranking[1].documentName").value(""))
+                .andExpect(jsonPath("$.vector.ranking[1].used").value(true))
                 .andExpect(jsonPath("$.vector.stats.contextItems").value(2))
                 // chunk-1 has no document name (an older corpus): unknown, not counted.
                 .andExpect(jsonPath("$.vector.stats.distinctDocuments").value(1))
@@ -204,7 +216,10 @@ class CorpusControllerCompareTest {
                 .andExpect(jsonPath("$.vector.noAnswer").value(true))
                 .andExpect(jsonPath("$.vector.reason").isNotEmpty())
                 .andExpect(jsonPath("$.vector.answer").doesNotExist())
-                .andExpect(jsonPath("$.vector.citations.length()").value(0));
+                .andExpect(jsonPath("$.vector.citations.length()").value(0))
+                // The ranking is still shown: the chunks were scored, they just did not answer.
+                .andExpect(jsonPath("$.vector.ranking.length()").value(2))
+                .andExpect(jsonPath("$.vector.scoredChunkCount").value(2));
     }
 
     @Test
@@ -218,7 +233,9 @@ class CorpusControllerCompareTest {
                 .andExpect(jsonPath("$.vector.noAnswer").value(true))
                 .andExpect(jsonPath("$.vector.reason").value(org.hamcrest.Matchers.containsString(
                         "vector index for this corpus is not ready yet")))
-                .andExpect(jsonPath("$.vector.traceStepCount").value(0));
+                .andExpect(jsonPath("$.vector.traceStepCount").value(0))
+                .andExpect(jsonPath("$.vector.ranking.length()").value(0))
+                .andExpect(jsonPath("$.vector.scoredChunkCount").value(0));
     }
 
     @Test

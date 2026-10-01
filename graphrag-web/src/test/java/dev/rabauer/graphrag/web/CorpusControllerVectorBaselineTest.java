@@ -64,6 +64,16 @@ class CorpusControllerVectorBaselineTest {
         assertThat(body).containsEntry("mode", "VECTOR");
         assertThat(body).doesNotContainKey("noAnswer");
         assertThat((List<?>) body.get("queryProjection")).hasSize(2);
+        assertThat(body).containsEntry("scoredChunkCount", 1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> ranking = (List<Map<String, Object>>) body.get("ranking");
+        assertThat(ranking).hasSize(1);
+        assertThat(ranking.get(0)).containsEntry("rank", 1)
+                .containsEntry("chunkId", chunkId)
+                .containsEntry("documentName", "")
+                .containsEntry("excerpt", "Sherlock Holmes investigated the case")
+                .containsEntry("used", true)
+                .containsKey("score");
 
         // The stored trace must be fetchable immediately after the response.
         String traceId = (String) body.get("traceId");
@@ -161,6 +171,8 @@ class CorpusControllerVectorBaselineTest {
         assertThat(body).containsEntry("mode", "VECTOR");
         assertThat((List<?>) body.get("queryProjection")).hasSize(2);
         assertThat(body).doesNotContainKey("answer");
+        assertThat((List<?>) body.get("ranking")).hasSize(1);
+        assertThat(body).containsEntry("scoredChunkCount", 1);
         // VECTOR_QUERY_EMBEDDED + VECTOR_CHUNK, no SYNTHESIS.
         assertThat(body.get("traceStepCount")).isEqualTo(2);
     }
@@ -183,6 +195,10 @@ class CorpusControllerVectorBaselineTest {
         assertThat(citations.get(0)).containsEntry("chunkId", "corpus-vector-cited::chunk-0");
         assertThat(citations.get(0)).containsEntry("documentName", "doc.txt");
         assertThat(citations.get(0)).containsEntry("excerpt", "Sherlock Holmes investigated the case");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> ranking = (List<Map<String, Object>>) body.get("ranking");
+        assertThat(ranking).hasSize(1);
+        assertThat(ranking.get(0)).containsEntry("documentName", "doc.txt").containsEntry("used", true);
     }
 
     @Test

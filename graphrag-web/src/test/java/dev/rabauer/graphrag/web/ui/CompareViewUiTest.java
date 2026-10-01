@@ -13,8 +13,9 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
 
 /**
  * The Compare tab: both answers side by side with their sources, key figures
- * per side, the verdict with its label, a Replay button per side, no extra
- * chat message, and keyboard navigation over three tabs. CI runs without an
+ * per side, the vector side's similarity ranking, the verdict with its label,
+ * a Replay button per side (the vector replay runs on the Compare tab itself),
+ * no extra chat message, and keyboard navigation over the two tabs. CI runs without an
  * OpenAI key, so the cited case rewrites the {@code /compare} response in the
  * page into cited answers over a real demo passage and a real vector chunk.
  */
@@ -44,6 +45,16 @@ class CompareViewUiTest extends UiTestSupport {
         return page.locator("#compare-replay-row .replay-cta", new Page.LocatorOptions().setHasText(label));
     }
 
+    /** Runs the comparison and returns how many chunks its vector side scored ({@code vector.scoredChunkCount}). */
+    private int compareAndReadScoredChunks(Locator answer) {
+        com.microsoft.playwright.Response response = page.waitForResponse(
+                r -> r.url().endsWith("/compare"), () -> answer.locator(".compare-cta").click());
+        assertThat(answer.locator(".compare-cta"))
+                .hasText(READY_LABEL, new LocatorAssertions.HasTextOptions().setTimeout(20000));
+        Number scored = com.jayway.jsonpath.JsonPath.read(response.text(), "$.vector.scoredChunkCount");
+        return scored.intValue();
+    }
+
     @Test
     void anOfflineCompareShowsBothColumnsKeyFiguresAndTheRuleBasedVerdict() {
         List<String> pageErrors = new ArrayList<>();
@@ -52,7 +63,7 @@ class CompareViewUiTest extends UiTestSupport {
         Locator answer = askAndWaitForAnswer("Tell me about Irene Adler.");
         int messages = page.locator("#chat-thread .message").count();
 
-        compare(answer);
+        int scored = compareAndReadScoredChunks(answer);
 
         Locator panel = page.locator("#compare-panel");
         assertThat(panel).isVisible();
@@ -84,6 +95,43 @@ class CompareViewUiTest extends UiTestSupport {
 
         assertThat(replayButton("Replay GraphRAG")).isVisible();
         assertThat(replayButton("Replay Vector")).isVisible();
+
+        // The similarity ranking: the top chunks by score, the top 5 marked and the footer. The demo
+        // index is small, so whether a cut-off line follows depends on its size.
+        org.assertj.core.api.Assertions.assertThat(scored).isPositive();
+        int shown = Math.min(12, scored);
+        int used = Math.min(5, scored);
+        Locator ranking = columns.nth(1).locator(".compare-ranking");
+        assertThat(ranking.locator(".answer-sources-heading")).hasText("Similarity ranking");
+        Locator rankingRows = ranking.locator(".compare-ranking-item");
+        assertThat(rankingRows).hasCount(shown);
+        assertThat(ranking.locator(".compare-ranking-item--used")).hasCount(used);
+        for (int i = 0; i < shown; i++) {
+            Locator row = rankingRows.nth(i);
+            assertThat(row).hasAttribute("data-rank", String.valueOf(i + 1));
+            assertThat(row.locator(".compare-ranking-rank")).hasText(String.valueOf(i + 1));
+            assertThat(row.locator(".compare-ranking-score")).hasText(java.util.regex.Pattern.compile("^-?\\d\\.\\d{3}$"));
+            assertThat(row.locator(".compare-ranking-doc")).not().isEmpty();
+            assertThat(row.locator(".compare-ranking-bar-fill")).hasCount(1);
+            if (i < used) {
+                assertThat(row).hasClass(java.util.regex.Pattern.compile("compare-ranking-item--used"));
+            }
+        }
+        assertThat(rankingRows.first().locator(".compare-ranking-bar-fill")).hasAttribute("style",
+                java.util.regex.Pattern.compile("width: 100(\\.0)?%"));
+        assertThat(ranking.locator(".compare-ranking-cutoff")).hasCount(scored > 5 ? 1 : 0);
+        assertThat(ranking.locator(".compare-ranking-footer")).hasText(scored + " chunks scored · "
+                + (shown == scored ? "showing all " + scored : "showing the top " + shown));
+        assertThat(ranking.locator(".compare-ranking-item--used .compare-ranking-used-label"))
+                .hasCount(used);
+        assertThat(ranking.locator(".compare-ranking-used-label").first()).hasText("used for the answer");
+        // A ranking row opens its chunk text.
+        rankingRows.first().locator(".compare-ranking-row").click();
+        Locator rankingPanel = ranking.locator(".compare-ranking-passage");
+        assertThat(rankingPanel).isVisible();
+        assertThat(rankingPanel.locator(".answer-passage-text")).not().isEmpty();
+        assertThat(rankingPanel.locator(".answer-passage-text")).not().hasText("Passage not available");
+        assertThat(rankingRows.first().locator(".compare-ranking-row")).hasAttribute("aria-expanded", "true");
 
         // Sources of both sides even without citations: the retrieved passages.
         assertThat(columns.nth(0).locator(".compare-retrieved-empty"))
@@ -119,6 +167,10 @@ class CompareViewUiTest extends UiTestSupport {
         assertThat(page.locator("#chat-thread .message")).hasCount(messages);
         assertThat(page.locator(".message.answer[data-mode='VECTOR']")).hasCount(0);
         assertThat(answer.locator(".compare-panel")).hasCount(0);
+        // The Vector Space tab is gone.
+        assertThat(page.locator("#tab-vector-space")).hasCount(0);
+        assertThat(page.locator("#vector-space-panel")).hasCount(0);
+        assertThat(page.locator(".canvas-tab")).hasCount(2);
         org.assertj.core.api.Assertions.assertThat(pageErrors).isEmpty();
     }
 
@@ -199,7 +251,7 @@ class CompareViewUiTest extends UiTestSupport {
                 .hasText("also used by the other side");
 
         // A vector citation opens its chunk's full text; a graph citation its Text Unit.
-        String citationPanel = ".answer-passage:not(.compare-retrieved-passage)";
+        String citationPanel = ".answer-passage:not(.compare-retrieved-passage):not(.compare-ranking-passage)";
         vectorColumn.locator(".citation-marker").click();
         assertThat(vectorColumn.locator(citationPanel)).isVisible();
         assertThat(vectorColumn.locator(citationPanel + " .answer-passage-text")).hasText((String) chunk.get("text"));
@@ -215,7 +267,7 @@ class CompareViewUiTest extends UiTestSupport {
     @Test
     void bothReplayButtonsStartTheirReplays() {
         loadDemoDatasetAndWaitReady();
-        compare(askAndWaitForAnswer("Tell me about Irene Adler."));
+        int scored = compareAndReadScoredChunks(askAndWaitForAnswer("Tell me about Irene Adler."));
 
         replayButton("Replay GraphRAG").click();
         assertThat(page.locator("#replay-scrubber")).isVisible();
@@ -226,11 +278,152 @@ class CompareViewUiTest extends UiTestSupport {
 
         page.locator("#tab-compare").click();
         assertThat(page.locator("#compare-panel")).isVisible();
+        assertThat(page.locator("#replay-scrubber")).isHidden();
         replayButton("Replay Vector").click();
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#vector-space-panel")).isVisible();
+        // The vector replay stays on the Compare tab, its scrubber visible there.
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
+        assertThat(page.locator("#compare-panel")).isVisible();
+        assertThat(page.locator("#graph-canvas")).isHidden();
+        assertThat(page.locator("#tab-vector-space")).hasCount(0);
         assertThat(page.locator("#replay-scrubber")).isVisible();
         assertThat(page.locator("#replay-caption")).containsText("embedded query");
+        assertThat(page.locator("#replay-caption")).containsText(
+                "embedded query — scoring " + scored + (scored == 1 ? " chunk" : " chunks"));
+
+        // The VECTOR_QUERY_EMBEDDED step: the ranking is in its replay state, nothing filled or used yet.
+        Locator ranking = page.locator("#compare-grid .compare-col--vector .compare-ranking");
+        Locator rows = ranking.locator(".compare-ranking-item");
+        assertThat(ranking).hasClass(java.util.regex.Pattern.compile("\\bis-replaying\\b"));
+        assertThat(ranking.locator(".compare-ranking-item.is-current")).hasCount(0);
+        assertThat(ranking.locator(".compare-ranking-item.is-filled")).hasCount(0);
+        assertThat(ranking.locator(".compare-ranking-item--used")).hasCount(0);
+        int used = ranking.locator(".compare-ranking-item[data-used='true']").count();
+        org.assertj.core.api.Assertions.assertThat(used).isBetween(1, 5);
+        for (int hit = 1; hit <= used; hit++) {
+            page.locator("#replay-step-forward").click();
+            Locator current = ranking.locator(".compare-ranking-item.is-current");
+            assertThat(current).hasCount(1);
+            assertThat(current).hasAttribute("data-rank", String.valueOf(hit));
+            assertThat(current.locator(".compare-ranking-row")).hasAttribute("aria-current", "step");
+            // Exactly rows 1..hit are filled and marked used.
+            assertThat(ranking.locator(".compare-ranking-item.is-filled")).hasCount(hit);
+            assertThat(ranking.locator(".compare-ranking-item--used")).hasCount(hit);
+            for (int row = 0; row < hit; row++) {
+                assertThat(rows.nth(row)).hasClass(java.util.regex.Pattern.compile("\\bis-filled\\b"));
+            }
+            String score = rows.nth(hit - 1).locator(".compare-ranking-score").textContent();
+            assertThat(page.locator("#replay-caption"))
+                    .containsText("retrieved chunk: rank " + hit + " · score " + score);
+        }
+        // Stepping back unfills the last hit.
+        page.locator("#replay-step-back").click();
+        assertThat(ranking.locator(".compare-ranking-item.is-filled")).hasCount(used - 1);
+        page.locator("#replay-step-forward").click();
+        assertThat(ranking.locator(".compare-ranking-item.is-filled")).hasCount(used);
+        // The synthesis step highlights the vector answer.
+        page.locator("#replay-step-forward").click();
+        assertThat(page.locator("#compare-grid .compare-col--vector .compare-col-answer.is-replay-current"))
+                .hasCount(1);
+        assertThat(ranking.locator(".compare-ranking-item.is-current")).hasCount(0);
+        assertThat(ranking.locator(".compare-ranking-item.is-filled")).hasCount(used);
+
+        // Switching to the graph tab hides the vector scrubber; back on Compare it returns.
+        page.locator("#tab-knowledge-graph").click();
+        assertThat(page.locator("#replay-scrubber")).isHidden();
+        page.locator("#tab-compare").click();
+        assertThat(page.locator("#replay-scrubber")).isVisible();
+
+        page.locator("#replay-close").click();
+        assertThat(page.locator("#replay-scrubber")).isHidden();
+        // The static view is back: every used row marked, nothing filled or current.
+        assertThat(page.locator("#compare-panel .is-current, #compare-panel .is-filled,"
+                + " #compare-panel .is-replay-current, #compare-panel .is-replaying,"
+                + " #compare-panel [aria-current]")).hasCount(0);
+        assertThat(ranking.locator(".compare-ranking-item--used")).hasCount(used);
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
+    }
+
+    @Test
+    void aGraphReplaysScrubberBelongsToTheKnowledgeGraphTab() {
+        loadDemoDatasetAndWaitReady();
+        compare(askAndWaitForAnswer("Tell me about Irene Adler."));
+
+        replayButton("Replay GraphRAG").click();
+        assertThat(page.locator("#replay-scrubber")).isVisible();
+        page.locator("#tab-compare").click();
+        assertThat(page.locator("#replay-scrubber")).isHidden();
+        page.locator("#tab-knowledge-graph").click();
+        assertThat(page.locator("#replay-scrubber")).isVisible();
+    }
+
+    @Test
+    void aVectorTraceThatFailsToLoadStaysOnTheCompareTab() {
+        loadDemoDatasetAndWaitReady();
+        compare(askAndWaitForAnswer("Tell me about Irene Adler."));
+
+        page.route("**/api/traces/**", route -> route.fulfill(new com.microsoft.playwright.Route.FulfillOptions()
+                .setStatus(404).setContentType("application/json").setBody("{\"error\":\"not found\"}")));
+        replayButton("Replay Vector").click();
+
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
+        assertThat(page.locator("#replay-scrubber")).isVisible();
+        assertThat(page.locator("#replay-caption")).containsText("could not be loaded");
+    }
+
+    @Test
+    void aNormalSizedRankingShowsTwelveRowsTheCutOffAfterRankFiveAndTheFooter() {
+        loadDemoDatasetAndWaitReady();
+        Locator answer = askAndWaitForAnswer("Tell me about Irene Adler.");
+
+        // The demo index is small; widen the vector side's ranking to a 40-chunk corpus's top 12.
+        // A legacy chunk (rank 7) has no document name.
+        page.evaluate("() => {"
+                + "  const originalFetch = window.fetch;"
+                + "  window.fetch = (input, init) => originalFetch(input, init).then(response => {"
+                + "    const url = typeof input === 'string' ? input : input.url;"
+                + "    if (!response.ok || !url.endsWith('/compare')) { return response; }"
+                + "    return response.json().then(body => {"
+                + "      const ranking = [];"
+                + "      for (let i = 0; i < 12; i++) {"
+                + "        ranking.push({ rank: i + 1, chunkId: 'fake-chunk-' + i,"
+                + "            documentName: i === 6 ? '' : 'doc-' + i + '.txt', excerpt: '<b>excerpt ' + i + '</b>',"
+                + "            score: 0.9 - i * 0.05, used: i < 5 });"
+                + "      }"
+                + "      body.vector.ranking = ranking;"
+                + "      body.vector.scoredChunkCount = 40;"
+                + "      return new Response(JSON.stringify(body),"
+                + "          { status: 200, headers: { 'Content-Type': 'application/json' } });"
+                + "    });"
+                + "  });"
+                + "}");
+
+        compare(answer);
+
+        Locator ranking = page.locator("#compare-grid .compare-col--vector .compare-ranking");
+        Locator rows = ranking.locator(".compare-ranking-item");
+        assertThat(rows).hasCount(12);
+        assertThat(ranking.locator(".compare-ranking-item--used")).hasCount(5);
+        assertThat(rows.nth(0).locator(".compare-ranking-score")).hasText("0.900");
+        assertThat(rows.nth(11).locator(".compare-ranking-score")).hasText("0.350");
+        assertThat(rows.nth(6).locator(".compare-ranking-doc")).hasText("Unknown document");
+        // Text goes in as text, never as markup.
+        assertThat(rows.nth(0).locator(".compare-ranking-excerpt")).hasText("<b>excerpt 0</b>");
+        assertThat(ranking.locator(".compare-ranking-excerpt b")).hasCount(0);
+        // Bar widths are relative to the top score.
+        assertThat(rows.nth(0).locator(".compare-ranking-bar-fill")).hasAttribute("style",
+                java.util.regex.Pattern.compile("width: 100(\\.0)?%"));
+        assertThat(rows.nth(10).locator(".compare-ranking-bar-fill")).hasAttribute("style",
+                java.util.regex.Pattern.compile("width: 44\\.4%"));
+
+        Locator cutoff = ranking.locator(".compare-ranking-cutoff");
+        assertThat(cutoff).hasCount(1);
+        assertThat(cutoff).containsText("top 5 used for the answer");
+        Locator items = ranking.locator(".compare-ranking-list > li");
+        assertThat(items).hasCount(13);
+        assertThat(items.nth(4)).hasAttribute("data-rank", "5");
+        assertThat(items.nth(5)).hasClass(java.util.regex.Pattern.compile("compare-ranking-cutoff"));
+        assertThat(items.nth(6)).hasAttribute("data-rank", "6");
+        assertThat(ranking.locator(".compare-ranking-footer")).hasText("40 chunks scored · showing the top 12");
     }
 
     @Test
@@ -302,26 +495,20 @@ class CompareViewUiTest extends UiTestSupport {
     }
 
     @Test
-    void theThreeTabsAreKeyboardNavigable() {
+    void theTwoTabsAreKeyboardNavigable() {
         loadDemoDatasetAndWaitReady();
         compare(askAndWaitForAnswer("Tell me about Irene Adler."));
 
         Locator graphTab = page.locator("#tab-knowledge-graph");
-        Locator vectorTab = page.locator("#tab-vector-space");
         Locator compareTab = page.locator("#tab-compare");
+        assertThat(page.locator("#tab-vector-space")).hasCount(0);
 
         graphTab.click();
         graphTab.focus();
         page.keyboard().press("ArrowRight");
-        assertThat(vectorTab).isFocused();
-        assertThat(vectorTab).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#vector-space-panel")).isVisible();
-
-        page.keyboard().press("ArrowRight");
         assertThat(compareTab).isFocused();
         assertThat(compareTab).hasAttribute("aria-selected", "true");
         assertThat(page.locator("#compare-panel")).isVisible();
-        assertThat(page.locator("#vector-space-panel")).isHidden();
 
         page.keyboard().press("ArrowRight");
         assertThat(graphTab).isFocused();
@@ -338,11 +525,13 @@ class CompareViewUiTest extends UiTestSupport {
 
         page.keyboard().press("ArrowLeft");
         assertThat(compareTab).isFocused();
+        assertThat(compareTab).hasAttribute("aria-selected", "true");
         page.keyboard().press("ArrowLeft");
-        assertThat(vectorTab).isFocused();
-        assertThat(vectorTab).hasAttribute("aria-selected", "true");
+        assertThat(graphTab).isFocused();
+        assertThat(graphTab).hasAttribute("aria-selected", "true");
         assertThat(compareTab).hasAttribute("aria-selected", "false");
         assertThat(compareTab).hasAttribute("tabindex", "-1");
-        assertThat(vectorTab).hasAttribute("tabindex", "0");
+        assertThat(graphTab).hasAttribute("tabindex", "0");
+        assertThat(page.locator("#compare-panel")).isHidden();
     }
 }

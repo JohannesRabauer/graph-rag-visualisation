@@ -372,6 +372,9 @@ body {
 }
 
 .graph-stage {
+  /* The docked replay scrubber's height; replay.js updates it as the
+     caption wraps. */
+  --replay-h: 66px;
   position: relative;
   flex: 1;
   min-width: 0;
@@ -2144,7 +2147,7 @@ body {
 }
 
 /* ---- state-durability note (Story 9.3) ----
-   Same small-print treatment as .vector-space-note — a plain-language
+   Small print — a plain-language
    caveat, not an alarm; corpora/traces are in-memory only. */
 /* ---- entity search (Story 9.4) ----
    A name-prefix jump-to-Entity control, not a full search experience.
@@ -2678,9 +2681,9 @@ body {
 }
 
 /* ---- canvas tab bar (Story 8-3) ----
-   Sits at the top of .graph-stage; shows "Knowledge Graph" and "Vector
-   Space" tabs once a Corpus is loaded. The Vector Space tab button is
-   additionally hidden until the first vector comparison is triggered.
+   Sits at the top of .graph-stage; shows the "Knowledge Graph" and
+   "Compare" tabs once a Corpus is loaded. The Compare tab button is
+   additionally hidden until the first comparison is run.
    Follows the ARIA tabs pattern: role="tablist", role="tab",
    aria-selected, tabindex roving.
    When visible, overlays that are positioned absolute from top must clear
@@ -2781,109 +2784,6 @@ body {
   color: var(--ink-400);
   border-color: var(--line);
   cursor: not-allowed;
-}
-
-/* ---- vector space panel (Story 8-3) ----
-   Occupies the same slot as #graph-canvas; shown when the Vector Space
-   tab is active. Padded to clear the tab bar's 36px height. */
-.vector-space-panel {
-  position: absolute;
-  inset: 0;
-  padding: calc(36px + var(--space-6)) var(--space-6) var(--space-6);
-  overflow-y: auto;
-  background: var(--paper);
-}
-
-.vector-space-panel[hidden] {
-  display: none;
-}
-
-.vector-space-panel .graph-eyebrow {
-  position: static;
-  margin: 0 0 var(--space-3);
-  font-family: var(--font-eyebrow);
-  font-size: var(--font-eyebrow-size);
-  font-weight: var(--font-eyebrow-weight);
-  letter-spacing: var(--font-eyebrow-tracking);
-  text-transform: uppercase;
-  color: var(--ink-600);
-}
-
-.vector-space-answer {
-  font-family: var(--font-body);
-  font-size: var(--font-body-size);
-  line-height: var(--font-body-line-height);
-  color: var(--ink-900);
-  margin-bottom: var(--space-4);
-  white-space: pre-wrap;
-}
-
-.vector-space-note {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-mono-size);
-  color: var(--ink-400);
-  font-style: italic;
-}
-
-/* ---- vector space scatter (Story 8.5) ----
-   Corpus chunks at their settled 2D projection, plus the query dot and
-   its top-k hit lines/labels drawn live during Replay of a VECTOR trace. */
-.vector-space-scatter-wrap {
-  position: relative;
-  margin-bottom: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.vector-space-scatter {
-  display: block;
-  width: 100%;
-  height: 320px;
-}
-
-.vector-space-chunk-dot {
-  fill: var(--ink-400);
-  opacity: 0.55;
-}
-
-.vector-space-chunk-dot.is-hit {
-  fill: var(--accent);
-  opacity: 1;
-}
-
-.vector-space-query-dot {
-  fill: var(--active);
-  stroke: var(--panel);
-  stroke-width: 1.5;
-}
-
-.vector-space-hit-line {
-  stroke: var(--accent);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-  opacity: 0.7;
-}
-
-.vector-space-hit-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  fill: var(--ink-600);
-}
-
-.vector-space-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  padding: var(--space-4);
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: var(--font-mono-size);
-  color: var(--ink-400);
 }
 
 /* ============================================================
@@ -3315,9 +3215,10 @@ body {
 }
 
 /* ---- Compare view (GraphRAG vs Vector Search) ----
-   A third canvas tab: the question, both cited answers side by side with
-   their key figures, the passage overlap, a short verdict and one Replay
-   button per side. Laid out like the Vector Space panel. */
+   The second canvas tab: the question, both cited answers side by side
+   with their key figures, the vector side's similarity ranking, the
+   passage overlap, a short verdict and one Replay button per side.
+   Padded to clear the tab bar's 36px height. */
 .compare-view {
   position: absolute;
   inset: 0;
@@ -3328,6 +3229,12 @@ body {
 
 .compare-view[hidden] {
   display: none;
+}
+
+/* The vector replay docks its scrubber over the Compare tab: keep the
+   last rows scrollable above it. */
+.graph-stage:has(#replay-scrubber:not([hidden])) .compare-view {
+  padding-bottom: calc(var(--replay-h) + var(--space-6));
 }
 
 .compare-view .graph-eyebrow {
@@ -3394,6 +3301,186 @@ body {
   margin-top: var(--space-3);
   padding-top: var(--space-2);
   border-top: 1px solid var(--line);
+}
+
+/* Similarity ranking: one row per top-scoring chunk (rank, score bar
+   relative to the top score, score, document, excerpt); the top-k rows that
+   feed the answer are marked and followed by the cut-off line. */
+.compare-ranking {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.compare-ranking-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compare-ranking-item {
+  margin: 0;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease;
+}
+
+.compare-ranking-item--used {
+  border-left-color: var(--global);
+  background: var(--global-soft);
+}
+
+.compare-ranking-item:not(.compare-ranking-item--used) {
+  opacity: 0.75;
+}
+
+.compare-ranking-item.is-current {
+  border-left-color: var(--active);
+  background: var(--active-soft);
+  box-shadow: 0 0 0 2px var(--active);
+  opacity: 1;
+}
+
+.compare-ranking-row {
+  display: grid;
+  grid-template-columns: 2.2em minmax(48px, 1fr) 4.2em minmax(0, 1.4fr);
+  grid-template-areas:
+    "rank bar score doc"
+    "rank excerpt excerpt excerpt";
+  align-items: center;
+  gap: 2px var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--ink-900);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compare-ranking-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.compare-ranking-rank {
+  grid-area: rank;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--ink-600);
+  text-align: right;
+}
+
+.compare-ranking-bar {
+  grid-area: bar;
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--chrome);
+}
+
+.compare-ranking-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--ink-400);
+}
+
+.compare-ranking-item--used .compare-ranking-bar-fill {
+  background: var(--global);
+}
+
+.compare-ranking-item.is-current .compare-ranking-bar-fill {
+  background: var(--active);
+}
+
+.compare-ranking-score {
+  grid-area: score;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.compare-ranking-doc {
+  grid-area: doc;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compare-ranking-excerpt {
+  grid-area: excerpt;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-600);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Replay state: the used rows' bars start empty and fill hit by hit
+   (.is-filled); the cut-off line appears once the last used row is filled
+   or at the synthesis step. */
+.compare-ranking.is-replaying .compare-ranking-item[data-used="true"]:not(.is-filled) .compare-ranking-bar-fill {
+  width: 0 !important;
+}
+
+.compare-ranking-bar-fill {
+  transition: width 0.4s ease;
+}
+
+.compare-ranking.is-replaying:not(.is-cutoff-shown) .compare-ranking-cutoff {
+  visibility: hidden;
+}
+
+/* "used for the answer", for screen readers only; absent while a replay
+   has not reached the row yet. */
+.compare-ranking-used-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.compare-ranking-item:not(.compare-ranking-item--used) .compare-ranking-used-label {
+  display: none;
+}
+
+.compare-ranking-row {
+  position: relative;
+}
+
+.compare-ranking-cutoff {
+  margin: var(--space-1) 0;
+  padding: 2px 0;
+  border-top: 1px dashed var(--line-strong);
+  border-bottom: 1px dashed var(--line-strong);
+  color: var(--ink-600);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+}
+
+.compare-ranking-footer {
+  margin: var(--space-1) 0 0;
+  font-size: 12px;
+  color: var(--ink-600);
+}
+
+.compare-col-answer.is-replay-current {
+  outline: 2px solid var(--active);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--active-soft);
 }
 
 .compare-retrieved-empty {

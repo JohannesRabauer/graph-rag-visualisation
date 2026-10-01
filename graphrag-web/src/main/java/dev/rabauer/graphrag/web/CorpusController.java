@@ -151,8 +151,9 @@ public class CorpusController {
 
     /**
      * Story 8.5: the corpus's chunk embeddings at their settled, ingestion-time
-     * 2D positions (Story 8.1) — fetched once by the Vector Space tab and
-     * cached client-side, since this layout never changes after ingestion.
+     * 2D positions (Story 8.1). No UI uses it since the Vector Space tab was
+     * replaced by the Compare view's similarity ranking; kept for API
+     * compatibility until the projection is removed.
      */
     @GetMapping("/api/corpora/{corpusId}/vector-space")
     public ResponseEntity<Map<String, Object>> vectorSpace(@PathVariable("corpusId") String corpusId) {
@@ -490,6 +491,8 @@ public class CorpusController {
         vectorPayload.put("traceId", captureTrace(vector.steps()));
         vectorPayload.put("traceStepCount", vector.steps().size());
         vectorPayload.put("queryProjection", List.of(vector.queryProjection()[0], vector.queryProjection()[1]));
+        vectorPayload.put("ranking", rankingPayload(vector));
+        vectorPayload.put("scoredChunkCount", vector.scoredChunkCount());
         vectorPayload.put("stats", statsPayload(comparison.vector().stats()));
         vectorPayload.put("retrieved", comparison.vectorRetrieved().stream()
                 .map(passage -> Map.<String, Object>of(
@@ -653,7 +656,9 @@ public class CorpusController {
                     "noAnswer", true,
                     "reason", result.reason(),
                     "mode", "VECTOR",
-                    "queryProjection", List.of(result.queryProjection()[0], result.queryProjection()[1])));
+                    "queryProjection", List.of(result.queryProjection()[0], result.queryProjection()[1]),
+                    "ranking", rankingPayload(result),
+                    "scoredChunkCount", result.scoredChunkCount()));
         }
 
         return ResponseEntity.ok(Map.of(
@@ -663,7 +668,25 @@ public class CorpusController {
                 "answer", result.answer(),
                 "mode", "VECTOR",
                 "queryProjection", List.of(result.queryProjection()[0], result.queryProjection()[1]),
-                "citations", result.citations().stream().map(CorpusController::chunkCitationPayload).toList()));
+                "citations", result.citations().stream().map(CorpusController::chunkCitationPayload).toList(),
+                "ranking", rankingPayload(result),
+                "scoredChunkCount", result.scoredChunkCount()));
+    }
+
+    /**
+     * The vector side's similarity ranking: the highest-scoring chunks in
+     * descending score order, {@code used} for the top-k that feed the answer.
+     */
+    private static List<Map<String, Object>> rankingPayload(VectorBaselineAnswer answer) {
+        return answer.ranking().stream()
+                .map(row -> Map.<String, Object>of(
+                        "rank", row.rank(),
+                        "chunkId", row.chunkId(),
+                        "documentName", row.documentName(),
+                        "excerpt", row.excerpt(),
+                        "score", row.score(),
+                        "used", row.used()))
+                .toList();
     }
 
     /**

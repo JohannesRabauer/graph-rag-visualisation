@@ -9,8 +9,8 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
 
 /**
  * Playwright UI tests for the Compare CTA: it runs one comparison, opens the
- * Compare tab, reveals the Vector Space tab with the vector answer, and never
- * adds a chat message of its own.
+ * Compare tab (there is no Vector Space tab), replays the vector side on the
+ * Compare tab itself, and never adds a chat message of its own.
  *
  * <p>All tests use the offline deterministic stub (no OPENAI_API_KEY),
  * so vector-index chunks are built via the offline {@code LangChain4jEmbeddingPort}
@@ -76,28 +76,23 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
     }
 
     @Test
-    void theVectorSpaceTabIsRevealedWithTheVectorAnswerButTheCompareTabOpens() {
+    void aComparisonOpensTheCompareTabAndNoVectorSpaceTabExists() {
         loadDemoDatasetAndWaitReady();
 
-        assertThat(page.locator("#tab-vector-space")).isHidden();
+        assertThat(page.locator("#tab-vector-space")).hasCount(0);
         assertThat(page.locator("#tab-compare")).isHidden();
 
         compare(askAndWaitForAnswer("Who is Sherlock Holmes?"));
 
         assertThat(page.locator("#tab-compare")).isVisible();
         assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#tab-vector-space")).isVisible();
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "false");
         assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "false");
-
-        page.locator("#tab-vector-space").click();
-        assertThat(page.locator("#vector-space-panel")).isVisible();
-        assertThat(page.locator("#compare-panel")).isHidden();
-        assertThat(page.locator("#vector-space-answer")).not().isEmpty();
+        assertThat(page.locator("#tab-vector-space")).hasCount(0);
+        assertThat(page.locator("#vector-space-panel")).hasCount(0);
+        assertThat(page.locator("#compare-grid .compare-col--vector .compare-ranking")).isVisible();
 
         page.locator("#tab-knowledge-graph").click();
         assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#vector-space-panel")).isHidden();
         assertThat(page.locator("#compare-panel")).isHidden();
         assertThat(page.locator("#graph-canvas")).isVisible();
     }
@@ -126,7 +121,6 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
         localAnswer.locator(".replay-cta").click();
         assertThat(page.locator("#replay-scrubber")).isVisible();
         assertThat(page.locator("#compare-panel")).isHidden();
-        assertThat(page.locator("#vector-space-panel")).isHidden();
         assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
         assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "false");
     }
@@ -183,30 +177,35 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
         page.locator("#compare-replay-row .replay-cta", new com.microsoft.playwright.Page.LocatorOptions()
                 .setHasText("Replay Vector")).click();
 
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "true");
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
         Locator caption = page.locator("#replay-caption");
         assertThat(caption).isVisible();
         assertThat(caption).not().containsText("matched entity");
         assertThat(caption).containsText("embedded query");
+
+        page.locator("#replay-step-forward").click();
+        assertThat(caption).containsText("retrieved chunk: rank 1 · score ");
     }
 
     @Test
-    void vectorSpaceScatterRendersCorpusChunksAndTheQueryDotDuringReplay() {
+    void theVectorReplayLightsUpTheTopRankingRowOnTheCompareTab() {
         loadDemoDatasetAndWaitReady();
         compare(askAndWaitForAnswer("Tell me about Irene Adler."));
 
-        page.locator("#tab-vector-space").click();
-        assertThat(page.locator(".vector-space-chunk-dot").first())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(10000));
-
-        page.locator("#tab-compare").click();
         page.locator("#compare-replay-row .replay-cta", new com.microsoft.playwright.Page.LocatorOptions()
                 .setHasText("Replay Vector")).click();
         page.locator("#replay-step-forward").click();
 
-        assertThat(page.locator(".vector-space-query-dot"))
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(10000));
-        assertThat(page.locator(".vector-space-hit-line").first()).isVisible();
-        assertThat(page.locator(".vector-space-chunk-dot.is-hit").first()).isVisible();
+        Locator current = page.locator("#compare-grid .compare-col--vector .compare-ranking-item.is-current");
+        assertThat(current).hasCount(1);
+        assertThat(current).hasAttribute("data-rank", "1");
+        assertThat(current).isVisible();
+        assertThat(page.locator("#compare-panel")).isVisible();
+
+        // A graph replay afterwards clears the ranking highlights.
+        page.locator("#compare-replay-row .replay-cta", new com.microsoft.playwright.Page.LocatorOptions()
+                .setHasText("Replay GraphRAG")).click();
+        assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
+        assertThat(page.locator("#compare-panel .compare-ranking-item.is-current")).hasCount(0);
     }
 }

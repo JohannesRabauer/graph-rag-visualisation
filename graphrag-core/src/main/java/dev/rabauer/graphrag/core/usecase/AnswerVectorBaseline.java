@@ -7,6 +7,7 @@ import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.EmbeddedChunk;
 import dev.rabauer.graphrag.core.domain.GraphExtraction;
 import dev.rabauer.graphrag.core.domain.ProjectionModel;
+import dev.rabauer.graphrag.core.domain.RankedChunk;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
@@ -47,6 +48,13 @@ public class AnswerVectorBaseline {
     private static final int TOP_K = 5;
 
     /**
+     * How many of the highest-scoring chunks the similarity ranking
+     * ({@link VectorBaselineAnswer#ranking()}) shows: the top-k that feed the
+     * answer plus the runners-up below the cut-off.
+     */
+    public static final int RANKING_SIZE = 12;
+
+    /**
      * Null-safe default that provides a no-op {@link LlmPort} — the
      * {@code synthesizeFromChunks} default method on the interface itself
      * handles the actual fallback text, so this only needs to satisfy the
@@ -69,7 +77,29 @@ public class AnswerVectorBaseline {
         if (allChunks == null || allChunks.isEmpty()) {
             return VectorBaselineAnswer.noChunksYet();
         }
+        List<ScoredChunk> scored = new ArrayList<>(allChunks.size());
+        VectorBaselineAnswer result = answer(question, corpusId, allChunks, scored);
+        return result.withRanking(ranking(scored), scored.size());
+    }
 
+    /**
+     * The top {@link #RANKING_SIZE} of {@code scored} (already in descending
+     * score order), the first {@code TOP_K} marked as used.
+     */
+    private static List<RankedChunk> ranking(List<ScoredChunk> scored) {
+        int size = Math.min(RANKING_SIZE, scored.size());
+        List<RankedChunk> ranking = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            ScoredChunk sc = scored.get(i);
+            Chunk chunk = sc.chunk().chunk();
+            ranking.add(new RankedChunk(i + 1, chunk.id(), chunk.documentName(),
+                    LocalContextAssembler.excerpt(chunk.text()), sc.score(), i < TOP_K));
+        }
+        return ranking;
+    }
+
+    private VectorBaselineAnswer answer(String question, String corpusId, Collection<EmbeddedChunk> allChunks,
+                                        List<ScoredChunk> scored) {
         float[] queryEmbedding = embeddingPort.embed(question == null ? "" : question);
 
         List<RetrievalStep> steps = new ArrayList<>();
@@ -77,7 +107,6 @@ public class AnswerVectorBaseline {
                 question == null ? "" : question));
 
         // Score and sort in descending similarity order, then take top-k.
-        List<ScoredChunk> scored = new ArrayList<>(allChunks.size());
         for (EmbeddedChunk ec : allChunks) {
             double similarity = cosineSimilarity(queryEmbedding, ec.embedding());
             scored.add(new ScoredChunk(ec, similarity));

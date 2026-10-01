@@ -51,7 +51,6 @@ flowchart LR
         UI["upload.js<br/>chat · corpus history · compare view"]
         GC["graph-canvas.js<br/>Cytoscape knowledge graph"]
         RP["replay.js · trace-pane.js · drift-tree.js<br/>Retrieval Trace Replay"]
-        VS["vector-space.js<br/>embedding scatter"]
         HP["help.js<br/>in-app explanations"]
     end
 
@@ -194,7 +193,7 @@ Design rules that keep the core reusable:
 | `LlmPort` | Everything a language model does | `extract(Corpus)` | `extract(TextUnit, entityTypes)`, `summarizeCommunity(members, relationships)` → title + summary, `deriveDriftSubQuestions`, `synthesizeAnswer(question, context)` with `[n]` citations, `compareAnswers` → verdict |
 | `EmbeddingPort` | Text → dense vector | `embed(text)` | `isSemantic()` |
 | `GraphStorePort` | The knowledge graph | `persistEntities`, `persistRelationships` | Corpus-scoped CRUD for entities, relationships, Text Units, communities and memberships; `detectCommunities(corpusId)`; `persistEntityEmbeddings` / `similarEntities` and their community counterparts for semantic matching |
-| `VectorStorePort` | The plain vector-RAG baseline | `persistChunks` | `chunks`, `persistProjectionModel` / `projectionModel` for the 2-D embedding map |
+| `VectorStorePort` | The plain vector-RAG baseline | `persistChunks` | `chunks`, `persistProjectionModel` / `projectionModel` for a 2-D embedding projection (no longer shown in the UI) |
 
 ### Use cases
 
@@ -208,7 +207,7 @@ Design rules that keep the core reusable:
 | `AnswerLocalSearch` | Seeds on the entities closest to the question and walks their one-hop neighbourhood into the Text Units it cites. |
 | `AnswerGlobalSearch` | Answers from the top community summaries and each community's most relevant passages. |
 | `AnswerDriftSearch` | Starts from communities, spawns sub-questions, gathers Local-style context for each branch, and synthesizes once over the union. |
-| `AnswerVectorBaseline` | Plain vector RAG: top-5 chunks by cosine similarity, synthesized and cited the same way. |
+| `AnswerVectorBaseline` | Plain vector RAG: top-5 chunks by cosine similarity, synthesized and cited the same way. It also returns the similarity ranking (the top 12 scored chunks, the top 5 marked as used) and how many chunks it scored. |
 | `CompareAnswers` | Runs a GraphRAG mode and the vector baseline fresh, then measures context, documents, overlap and latency, and produces a verdict. |
 
 ### Ingestion pipeline
@@ -285,7 +284,7 @@ flowchart TB
     LLM -. "NOT_IN_CONTEXT" .-> NA["noAnswer + reason"]
 ```
 
-The **Retrieval Trace** is the ordered list of `RetrievalStep`s (`ENTITY`, `RELATIONSHIP`, `COMMUNITY`, `TEXT_UNIT`, `SUB_QUESTION_SPAWNED`, `SYNTHESIS`, `VECTOR_QUERY_EMBEDDED`, `VECTOR_CHUNK`). The browser replays it on the graph canvas, in the DRIFT tree, or in the vector-space scatter.
+The **Retrieval Trace** is the ordered list of `RetrievalStep`s (`ENTITY`, `RELATIONSHIP`, `COMMUNITY`, `TEXT_UNIT`, `SUB_QUESTION_SPAWNED`, `SYNTHESIS`, `VECTOR_QUERY_EMBEDDED`, `VECTOR_CHUNK`). The browser replays it on the graph canvas, in the DRIFT tree, or, for the vector baseline, in the Compare view's similarity ranking.
 
 ### Grounding and citations
 
@@ -444,10 +443,9 @@ Offline mode is fully deterministic, which is why CI and every test run with the
 
 The frontend is plain JavaScript modules on one page:
 
-- **`upload.js`**: corpus upload and history, the chat with citation markers and a Sources list, and the Compare view.
+- **`upload.js`**: corpus upload and history, the chat with citation markers and a Sources list, and the Compare view with the vector side's similarity ranking (the top 12 chunks by cosine score, the 5 used for the answer marked above a cut-off line).
 - **`graph-canvas.js`**: the Cytoscape knowledge graph, community hulls, and a one-line legend with an "All communities" side-panel list.
-- **`replay.js` / `trace-pane.js` / `drift-tree.js`**: step-by-step Retrieval Trace Replay on the graph, the Retrieval Trace pane that lists every step by phase with the reason it was taken, and the branching DRIFT tree inside that pane.
-- **`vector-space.js`**: the 2-D embedding map of the vector baseline.
+- **`replay.js` / `trace-pane.js` / `drift-tree.js`**: step-by-step Retrieval Trace Replay on the graph, the Retrieval Trace pane that lists every step by phase with the reason it was taken, the branching DRIFT tree inside that pane, and, for the vector baseline, a replay on the Compare tab that lights up the similarity ranking hit by hit.
 - **`help.js`**: contextual help topics (`static/help/*.html`), each with a live "in your data" view.
 
 The main endpoints:

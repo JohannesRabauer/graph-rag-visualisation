@@ -3,11 +3,13 @@ package dev.rabauer.graphrag.core.usecase;
 import dev.rabauer.graphrag.core.domain.Chunk;
 import dev.rabauer.graphrag.core.domain.EmbeddedChunk;
 import dev.rabauer.graphrag.core.domain.ProjectionModel;
+import dev.rabauer.graphrag.core.domain.RankedChunk;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
 import dev.rabauer.graphrag.core.port.VectorStorePort;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -274,5 +276,129 @@ class AnswerVectorBaselineTest {
                 .findFirst()
                 .orElseThrow();
         assertEquals(result.answer(), synthesisStep.label());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Similarity ranking
+    // ---------------------------------------------------------------------------
+
+    /** {@code n} chunks whose similarity to the query (1, 0) falls with their index. */
+    private static EmbeddedChunk[] descendingChunks(int n) {
+        EmbeddedChunk[] chunks = new EmbeddedChunk[n];
+        for (int i = 0; i < n; i++) {
+            chunks[i] = ec("chunk-" + i, 1f, (float) i);
+        }
+        return chunks;
+    }
+
+    @Test
+    void rankingShowsTheTopTwelveWithTheTopFiveUsedForANormalCorpus() {
+        VectorBaselineAnswer result = new AnswerVectorBaseline(
+                fixedEmbedding(1f, 0f), storeWith(descendingChunks(40)), null)
+                .answer("q", "corpus-1");
+
+        List<RankedChunk> ranking = result.ranking();
+        assertEquals(AnswerVectorBaseline.RANKING_SIZE, ranking.size());
+        assertEquals(12, ranking.size());
+        assertEquals(40, result.scoredChunkCount());
+        for (int i = 0; i < ranking.size(); i++) {
+            RankedChunk row = ranking.get(i);
+            assertEquals(i + 1, row.rank());
+            assertEquals("chunk-" + i, row.chunkId());
+            assertEquals(i < 5, row.used(), "rank " + row.rank());
+            if (i > 0) {
+                assertTrue(ranking.get(i - 1).score() >= row.score());
+            }
+        }
+    }
+
+    @Test
+    void usedRankingRowsAreExactlyTheVectorChunkSteps() {
+        VectorBaselineAnswer result = new AnswerVectorBaseline(
+                fixedEmbedding(1f, 0f), storeWith(descendingChunks(9)), null)
+                .answer("q", "corpus-1");
+
+        List<String> stepIds = result.steps().stream()
+                .filter(s -> s.kind() == RetrievalStep.Kind.VECTOR_CHUNK)
+                .map(RetrievalStep::identifier).toList();
+        List<String> usedIds = result.ranking().stream().filter(RankedChunk::used)
+                .map(RankedChunk::chunkId).toList();
+        assertEquals(stepIds, usedIds);
+        assertEquals(9, result.ranking().size());
+    }
+
+    @Test
+    void rankingOfASmallCorpusHasEveryChunkAndAllAreUsed() {
+        VectorBaselineAnswer result = new AnswerVectorBaseline(
+                fixedEmbedding(1f, 0f), storeWith(descendingChunks(3)), null)
+                .answer("q", "corpus-1");
+
+        assertEquals(3, result.ranking().size());
+        assertEquals(3, result.scoredChunkCount());
+        assertTrue(result.ranking().stream().allMatch(RankedChunk::used));
+    }
+
+    @Test
+    void noChunksYieldsAnEmptyRanking() {
+        VectorBaselineAnswer result = new AnswerVectorBaseline(zeroEmbedding(2), emptyStore(), null)
+                .answer("q", "corpus-1");
+
+        assertTrue(result.ranking().isEmpty());
+        assertEquals(0, result.scoredChunkCount());
+        assertTrue(VectorBaselineAnswer.noChunksYet().ranking().isEmpty());
+    }
+
+    @Test
+    void tiedScoresKeepTheSameOrderAsTheTopKSelection() {
+        List<EmbeddedChunk> tied = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            tied.add(ec("tie-" + i, 1f, 0f));
+        }
+        VectorBaselineAnswer first = new AnswerVectorBaseline(
+                fixedEmbedding(1f, 0f), storeWith(tied.toArray(EmbeddedChunk[]::new)), null)
+                .answer("q", "corpus-1");
+        VectorBaselineAnswer second = new AnswerVectorBaseline(
+                fixedEmbedding(1f, 0f), storeWith(tied.toArray(EmbeddedChunk[]::new)), null)
+                .answer("q", "corpus-1");
+
+        List<String> stepIds = first.steps().stream()
+                .filter(s -> s.kind() == RetrievalStep.Kind.VECTOR_CHUNK)
+                .map(RetrievalStep::identifier).toList();
+        List<String> rankedIds = first.ranking().stream().map(RankedChunk::chunkId).toList();
+        assertEquals(stepIds, rankedIds.subList(0, 5));
+        assertEquals(rankedIds, second.ranking().stream().map(RankedChunk::chunkId).toList());
+        assertEquals(List.of("tie-0", "tie-1", "tie-2", "tie-3", "tie-4", "tie-5", "tie-6", "tie-7"), rankedIds);
+    }
+
+    @Test
+    void rankingCarriesDocumentNameAndTheCitationExcerpt() {
+        String longText = "word  ".repeat(100);
+        Chunk named = new Chunk("c-named", "corpus-1", 0, longText, "notes.txt");
+        Chunk legacy = new Chunk("c-legacy", "corpus-1", 1, "short text");
+        VectorBaselineAnswer result = new AnswerVectorBaseline(fixedEmbedding(1f, 0f), storeWith(
+                new EmbeddedChunk(named, new float[]{1f, 0f}, new double[]{0, 0}),
+                new EmbeddedChunk(legacy, new float[]{0f, 1f}, new double[]{0, 0})), null)
+                .answer("q", "corpus-1");
+
+        RankedChunk first = result.ranking().get(0);
+        assertEquals("notes.txt", first.documentName());
+        assertEquals(LocalContextAssembler.excerpt(longText), first.excerpt());
+        assertEquals(201, first.excerpt().length());
+        assertTrue(first.excerpt().endsWith("…"));
+        RankedChunk second = result.ranking().get(1);
+        assertEquals("", second.documentName());
+        assertEquals("short text", second.excerpt());
+    }
+
+    @Test
+    void legacyConstructorsAndFactoriesHaveAnEmptyRanking() {
+        VectorBaselineAnswer matched = VectorBaselineAnswer.matched("a", List.of(), null);
+        assertTrue(matched.ranking().isEmpty());
+        assertEquals(0, matched.scoredChunkCount());
+        VectorBaselineAnswer ranked = matched.withRanking(
+                List.of(new RankedChunk(1, "c", "d", "e", 0.5, true)), 7);
+        assertEquals("a", ranked.answer());
+        assertEquals(1, ranked.ranking().size());
+        assertEquals(7, ranked.scoredChunkCount());
     }
 }

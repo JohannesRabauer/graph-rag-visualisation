@@ -1,6 +1,7 @@
 package dev.rabauer.graphrag.core.usecase;
 
 import dev.rabauer.graphrag.core.domain.Citation;
+import dev.rabauer.graphrag.core.domain.RankedChunk;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 
 import java.util.List;
@@ -31,9 +32,18 @@ import java.util.List;
  * answer the question, the result has no {@code answer} and a {@code reason}
  * ({@link #notInContext(String, List, double[])}); {@link #noAnswer()} covers
  * both no-answer outcomes.
+ *
+ * <p>{@code ranking} is the similarity ranking behind the top-k selection: the
+ * {@link AnswerVectorBaseline#RANKING_SIZE} highest-scoring chunks in
+ * descending score order (the same order and tie-break as the top-k), each
+ * marked {@link RankedChunk#used()} when it is one of the top-k chunks that
+ * feed the answer. {@code scoredChunkCount} is the total number of chunks
+ * scored. Both are empty / {@code 0} when no chunks exist; use
+ * {@link #withRanking(List, int)} to attach them to a result.
  */
 public record VectorBaselineAnswer(boolean noChunks, String answer, String reason, List<RetrievalStep> steps,
-                                    double[] queryProjection, List<Citation> citations) {
+                                    double[] queryProjection, List<Citation> citations,
+                                    List<RankedChunk> ranking, int scoredChunkCount) {
 
     /** Shown when the synthesizing LLM said the retrieved chunks do not answer the question. */
     public static final String NOT_IN_CONTEXT_REASON =
@@ -45,6 +55,14 @@ public record VectorBaselineAnswer(boolean noChunks, String answer, String reaso
         queryProjection = queryProjection == null || queryProjection.length != 2
                 ? new double[]{0.0, 0.0} : queryProjection.clone();
         citations = citations == null ? List.of() : List.copyOf(citations);
+        ranking = ranking == null ? List.of() : List.copyOf(ranking);
+        scoredChunkCount = Math.max(0, scoredChunkCount);
+    }
+
+    /** Without a ranking: every result built before the similarity ranking existed. */
+    public VectorBaselineAnswer(boolean noChunks, String answer, String reason, List<RetrievalStep> steps,
+                                double[] queryProjection, List<Citation> citations) {
+        this(noChunks, answer, reason, steps, queryProjection, citations, List.of(), 0);
     }
 
     /** Without citations: the offline joined-text answer or the no-chunks outcome. */
@@ -56,6 +74,12 @@ public record VectorBaselineAnswer(boolean noChunks, String answer, String reaso
     @Override
     public double[] queryProjection() {
         return queryProjection.clone();
+    }
+
+    /** This result with the given similarity ranking and scored-chunk count; everything else is kept. */
+    public VectorBaselineAnswer withRanking(List<RankedChunk> ranking, int scoredChunkCount) {
+        return new VectorBaselineAnswer(noChunks, answer, reason, steps, queryProjection, citations, ranking,
+                scoredChunkCount);
     }
 
     /** Whether there is no answer: no chunks yet, or the chunks do not answer the question. */

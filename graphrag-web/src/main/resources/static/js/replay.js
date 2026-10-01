@@ -53,7 +53,15 @@
   var requestSeq = 0;
   var loadError = false;
   var isVectorTrace = false;
-  var queryProjection = null;
+  // Whether the clicked CTA asked for the Compare tab (the vector replay),
+  // so even a trace that fails to load opens on the tab it was asked from.
+  var requestedVector = false;
+  // How many chunks the vector side scored, for the VECTOR_QUERY_EMBEDDED
+  // caption (carried by the Compare view's Replay Vector button).
+  var scoredChunkCount = null;
+  // The tab the open replay runs on ('knowledge-graph' or 'compare'), or
+  // null while closed; upload.js's tab switch shows the scrubber only there.
+  var openSurface = null;
   // Story 15.4: the corpus the replayed answer belongs to, so TEXT_UNIT
   // captions can name their passage (document and ordinal).
   var traceCorpusId = null;
@@ -82,22 +90,15 @@
     if (!cta) {
       return;
     }
-    // Story 8.5: a VECTOR answer's Replay CTA also carries its query's own
-    // 2D projection (stashed by upload.js from the query response) — the
-    // trace steps themselves only carry chunk ids/scores, not coordinates.
-    var projection = null;
-    if (cta.dataset.queryProjection) {
-      try {
-        projection = JSON.parse(cta.dataset.queryProjection);
-      } catch (e) {
-        projection = null;
-      }
-    }
+    // The Compare view's Replay Vector button carries the number of chunks
+    // the vector side scored, for the first step's caption.
+    var scored = cta.dataset.scoredChunkCount ? parseInt(cta.dataset.scoredChunkCount, 10) : NaN;
     // A chat answer's CTA reads the corpus off its message; the Compare
     // view's replay buttons carry it themselves.
     var answerMsg = cta.closest('.message.answer');
-    openReplay(cta.dataset.traceId, projection,
+    openReplay(cta.dataset.traceId, isNaN(scored) ? null : scored,
         answerMsg ? answerMsg.dataset.corpusId : (cta.dataset.corpusId || null),
+        cta.dataset.replaySurface === 'compare',
         cta.dataset.mode || (answerMsg ? answerMsg.dataset.mode : null) || null);
   });
 
@@ -138,13 +139,17 @@
     });
   }
 
-  function openReplay(traceId, projection, corpusId, mode) {
+  function openReplay(traceId, scored, corpusId, vectorRequested, mode) {
     if (!traceId) {
       return;
     }
     stopPlayback();
     hideFetchError();
-    queryProjection = projection;
+    // No surface until this trace has loaded, so a pending fetch never
+    // applies the previous replay's surface.
+    openSurface = null;
+    scoredChunkCount = scored;
+    requestedVector = !!vectorRequested;
     traceMode = mode || null;
 
     // Guards against an out-of-order response: if a second Replay CTA is
@@ -180,7 +185,7 @@
           window.TracePane.open(steps, {
             mode: traceMode,
             corpusId: traceCorpusId,
-            surface: isVectorTrace ? 'vector-space' : 'knowledge-graph'
+            surface: isVectorTrace ? 'compare' : 'knowledge-graph'
           });
         }
         buildTicks();
@@ -198,6 +203,7 @@
     loadError = true;
     steps = [];
     currentIndex = 0;
+    isVectorTrace = requestedVector;
     if (window.DriftTree) {
       window.DriftTree.clear();
     }
@@ -206,7 +212,7 @@
       window.TracePane.open([], {
         mode: traceMode,
         loadError: true,
-        surface: isVectorTrace ? 'vector-space' : 'knowledge-graph'
+        surface: isVectorTrace ? 'compare' : 'knowledge-graph'
       });
     }
     buildTicks();
@@ -220,12 +226,23 @@
   }
 
   function open() {
-    // Story 8-3/8.5: Knowledge Graph and Vector Space are mutually exclusive
-    // tabs. A VECTOR trace's Replay opens on the Vector Space surface (its
-    // scatter, not the graph canvas); every other trace kind still forces
-    // the Knowledge Graph tab, as before.
+    // A VECTOR trace replays on the Compare tab, filling the vector side's
+    // similarity ranking step by step; every other trace kind replays on
+    // the Knowledge Graph tab, as before. Only one surface highlights at a
+    // time, so the other one is cleared.
+    openSurface = isVectorTrace ? 'compare' : 'knowledge-graph';
+    if (isVectorTrace) {
+      if (window.GraphCanvas) {
+        window.GraphCanvas.clearStepHighlights();
+      }
+      if (graphEyebrow) {
+        graphEyebrow.textContent = RESTING_EYEBROW_TEXT;
+      }
+    } else if (window.CompareRanking) {
+      window.CompareRanking.clear();
+    }
     if (window.CanvasTabs) {
-      window.CanvasTabs.switchTo(isVectorTrace ? 'vector-space' : 'knowledge-graph');
+      window.CanvasTabs.switchTo(openSurface);
     }
     scrubber.hidden = false;
     if (!isVectorTrace && graphEyebrow) {
@@ -236,6 +253,7 @@
 
   function closeReplay() {
     stopPlayback();
+    openSurface = null;
     scrubber.hidden = true;
     if (graphEyebrow) {
       graphEyebrow.textContent = RESTING_EYEBROW_TEXT;
@@ -249,8 +267,8 @@
     if (window.GraphCanvas) {
       window.GraphCanvas.clearStepHighlights();
     }
-    if (window.VectorSpace) {
-      window.VectorSpace.clear();
+    if (window.CompareRanking) {
+      window.CompareRanking.clear();
     }
   }
 
@@ -267,7 +285,11 @@
   // rebuilt, unrelated graph.
   window.Replay = {
     close: closeReplay,
-    goTo: goTo
+    goTo: goTo,
+    // The tab the open replay runs on, or null while no replay is open.
+    surface: function () {
+      return openSurface;
+    }
   };
 
   function buildTicks() {
@@ -370,11 +392,11 @@
     updateTransportState();
 
     if (isVectorTrace) {
-      if (window.VectorSpace) {
+      if (window.CompareRanking) {
         if (steps.length === 0) {
-          window.VectorSpace.clear();
+          window.CompareRanking.clear();
         } else {
-          window.VectorSpace.highlightStep(steps, currentIndex, queryProjection);
+          window.CompareRanking.highlightStep(steps, currentIndex);
         }
       }
       return;
@@ -466,6 +488,27 @@
               : 'Read passage of ' + passage.documentName)
           : 'Read passage';
       return prefix + head + (label ? ': ' + label : '');
+    }
+    if (step.kind === 'VECTOR_QUERY_EMBEDDED') {
+      return prefix + 'embedded query — scoring '
+          + (typeof scoredChunkCount === 'number'
+              ? scoredChunkCount + (scoredChunkCount === 1 ? ' chunk' : ' chunks')
+              : 'every chunk');
+    }
+    if (step.kind === 'VECTOR_CHUNK') {
+      // Rank and score come from the Compare view's similarity ranking.
+      var row = window.CompareRanking && window.CompareRanking.rowFor
+          ? window.CompareRanking.rowFor(step.identifier) : null;
+      var rank = row && !isNaN(row.rank) ? row.rank : 0;
+      if (!rank) {
+        for (var i = 0; i <= index; i += 1) {
+          if (steps[i] && steps[i].kind === 'VECTOR_CHUNK') {
+            rank += 1;
+          }
+        }
+      }
+      return prefix + 'retrieved chunk: rank ' + rank
+          + (row && typeof row.score === 'number' ? ' · score ' + row.score.toFixed(3) : '');
     }
     var verb = step.kind === 'COMMUNITY' ? 'examined community'
         : step.kind === 'RELATIONSHIP' ? 'traversed relationship'

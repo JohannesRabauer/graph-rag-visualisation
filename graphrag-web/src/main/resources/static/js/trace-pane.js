@@ -36,7 +36,7 @@
   // Set when the viewer hides the pane; the replay bar's toggle flips it.
   // Reset on `clear()`, so the next Replay opens with the pane shown.
   var dismissed = false;
-  // 'knowledge-graph' or 'vector-space': the canvas tab the open trace
+  // 'knowledge-graph' or 'compare': the canvas tab the open trace
   // belongs to. The pane only shows while that tab is the current one.
   var surface = 'knowledge-graph';
   var currentTab = 'knowledge-graph';
@@ -107,7 +107,7 @@
     var ctx = context || {};
     steps = Array.isArray(stepList) ? stepList : [];
     corpusId = ctx.corpusId || null;
-    surface = ctx.surface === 'vector-space' ? 'vector-space' : 'knowledge-graph';
+    surface = ctx.surface === 'compare' ? 'compare' : 'knowledge-graph';
     analysis = analyze(steps, ctx.mode);
     isOpen = true;
     dismissed = false;

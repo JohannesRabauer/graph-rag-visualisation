@@ -169,14 +169,14 @@ class LoadNewCorpusUiTest extends UiTestSupport {
         assertThat(page.locator("#demo-offline-button")).isEnabled();
     }
 
-    // Reproduces the switchCanvasTab ordering bug: once Vector Space has ever
-    // been revealed this session, its own tab-switch cleanup would otherwise
+    // Reproduces the switchCanvasTab ordering bug: once the Compare tab has ever
+    // been opened this session, its own tab-switch cleanup would otherwise
     // re-show elements resetToIdleState just hid, because it un-hides
     // anything still carrying `dataset.hiddenByTabSwitch` from that earlier
     // switch. Setup modeled on VectorBaselineTriggerUiTest's own
     // LOCAL-answer-then-Compare flow.
     @Test
-    void resettingAfterVectorSpaceWasRevealedLeavesEveryKnowledgeGraphControlHidden() {
+    void resettingAfterCompareWasOpenedLeavesEveryKnowledgeGraphControlHidden() {
         loadDemoDatasetAndWaitReady();
 
         page.locator("#chat-input").fill("Tell me about Irene Adler.");
@@ -188,8 +188,7 @@ class LoadNewCorpusUiTest extends UiTestSupport {
         localAnswer.locator(".compare-cta").click();
         assertThat(page.locator("#compare-panel"))
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-        page.locator("#tab-vector-space").click();
-        assertThat(page.locator("#vector-space-panel")).isVisible();
+        assertThat(page.locator("#graph-canvas")).isHidden();
 
         page.onceDialog(dialog -> dialog.accept());
         restartButton().click();
@@ -203,6 +202,6 @@ class LoadNewCorpusUiTest extends UiTestSupport {
         assertThat(page.locator("#canvas-settings-toggle")).isHidden();
         assertThat(page.locator("#tab-compare")).isHidden();
         assertThat(page.locator("#compare-panel")).isHidden();
-        assertThat(page.locator("#tab-vector-space")).isHidden();
+        assertThat(page.locator("#tab-vector-space")).hasCount(0);
     }
 }

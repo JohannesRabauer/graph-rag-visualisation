@@ -19,7 +19,7 @@ class HelpPaneUiTest extends UiTestSupport {
             "upload", "demo-offline", "ingestion-progress", "corpus-chip-history", "kg-overview",
             "entity-types", "communities", "entity-detail", "mode-chooser", "local-search",
             "global-search", "drift-search", "reading-an-answer", "trace-replay", "drift-tree",
-            "vector-space", "vector-vs-graphrag");
+            "vector-vs-graphrag");
 
     private void ask(String mode, String question) {
         page.locator("label.mode-choice-option:has(input[value='" + mode + "'])").click();

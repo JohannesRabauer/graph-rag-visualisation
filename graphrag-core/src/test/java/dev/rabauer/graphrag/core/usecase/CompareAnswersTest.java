@@ -9,6 +9,7 @@ import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.EmbeddedChunk;
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.GraphExtraction;
+import dev.rabauer.graphrag.core.domain.RankedChunk;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.domain.TextUnit;
@@ -325,5 +326,19 @@ class CompareAnswersTest {
     void normalizesWhitespace() {
         assertEquals("a b c", CompareAnswers.normalize("  a \n b\t\tc "));
         assertEquals("", CompareAnswers.normalize(null));
+    }
+
+    @Test
+    void theVectorSideCarriesTheSimilarityRanking() {
+        CompareAnswers.Comparison result = compareAnswers(new ComparingLlmPort(true, null, null))
+                .compare("Who is Irene Adler?", CORPUS, CompareAnswers.Mode.LOCAL);
+
+        VectorBaselineAnswer vector = result.vector().answer();
+        assertEquals(3, vector.scoredChunkCount());
+        assertEquals(List.of("ch-0", "ch-2", "ch-1"),
+                vector.ranking().stream().map(RankedChunk::chunkId).toList());
+        assertTrue(vector.ranking().stream().allMatch(RankedChunk::used));
+        assertEquals("story.txt", vector.ranking().getFirst().documentName());
+        assertEquals(1, vector.ranking().getFirst().rank());
     }
 }

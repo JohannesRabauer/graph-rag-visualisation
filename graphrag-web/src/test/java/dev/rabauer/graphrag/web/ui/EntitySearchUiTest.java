@@ -69,7 +69,7 @@ class EntitySearchUiTest extends UiTestSupport {
     }
 
     @Test
-    void theEntitySearchControlIsHiddenOnTheVectorSpaceTab() {
+    void theEntitySearchControlIsHiddenOnTheCompareTab() {
         loadDemoDatasetAndWaitReady();
 
         page.locator("#chat-input").fill("Tell me about Irene Adler.");
@@ -81,12 +81,12 @@ class EntitySearchUiTest extends UiTestSupport {
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
         assertThat(page.locator("#entity-search")).isHidden();
 
-        page.locator("#tab-vector-space").click();
-        assertThat(page.locator("#vector-space-panel")).isVisible();
-        assertThat(page.locator("#entity-search")).isHidden();
-
         page.locator("#tab-knowledge-graph").click();
         assertThat(page.locator("#entity-search")).isVisible();
+
+        page.locator("#tab-compare").click();
+        assertThat(page.locator("#compare-panel")).isVisible();
+        assertThat(page.locator("#entity-search")).isHidden();
     }
 
     @Test

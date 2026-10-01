@@ -103,7 +103,7 @@
 
   function hideContainer() {
     pane.hidden = true;
-    // A pane the Vector Space tab hid must not reappear empty on switching back.
+    // A pane the Compare tab hid must not reappear empty on switching back.
     delete pane.dataset.hiddenByTabSwitch;
     if (toggleButton) {
       toggleButton.hidden = true;

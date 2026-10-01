@@ -196,7 +196,7 @@
         <article class="card">
           <div class="card-icon card-icon--active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h5l2-5 3 10 2-5h4"/></svg></div>
           <h3>Replay every answer</h3>
-          <p>Each answer carries a Retrieval Trace: the ordered list of entities, relationships, communities and passages it touched. A scrubber replays it step by step on the graph, in the DRIFT tree or in the vector space.</p>
+          <p>Each answer carries a Retrieval Trace: the ordered list of entities, relationships, communities and passages it touched. A scrubber replays it step by step on the graph, in the DRIFT tree or, for the vector baseline, on its similarity ranking.</p>
         </article>
         <article class="card">
           <div class="card-icon card-icon--global"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h16M4 19h10"/><circle cx="19" cy="19" r="2"/></svg></div>
@@ -495,9 +495,9 @@
 
       <div class="two-col reverse reveal">
         <figure class="shot shot--lg">
-          <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — compare &amp; vector space tabs</span></div>
-          <img src="assets/compare.png" alt="The Vector Space and Compare tabs opened after a comparison; the vector answer lists the retrieved text passages" width="1280" height="720" loading="lazy">
-          <figcaption>After a comparison the Vector Space tab shows the 2-D embedding map of the baseline's chunks and the Compare tab opens with both answers.</figcaption>
+          <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — compare tab</span></div>
+          <img src="assets/compare.png" alt="The Compare tab after a comparison: GraphRAG and Vector Search answers side by side with their sources" width="1280" height="720" loading="lazy">
+          <figcaption>After a comparison the Compare tab opens with both answers, their sources, the key figures, the verdict and the vector side's similarity ranking.</figcaption>
         </figure>
         <div>
           <h3>What the comparison shows</h3>
@@ -509,7 +509,8 @@
             <div class="figure"><b>Latency</b>wall-clock time per side, measured fresh</div>
           </div>
           <p style="margin-top:18px">The verdict is one or two sentences naming the concrete difference and its reason. With an OpenAI key the model writes it from both answers and the measured figures. Without one, a fixed rule over the figures reports which side retrieved more and how many passages overlap, without judging correctness.</p>
-          <p>"Replay GraphRAG" and "Replay Vector" start the usual trace replay on the Knowledge Graph and Vector Space tabs, so the two retrieval paths can be watched one after the other.</p>
+          <p>The vector side also shows a <b>similarity ranking</b>: the chunks with the highest cosine scores, each with rank, score bar, document and excerpt, the five used for the answer marked and a cut-off line below them. There is deliberately no 2-D embedding map, because distances in such a projection do not reflect real similarity.</p>
+          <p>"Replay GraphRAG" starts the usual trace replay on the Knowledge Graph tab. "Replay Vector" stays on the Compare tab and fills the similarity ranking hit by hit, so the two retrieval paths can be watched one after the other.</p>
         </div>
       </div>
     </div>
@@ -555,7 +556,7 @@
           <text class="a-title" x="36" y="54">BROWSER</text>
           <text class="a-label" x="36" y="80">Plain JavaScript modules</text>
           <text class="a-sub" x="36" y="100">upload.js · graph-canvas.js (Cytoscape)</text>
-          <text class="a-sub" x="36" y="116">replay.js · drift-tree.js · vector-space.js</text>
+          <text class="a-sub" x="36" y="116">replay.js · trace-pane.js · drift-tree.js</text>
           <text class="a-sub" x="36" y="132">help.js · no build step, no npm</text>
           <text class="a-mono" x="36" y="150">fetch /api/… · EventSource /progress</text>
 

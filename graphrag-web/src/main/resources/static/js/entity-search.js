@@ -5,7 +5,7 @@
   // Entity on the main-screen graph canvas — finding one visually on a
   // dense graph otherwise relies entirely on recognizing it or panning
   // around by hand. Kept in its own file per this codebase's
-  // file-per-concern convention (see drift-tree.js/vector-space.js).
+  // file-per-concern convention (see drift-tree.js).
 
   var MAX_RESULTS = 8;
 

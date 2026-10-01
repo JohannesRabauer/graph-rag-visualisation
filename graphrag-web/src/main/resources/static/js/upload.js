@@ -37,9 +37,6 @@
   var workflowRestartButton = document.getElementById('workflow-restart-button');
   var canvasTabBar = document.getElementById('canvas-tab-bar');
   var tabKnowledgeGraph = document.getElementById('tab-knowledge-graph');
-  var tabVectorSpace = document.getElementById('tab-vector-space');
-  var vectorSpacePanel = document.getElementById('vector-space-panel');
-  var vectorSpaceAnswer = document.getElementById('vector-space-answer');
   var tabCompare = document.getElementById('tab-compare');
   var comparePanel = document.getElementById('compare-panel');
   var compareQuestion = document.getElementById('compare-question');
@@ -209,8 +206,6 @@
           settledLabel = null;
         }
         markCompareCtaReady(request.cta);
-        var vector = result.body.vector;
-        revealVectorSpaceTab(vector.noAnswer ? (vector.reason || '') : (vector.answer || ''), false);
         renderCompareView(result.body, request);
         openCompareTab();
       })
@@ -390,6 +385,138 @@
     return section;
   }
 
+  // The vector side's "Similarity ranking": the highest-scoring chunks of
+  // the cosine-similarity ranking, a score bar relative to the top score,
+  // the top-k rows that feed the answer marked and followed by a cut-off
+  // line. Each row opens its chunk text. The vector replay lights the rows
+  // up hit by hit (window.CompareRanking below). Text goes in via textContent.
+  function similarityRanking(side, corpusId) {
+    var ranking = (Array.isArray(side.ranking) ? side.ranking : []).filter(function (row) {
+      return row && row.chunkId;
+    });
+    if (!ranking.length) {
+      return null;
+    }
+    var section = document.createElement('div');
+    section.className = 'compare-ranking';
+    var heading = document.createElement('p');
+    heading.className = 'answer-sources-heading';
+    heading.textContent = 'Similarity ranking';
+    section.appendChild(heading);
+
+    var topScore = Math.max(0, Number(ranking[0].score) || 0);
+    var usedCount = 0;
+    var lastUsedIndex = -1;
+    ranking.forEach(function (row, rowIndex) {
+      if (row.used) {
+        usedCount += 1;
+        lastUsedIndex = rowIndex;
+      }
+    });
+    var list = document.createElement('ol');
+    list.className = 'compare-ranking-list';
+    var panel = document.createElement('div');
+    panel.className = 'answer-passage compare-ranking-passage';
+    panel.id = 'answer-passage-' + (++answerPassageSeq);
+    panel.hidden = true;
+    var panelTitle = document.createElement('p');
+    panelTitle.className = 'answer-passage-title';
+    var panelText = document.createElement('p');
+    panelText.className = 'answer-passage-text';
+    panelText.setAttribute('aria-live', 'polite');
+    panel.appendChild(panelTitle);
+    panel.appendChild(panelText);
+    var openIndex = null;
+    var rows = [];
+
+    ranking.forEach(function (entry, index) {
+      var score = Number(entry.score) || 0;
+      var rank = entry.rank || index + 1;
+      var documentName = entry.documentName || 'Unknown document';
+      var item = document.createElement('li');
+      item.className = 'compare-ranking-item' + (entry.used ? ' compare-ranking-item--used' : '');
+      item.dataset.chunkId = entry.chunkId;
+      item.dataset.rank = String(rank);
+      item.dataset.used = entry.used ? 'true' : 'false';
+      item.dataset.score = String(score);
+
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'compare-ranking-row';
+      row.setAttribute('aria-expanded', 'false');
+      row.setAttribute('aria-controls', panel.id);
+
+      var rankEl = document.createElement('span');
+      rankEl.className = 'compare-ranking-rank';
+      rankEl.textContent = String(rank);
+      var bar = document.createElement('span');
+      bar.className = 'compare-ranking-bar';
+      bar.setAttribute('aria-hidden', 'true');
+      var fill = document.createElement('span');
+      fill.className = 'compare-ranking-bar-fill';
+      var width = topScore > 0 ? Math.max(0, Math.min(1, score / topScore)) * 100 : 0;
+      fill.style.width = width.toFixed(1) + '%';
+      bar.appendChild(fill);
+      var scoreEl = document.createElement('span');
+      scoreEl.className = 'compare-ranking-score';
+      scoreEl.textContent = score.toFixed(3);
+      var docEl = document.createElement('span');
+      docEl.className = 'compare-ranking-doc';
+      docEl.textContent = documentName;
+      var excerptEl = document.createElement('span');
+      excerptEl.className = 'compare-ranking-excerpt';
+      excerptEl.textContent = entry.excerpt || '';
+
+      row.appendChild(rankEl);
+      row.appendChild(bar);
+      row.appendChild(scoreEl);
+      row.appendChild(docEl);
+      row.appendChild(excerptEl);
+      if (entry.used) {
+        var usedLabel = document.createElement('span');
+        usedLabel.className = 'compare-ranking-used-label';
+        usedLabel.textContent = 'used for the answer';
+        row.appendChild(usedLabel);
+      }
+      row.addEventListener('click', function () {
+        if (openIndex === index) {
+          openIndex = null;
+          panel.hidden = true;
+        } else {
+          openIndex = index;
+          panelTitle.textContent = rank + '. ' + documentName + ' · score ' + score.toFixed(3);
+          panel.hidden = false;
+          fillPassageText(panelText, corpusId, entry.chunkId, 'chunk', entry.excerpt || null);
+        }
+        rows.forEach(function (other, otherIndex) {
+          other.setAttribute('aria-expanded', String(openIndex === otherIndex));
+        });
+      });
+      rows[index] = row;
+      item.appendChild(row);
+      list.appendChild(item);
+
+      // The cut-off sits after the last used row, only when rows follow it.
+      if (index === lastUsedIndex && index < ranking.length - 1) {
+        var cutoff = document.createElement('li');
+        cutoff.className = 'compare-ranking-cutoff';
+        cutoff.setAttribute('role', 'separator');
+        cutoff.textContent = '— top ' + usedCount + ' used for the answer · cut-off —';
+        list.appendChild(cutoff);
+      }
+    });
+    section.appendChild(list);
+
+    var footer = document.createElement('p');
+    footer.className = 'compare-ranking-footer';
+    var scored = typeof side.scoredChunkCount === 'number' ? side.scoredChunkCount : ranking.length;
+    footer.textContent = plural(scored, 'chunk') + ' scored · '
+        + (ranking.length >= scored ? 'showing all ' + scored : 'showing the top ' + ranking.length);
+    section.appendChild(footer);
+    section.appendChild(panel);
+    return section;
+  }
+
   function compareColumn(className, title, side, sharedFlags, corpusId, passageKind) {
     var column = document.createElement('section');
     column.className = 'compare-col ' + className;
@@ -418,6 +545,13 @@
       column.appendChild(parts.panel);
     }
 
+    if (passageKind === 'chunk') {
+      var rankingSection = similarityRanking(side, corpusId);
+      if (rankingSection) {
+        column.appendChild(rankingSection);
+      }
+    }
+
     column.appendChild(retrievedPassages(side, corpusId, passageKind, passageKind === 'chunk'
         ? 'No passages retrieved.'
         : 'No source passages read (offline keyword matching).'));
@@ -436,7 +570,9 @@
     return column;
   }
 
-  function compareReplayButton(label, side, corpusId, projection) {
+  // `surface` names the tab the replay runs on: the vector replay stays on
+  // Compare and lights up its similarity ranking.
+  function compareReplayButton(label, side, corpusId, surface) {
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'replay-cta compare-replay';
@@ -445,8 +581,11 @@
     button.dataset.corpusId = corpusId || '';
     // The trace pane names the mode and groups the steps into its phases.
     button.dataset.mode = side.mode || (label === 'Replay Vector' ? 'VECTOR' : '');
-    if (projection) {
-      button.dataset.queryProjection = JSON.stringify(projection);
+    if (surface) {
+      button.dataset.replaySurface = surface;
+    }
+    if (typeof side.scoredChunkCount === 'number') {
+      button.dataset.scoredChunkCount = String(side.scoredChunkCount);
     }
     button.disabled = !side.traceId;
     button.textContent = label + ' — ' + plural(side.traceStepCount || 0, 'step');
@@ -454,10 +593,19 @@
   }
 
   // Fills the Compare tab from one POST /compare response for `request`.
+  // A vector replay steps over the ranking rows; close it before they are
+  // rebuilt so a stale trace never steps over new rows.
+  function closeCompareReplay() {
+    if (window.Replay && window.Replay.surface && window.Replay.surface() === 'compare') {
+      window.Replay.close();
+    }
+  }
+
   function renderCompareView(comparison, request) {
     if (!comparePanel || !comparison) {
       return;
     }
+    closeCompareReplay();
     shownComparison = request || null;
     var corpusId = request ? request.corpusId : activeCorpusId;
     var graph = comparison.graph || {};
@@ -504,13 +652,138 @@
     }
     if (compareReplayRow) {
       compareReplayRow.textContent = '';
-      compareReplayRow.appendChild(compareReplayButton('Replay GraphRAG', graph, corpusId, null));
-      compareReplayRow.appendChild(compareReplayButton('Replay Vector', vector, corpusId,
-          Array.isArray(vector.queryProjection) ? vector.queryProjection : null));
+      compareReplayRow.appendChild(compareReplayButton('Replay GraphRAG', graph, corpusId, 'knowledge-graph'));
+      compareReplayRow.appendChild(compareReplayButton('Replay Vector', vector, corpusId, 'compare'));
     }
   }
 
+  // The vector replay's view onto the Compare tab (replay.js calls it).
+  // While a vector replay runs, the ranking is in a replay state
+  // (.is-replaying): no row is marked used and the used rows' bars start
+  // empty. Each VECTOR_CHUNK step up to the current one fills its row and
+  // marks it used (is-filled); the current row is also is-current with
+  // aria-current="step". The cut-off line appears once the last used row is
+  // filled, or at SYNTHESIS, which also highlights the vector answer.
+  // Every step recomputes from scratch, so stepping back unfills rows.
+  // clear() restores the static view.
+  function vectorRankingSection() {
+    return comparePanel ? comparePanel.querySelector('.compare-col--vector .compare-ranking') : null;
+  }
+
+  function rankingItems(section) {
+    return section ? Array.prototype.slice.call(section.querySelectorAll('.compare-ranking-item')) : [];
+  }
+
+  function rankingItemFor(section, chunkId) {
+    var items = rankingItems(section);
+    for (var i = 0; i < items.length; i += 1) {
+      if (items[i].dataset.chunkId === chunkId) {
+        return items[i];
+      }
+    }
+    return null;
+  }
+
+  function resetRankingReplayMarks(section) {
+    rankingItems(section).forEach(function (item) {
+      item.classList.remove('is-current', 'is-filled');
+      var row = item.querySelector('.compare-ranking-row');
+      if (row) {
+        row.removeAttribute('aria-current');
+      }
+    });
+    if (section) {
+      section.classList.remove('is-cutoff-shown');
+    }
+    if (comparePanel) {
+      Array.prototype.forEach.call(comparePanel.querySelectorAll('.is-replay-current'), function (el) {
+        el.classList.remove('is-replay-current');
+      });
+    }
+  }
+
+  function clearCompareRankingHighlights() {
+    if (!comparePanel) {
+      return;
+    }
+    Array.prototype.forEach.call(comparePanel.querySelectorAll('.compare-ranking'), function (section) {
+      resetRankingReplayMarks(section);
+      section.classList.remove('is-replaying');
+      rankingItems(section).forEach(function (item) {
+        item.classList.toggle('compare-ranking-item--used', item.dataset.used === 'true');
+      });
+    });
+    resetRankingReplayMarks(null);
+  }
+
+  function highlightCompareRankingStep(steps, index) {
+    var section = vectorRankingSection();
+    if (!section || !Array.isArray(steps) || !steps[index]) {
+      clearCompareRankingHighlights();
+      return;
+    }
+    resetRankingReplayMarks(section);
+    section.classList.add('is-replaying');
+    rankingItems(section).forEach(function (item) {
+      item.classList.remove('compare-ranking-item--used');
+    });
+    var current = null;
+    for (var i = 0; i <= index; i += 1) {
+      var step = steps[i];
+      if (!step || step.kind !== 'VECTOR_CHUNK') {
+        continue;
+      }
+      var item = rankingItemFor(section, step.identifier);
+      if (!item) {
+        continue;
+      }
+      item.classList.add('is-filled', 'compare-ranking-item--used');
+      if (i === index) {
+        item.classList.add('is-current');
+        var row = item.querySelector('.compare-ranking-row');
+        if (row) {
+          row.setAttribute('aria-current', 'step');
+        }
+        current = item;
+      }
+    }
+    var kind = steps[index].kind;
+    var unfilledUsed = rankingItems(section).filter(function (rankingItem) {
+      return rankingItem.dataset.used === 'true' && !rankingItem.classList.contains('is-filled');
+    });
+    if (kind === 'SYNTHESIS' || unfilledUsed.length === 0) {
+      section.classList.add('is-cutoff-shown');
+    }
+    if (kind === 'SYNTHESIS') {
+      var answer = comparePanel.querySelector('.compare-col--vector .compare-col-answer');
+      if (answer) {
+        answer.classList.add('is-replay-current');
+        current = answer;
+      }
+    }
+    if (current && current.scrollIntoView) {
+      current.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  // The ranking row of `chunkId` on the vector side: {rank, score}, or null.
+  function compareRankingRowFor(chunkId) {
+    var item = rankingItemFor(vectorRankingSection(), chunkId);
+    if (!item) {
+      return null;
+    }
+    var score = parseFloat(item.dataset.score);
+    return { rank: parseInt(item.dataset.rank, 10), score: isNaN(score) ? null : score };
+  }
+
+  window.CompareRanking = {
+    highlightStep: highlightCompareRankingStep,
+    clear: clearCompareRankingHighlights,
+    rowFor: compareRankingRowFor
+  };
+
   function resetCompareView() {
+    closeCompareReplay();
     shownComparison = null;
     compareRequestSeq++;
     if (tabCompare) {
@@ -621,45 +894,24 @@
     }
   });
 
-  // Story 8-3: reveal the Vector Space tab and update the answer panel.
-  // `autoSwitch === false` (a comparison, which opens the Compare tab
-  // instead) never switches to it.
-  function revealVectorSpaceTab(answerText, autoSwitch) {
-    var wasHidden = !!(tabVectorSpace && tabVectorSpace.hidden);
-    if (tabVectorSpace) {
-      tabVectorSpace.removeAttribute('hidden');
-    }
-    if (vectorSpaceAnswer) {
-      vectorSpaceAnswer.textContent = answerText || '';
-    }
-    // Story 8.5: fetch the corpus's settled chunk-scatter positions once —
-    // VectorSpace.init() itself no-ops on a repeat call for the same corpus.
-    if (window.VectorSpace && activeCorpusId) {
-      window.VectorSpace.init(activeCorpusId);
-    }
-    // Auto-switch to Vector Space only the first time it is revealed — a
-    // helpful nudge so the user sees their first comparison land, without
-    // yanking them away from the Knowledge Graph tab on every subsequent
-    // comparison (e.g. one that resolves after the user switched back).
-    if (wasHidden && autoSwitch !== false) {
-      switchCanvasTab('vector-space');
-    }
-  }
+  // The canvas tabs in order, each with the view it switches to.
+  var CANVAS_TABS = [[tabKnowledgeGraph, 'knowledge-graph'], [tabCompare, 'compare']];
 
-  // Story 8-3: tab switching between 'knowledge-graph', 'vector-space' and
-  // 'compare'. The Knowledge Graph surface is hidden on both other tabs.
+  // Story 8-3: tab switching between 'knowledge-graph' and 'compare'. The
+  // Knowledge Graph surface is hidden on the Compare tab.
   function switchCanvasTab(which) {
-    var target = which === 'vector-space' || which === 'compare' ? which : 'knowledge-graph';
+    var target = which === 'compare' ? which : 'knowledge-graph';
     var showGraph = target === 'knowledge-graph';
-    [[tabKnowledgeGraph, 'knowledge-graph'], [tabVectorSpace, 'vector-space'], [tabCompare, 'compare']]
+    CANVAS_TABS
       .forEach(function (pair) {
         if (pair[0]) {
           pair[0].setAttribute('aria-selected', pair[1] === target ? 'true' : 'false');
           pair[0].tabIndex = pair[1] === target ? 0 : -1;
         }
       });
-    // graph-canvas, drift-pane, replay-scrubber, entity-detail-panel —
-    // all part of the Knowledge Graph tab surface.
+    // graph-canvas, drift-pane, entity-detail-panel — all part of the
+    // Knowledge Graph tab surface. The replay scrubber is handled below: it
+    // belongs to the tab its replay runs on.
     var kgEls = [
       document.getElementById('graph-canvas'),
       document.getElementById('drift-pane'),
@@ -667,7 +919,6 @@
       document.getElementById('graph-eyebrow'),
       document.getElementById('canvas-settings-toggle'),
       document.getElementById('canvas-zoom-controls'),
-      document.getElementById('replay-scrubber'),
       document.getElementById('entity-detail-panel'),
       document.getElementById('entity-search')
     ];
@@ -695,21 +946,23 @@
         }
       }
     });
-    if (vectorSpacePanel) {
-      vectorSpacePanel.hidden = target !== 'vector-space';
-    }
     if (comparePanel) {
       comparePanel.hidden = target !== 'compare';
     }
-    // The Retrieval Trace pane (trace-pane.js) follows the tab its trace
-    // belongs to: a graph trace shows on the Knowledge Graph tab, a vector
-    // trace on the Vector Space tab, neither on Compare.
+    // The Retrieval Trace pane (trace-pane.js) and an open replay's scrubber
+    // follow the tab their trace runs on: a graph replay on Knowledge Graph,
+    // the vector replay on Compare.
     document.dispatchEvent(new CustomEvent('graphrag:canvas-tab', { detail: { tab: target } }));
+    var scrubber = document.getElementById('replay-scrubber');
+    var replaySurface = window.Replay && window.Replay.surface ? window.Replay.surface() : null;
+    if (scrubber && replaySurface) {
+      scrubber.hidden = replaySurface !== target;
+    }
   }
 
   // The visible tabs in order, each with the view it switches to.
   function visibleCanvasTabs() {
-    return [[tabKnowledgeGraph, 'knowledge-graph'], [tabVectorSpace, 'vector-space'], [tabCompare, 'compare']]
+    return CANVAS_TABS
       .filter(function (pair) { return pair[0] && !pair[0].hidden; });
   }
 
@@ -743,7 +996,7 @@
     switchCanvasTab(tabs[next][1]);
   }
 
-  [[tabKnowledgeGraph, 'knowledge-graph'], [tabVectorSpace, 'vector-space'], [tabCompare, 'compare']]
+  CANVAS_TABS
     .forEach(function (pair) {
       if (!pair[0]) {
         return;
@@ -756,10 +1009,9 @@
 
 
   // Story 8-3: expose tab switching so other modules (replay.js) can bring
-  // the Knowledge Graph tab back into view when they open — the Knowledge
-  // Graph surface (graph-canvas, drift-tree, replay-scrubber) and the
-  // Vector Space panel must stay mutually exclusive regardless of which
-  // module triggers the transition.
+  // the tab their replay runs on into view — the Knowledge Graph surface
+  // (graph-canvas, drift-tree) and the Compare panel must stay mutually
+  // exclusive regardless of which module triggers the transition.
   window.CanvasTabs = {
     switchTo: switchCanvasTab
   };
@@ -1569,20 +1821,11 @@
     }
 
     // switchCanvasTab('knowledge-graph') must run BEFORE the explicit hides
-    // below: if Vector Space was ever revealed this session, its own
-    // cleanup un-hides (`el.hidden = false`) any element still carrying
+    // below: if Compare was ever opened this session, its own cleanup
+    // un-hides (`el.hidden = false`) any element still carrying
     // `dataset.hiddenByTabSwitch` from that earlier switch — running it
     // after would silently undo the hides this function is about to apply.
     switchCanvasTab('knowledge-graph');
-    if (tabVectorSpace) {
-      tabVectorSpace.setAttribute('hidden', '');
-    }
-    if (vectorSpacePanel) {
-      vectorSpacePanel.hidden = true;
-    }
-    if (vectorSpaceAnswer) {
-      vectorSpaceAnswer.textContent = '';
-    }
     resetCompareView();
 
     if (corpusChip) {
@@ -2044,13 +2287,6 @@
       replayCta.className = 'replay-cta';
       replayCta.dataset.traceId = traceId;
       replayCta.dataset.stepCount = String(traceStepCount || 0);
-      // Story 8.5: a VECTOR answer's Replay CTA also carries the query's own
-      // 2D projection — the trace steps themselves only carry chunk
-      // ids/scores, not coordinates, so replay.js reads this back off the
-      // button it clicked rather than needing a second fetch.
-      if (activeMode === 'VECTOR' && queryProjection) {
-        replayCta.dataset.queryProjection = JSON.stringify(queryProjection);
-      }
       replayCta.textContent =
           'Replay this answer\'s Retrieval Trace — ' + (traceStepCount || 0) + ' steps';
       message.appendChild(replayCta);
@@ -2064,8 +2300,7 @@
       compareCta.className = 'compare-cta';
       var compareCtaExplanation = 'Re-runs this question through this mode and a plain vector-similarity ' +
           'search (no knowledge graph), and opens the Compare tab with both cited answers side by side, ' +
-          'their sources, key figures and a short verdict. The Vector Space tab shows where the ' +
-          'corpus\'s chunks sit in embedding space.';
+          'their sources, key figures, the similarity ranking behind the vector answer and a short verdict.';
       compareCta.title = compareCtaExplanation;
       compareCta.setAttribute('aria-label', compareCtaExplanation);
       compareCta.textContent = COMPARE_CTA_LABEL;
@@ -2491,19 +2726,10 @@
 
     // Preserves resetToIdleState's documented ordering constraint:
     // switchCanvasTab('knowledge-graph') must run BEFORE the explicit
-    // Vector Space hides below — if Vector Space was ever revealed for the
-    // previous corpus, its own tab-switch cleanup would otherwise silently
-    // re-show whatever this switch is about to hide.
+    // hides below — if Compare was ever opened for the previous corpus, its
+    // own tab-switch cleanup would otherwise silently re-show whatever this
+    // switch is about to hide.
     switchCanvasTab('knowledge-graph');
-    if (tabVectorSpace) {
-      tabVectorSpace.setAttribute('hidden', '');
-    }
-    if (vectorSpacePanel) {
-      vectorSpacePanel.hidden = true;
-    }
-    if (vectorSpaceAnswer) {
-      vectorSpaceAnswer.textContent = '';
-    }
     resetCompareView();
 
     revealCorpusCanvasSurface();
