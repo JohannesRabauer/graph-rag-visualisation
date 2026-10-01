@@ -1,0 +1,298 @@
+package dev.rabauer.graphrag.adapter.neo4j;
+
+import dev.rabauer.graphrag.core.domain.Community;
+import dev.rabauer.graphrag.core.domain.CommunityMembership;
+import dev.rabauer.graphrag.core.domain.Entity;
+import dev.rabauer.graphrag.core.domain.Relationship;
+import dev.rabauer.graphrag.core.domain.TextUnit;
+import dev.rabauer.graphrag.core.port.GraphStorePort;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * An in-memory graph-store implementation used to validate the extraction flow.
+ */
+public class InMemoryGraphStoreAdapter implements GraphStorePort {
+
+    private final Map<String, Entity> entities = new LinkedHashMap<>();
+    private final Map<String, Relationship> relationships = new LinkedHashMap<>();
+    private final Map<String, Community> communities = new LinkedHashMap<>();
+    private final Map<String, CommunityMembership> communityMemberships = new LinkedHashMap<>();
+    private final Map<String, Map<String, Entity>> entitiesByCorpusId = new LinkedHashMap<>();
+    private final Map<String, Map<String, Relationship>> relationshipsByCorpusId = new LinkedHashMap<>();
+    private final Map<String, Map<String, Community>> communitiesByCorpusId = new LinkedHashMap<>();
+    private final Map<String, Map<String, CommunityMembership>> communityMembershipsByCorpusId = new LinkedHashMap<>();
+    private final Map<String, Map<String, TextUnit>> textUnitsByCorpusId = new LinkedHashMap<>();
+
+    @Override
+    public void persistTextUnits(String corpusId, Collection<TextUnit> input) {
+        if (corpusId == null || corpusId.isBlank() || input == null) {
+            return;
+        }
+        Map<String, TextUnit> scoped = scopedMap(textUnitsByCorpusId, corpusId);
+        for (TextUnit textUnit : input) {
+            if (textUnit == null) {
+                continue;
+            }
+            scoped.put(textUnit.id(), textUnit);
+        }
+    }
+
+    @Override
+    public List<TextUnit> textUnits(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return List.of();
+        }
+        return new ArrayList<>(readScopedMap(textUnitsByCorpusId, corpusId).values());
+    }
+
+    @Override
+    public Optional<TextUnit> textUnit(String corpusId, String textUnitId) {
+        if (corpusId == null || corpusId.isBlank() || textUnitId == null || textUnitId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(readScopedMap(textUnitsByCorpusId, corpusId).get(textUnitId));
+    }
+
+    @Override
+    public void persistEntities(Collection<Entity> input) {
+        if (input == null) {
+            return;
+        }
+        for (Entity entity : input) {
+            if (entity == null) {
+                continue;
+            }
+            entities.put(entity.normalizedIdentity(), entity);
+        }
+    }
+
+    @Override
+    public void persistEntities(String corpusId, Collection<Entity> input) {
+        if (corpusId == null || corpusId.isBlank()) {
+            persistEntities(input);
+            return;
+        }
+        if (input == null) {
+            return;
+        }
+        Map<String, Entity> scoped = scopedMap(entitiesByCorpusId, corpusId);
+        for (Entity entity : input) {
+            if (entity == null) {
+                continue;
+            }
+            String key = entity.normalizedIdentity();
+            entities.put(key, entity);
+            scoped.put(key, entity);
+        }
+    }
+
+    @Override
+    public void persistRelationships(Collection<Relationship> input) {
+        if (input == null) {
+            return;
+        }
+        for (Relationship relationship : input) {
+            if (relationship == null) {
+                continue;
+            }
+            String key = relationship.source() + "::" + relationship.type() + "::" + relationship.target();
+            relationships.put(key, relationship);
+        }
+    }
+
+    @Override
+    public void persistRelationships(String corpusId, Collection<Relationship> input) {
+        if (corpusId == null || corpusId.isBlank()) {
+            persistRelationships(input);
+            return;
+        }
+        if (input == null) {
+            return;
+        }
+        Map<String, Relationship> scoped = scopedMap(relationshipsByCorpusId, corpusId);
+        for (Relationship relationship : input) {
+            if (relationship == null) {
+                continue;
+            }
+            String key = relationship.source() + "::" + relationship.type() + "::" + relationship.target();
+            relationships.put(key, relationship);
+            scoped.put(key, relationship);
+        }
+    }
+
+    @Override
+    public void retypeEntity(String corpusId, String previousIdentity, Entity resolved) {
+        if (previousIdentity == null || previousIdentity.isBlank() || resolved == null) {
+            return;
+        }
+        entities.remove(previousIdentity);
+        entities.put(resolved.normalizedIdentity(), resolved);
+        if (corpusId != null && !corpusId.isBlank()) {
+            Map<String, Entity> scopedEntities = scopedMap(entitiesByCorpusId, corpusId);
+            scopedEntities.remove(previousIdentity);
+            scopedEntities.put(resolved.normalizedIdentity(), resolved);
+            retypeRelationships(scopedMap(relationshipsByCorpusId, corpusId), previousIdentity, resolved);
+        }
+        retypeRelationships(relationships, previousIdentity, resolved);
+    }
+
+    @Override
+    public void persistCommunities(Collection<Community> input) {
+        if (input == null) {
+            return;
+        }
+        for (Community community : input) {
+            if (community == null) {
+                continue;
+            }
+            communities.put(community.id(), community);
+        }
+    }
+
+    @Override
+    public void persistCommunities(String corpusId, Collection<Community> input) {
+        if (corpusId == null || corpusId.isBlank()) {
+            persistCommunities(input);
+            return;
+        }
+        if (input == null) {
+            return;
+        }
+        Map<String, Community> scoped = scopedMap(communitiesByCorpusId, corpusId);
+        for (Community community : input) {
+            if (community == null) {
+                continue;
+            }
+            communities.put(community.id(), community);
+            scoped.put(community.id(), community);
+        }
+    }
+
+    @Override
+    public void persistCommunityMemberships(Collection<CommunityMembership> input) {
+        if (input == null) {
+            return;
+        }
+        for (CommunityMembership membership : input) {
+            if (membership == null) {
+                continue;
+            }
+            String key = membership.communityId() + "::" + membership.entityIdentity();
+            communityMemberships.put(key, membership);
+        }
+    }
+
+    @Override
+    public void persistCommunityMemberships(String corpusId, Collection<CommunityMembership> input) {
+        if (corpusId == null || corpusId.isBlank()) {
+            persistCommunityMemberships(input);
+            return;
+        }
+        if (input == null) {
+            return;
+        }
+        Map<String, CommunityMembership> scoped = scopedMap(communityMembershipsByCorpusId, corpusId);
+        for (CommunityMembership membership : input) {
+            if (membership == null) {
+                continue;
+            }
+            String key = membership.communityId() + "::" + membership.entityIdentity();
+            communityMemberships.put(key, membership);
+            scoped.put(key, membership);
+        }
+    }
+
+    @Override
+    public List<Entity> entities() {
+        return new ArrayList<>(entities.values());
+    }
+
+    @Override
+    public List<Relationship> relationships() {
+        return new ArrayList<>(relationships.values());
+    }
+
+    @Override
+    public List<Community> communities() {
+        return new ArrayList<>(communities.values());
+    }
+
+    @Override
+    public List<CommunityMembership> communityMemberships() {
+        return new ArrayList<>(communityMemberships.values());
+    }
+
+    @Override
+    public List<Entity> entities(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return entities();
+        }
+        return new ArrayList<>(readScopedMap(entitiesByCorpusId, corpusId).values());
+    }
+
+    @Override
+    public List<Relationship> relationships(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return relationships();
+        }
+        return new ArrayList<>(readScopedMap(relationshipsByCorpusId, corpusId).values());
+    }
+
+    @Override
+    public List<Community> communities(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return communities();
+        }
+        return new ArrayList<>(readScopedMap(communitiesByCorpusId, corpusId).values());
+    }
+
+    @Override
+    public List<CommunityMembership> communityMemberships(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return communityMemberships();
+        }
+        return new ArrayList<>(readScopedMap(communityMembershipsByCorpusId, corpusId).values());
+    }
+
+    private static <T> Map<String, T> scopedMap(Map<String, Map<String, T>> index, String corpusId) {
+        return index.computeIfAbsent(corpusId, ignored -> Collections.synchronizedMap(new LinkedHashMap<>()));
+    }
+
+    private static <T> Map<String, T> readScopedMap(Map<String, Map<String, T>> index, String corpusId) {
+        Map<String, T> scoped = index.get(corpusId);
+        return scoped == null ? Collections.emptyMap() : scoped;
+    }
+
+    private static void retypeRelationships(Map<String, Relationship> index, String previousIdentity, Entity resolved) {
+        Map<String, Relationship> rewritten = new LinkedHashMap<>();
+        List<String> removed = new ArrayList<>();
+        for (Map.Entry<String, Relationship> entry : index.entrySet()) {
+            Relationship relationship = entry.getValue();
+            boolean sourceMatches = Entity.identityOf(relationship.source(), relationship.sourceType()).equals(previousIdentity);
+            boolean targetMatches = Entity.identityOf(relationship.target(), relationship.targetType()).equals(previousIdentity);
+            if (!sourceMatches && !targetMatches) {
+                continue;
+            }
+            removed.add(entry.getKey());
+            Relationship updated = new Relationship(
+                    sourceMatches ? resolved.name() : relationship.source(),
+                    sourceMatches ? resolved.type() : relationship.sourceType(),
+                    relationship.type(),
+                    targetMatches ? resolved.name() : relationship.target(),
+                    targetMatches ? resolved.type() : relationship.targetType(),
+                    relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());
+            rewritten.put(updated.source() + "::" + updated.type() + "::" + updated.target(), updated);
+        }
+        for (String key : removed) {
+            index.remove(key);
+        }
+        index.putAll(rewritten);
+    }
+}

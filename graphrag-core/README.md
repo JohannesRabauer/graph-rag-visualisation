@@ -18,9 +18,9 @@ Neo4j Java Driver, or LangChain4j, and the build enforces that ban.
 
 ```xml
 <dependency>
-    <groupId>io.graphrag</groupId>
+    <groupId>dev.rabauer.graphrag</groupId>
     <artifactId>graphrag-core</artifactId>
-    <version>1.0.0</version>
+    <version>2.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -35,7 +35,7 @@ mvn install -pl graphrag-core -am
 
 ## The ports
 
-A consumer implements these five interfaces (all in `io.graphrag.core.port`)
+A consumer implements these five interfaces (all in `dev.rabauer.graphrag.core.port`)
 to plug in its own technology choices. Every default method already has a
 usable fallback; only the abstract methods listed below are required.
 
@@ -57,7 +57,7 @@ group's first member in `entities(corpusId)`.
 
 ## Usage: wiring the ports and running the pipeline
 
-The use cases in `io.graphrag.core.usecase` are called in this order: ingest
+The use cases in `dev.rabauer.graphrag.core.usecase` are called in this order: ingest
 the corpus, extract entities/relationships into the graph, then detect
 communities and build the vector index (either order, both depend only on
 the graph/corpus), and finally answer a question.
@@ -68,9 +68,9 @@ implementation, then runs the full pipeline end to end. It is modeled on
 against the current API.
 
 ```java
-import io.graphrag.core.domain.*;
-import io.graphrag.core.port.*;
-import io.graphrag.core.usecase.*;
+import dev.rabauer.graphrag.core.domain.*;
+import dev.rabauer.graphrag.core.port.*;
+import dev.rabauer.graphrag.core.usecase.*;
 
 import java.util.*;
 
@@ -160,9 +160,9 @@ implementation, not a real adapter.
 
 ## Package layout
 
-- `io.graphrag.core.domain` — the data carried between use cases and ports
+- `dev.rabauer.graphrag.core.domain` — the data carried between use cases and ports
   (corpora, chunks, entities, relationships, communities, retrieval traces).
-- `io.graphrag.core.port` — the SPI a consumer implements (see the table
+- `dev.rabauer.graphrag.core.port` — the SPI a consumer implements (see the table
   above).
-- `io.graphrag.core.usecase` — the actual operations, called in the pipeline
+- `dev.rabauer.graphrag.core.usecase` — the actual operations, called in the pipeline
   order shown above.

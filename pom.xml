@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.graphraglens</groupId>
+  <groupId>dev.rabauer.graphrag</groupId>
   <artifactId>graphrag-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
@@ -29,10 +29,10 @@
     <maven.compiler.release>${java.version}</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <!-- graphrag-core is released independently under its own io.graphrag
+    <!-- graphrag-core is released independently under the dev.rabauer.graphrag
          groupId/version; this property lets dependents track its version
          from one place instead of four synchronized literals. -->
-    <graphrag-core.version>1.0.0</graphrag-core.version>
+    <graphrag-core.version>2.0.0-SNAPSHOT</graphrag-core.version>
   </properties>
 
   <build>

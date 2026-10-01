@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.graphraglens</groupId>
+    <groupId>dev.rabauer.graphrag</groupId>
     <artifactId>graphrag-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
@@ -45,7 +45,7 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.graphrag</groupId>
+      <groupId>dev.rabauer.graphrag</groupId>
       <artifactId>graphrag-core</artifactId>
       <version>${graphrag-core.version}</version>
     </dependency>

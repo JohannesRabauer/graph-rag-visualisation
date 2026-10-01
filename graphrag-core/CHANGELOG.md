@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The next release is **2.0.0**. It contains breaking changes, including the namespace move below.
+
+### Changed
+
+- **Breaking — namespace moved to `dev.rabauer.graphrag`.**
+  - The Maven `groupId` changes from `io.graphrag` to `dev.rabauer.graphrag`; the `artifactId` `graphrag-core` is unchanged.
+  - The packages move from `io.graphrag.core.{domain,port,usecase}` to `dev.rabauer.graphrag.core.{domain,port,usecase}`.
+  - Consumers update their dependency coordinates and replace `io.graphrag.core` with `dev.rabauer.graphrag.core` in their imports. No class or method names changed.
+  - The project version is now `2.0.0-SNAPSHOT`.
+
 ### Added
 
 - `AnswerGlobalSearch(GraphStorePort, EmbeddingPort, LlmPort)` constructor
