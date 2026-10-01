@@ -55,8 +55,9 @@ public record GlobalSearchAnswer(boolean noAnswer, String answer, String reason,
 
     public static GlobalSearchAnswer noCommunitiesYet() {
         return new GlobalSearchAnswer(true, null,
-                "No Communities have been detected for this corpus yet — community detection and summary "
-                        + "generation may still be running. Try Global Search again once it completes.",
+                "This corpus has no Communities to search. Either community detection is still running, or no "
+                        + "group of related entities reached the minimum Community size of 3 entities. Try Global "
+                        + "Search again once ingestion completes, or use Local Search for specific entities.",
                 List.of());
     }
 }

@@ -17,7 +17,9 @@ class DriftTreeReplayUiTest extends UiTestSupport {
         loadDemoDatasetAndWaitReady();
 
         page.locator("label.mode-choice-option:has(input[value='DRIFT'])").click();
-        page.locator("#chat-input").fill("Tell me about Holmes.");
+        // Names one member of each demo Community, so both tie for the best
+        // keyword score and DRIFT spawns (at least) two branches.
+        page.locator("#chat-input").fill("Tell me about Holmes and the King.");
         page.locator("#chat-form .send-button").click();
 
         Locator replayCta = page.locator(".replay-cta");

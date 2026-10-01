@@ -14,16 +14,17 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
  * visualization toggle is currently OFF — otherwise the step advances with
  * nothing on screen to show for it.
  *
- * <p>The demo dataset's deterministic extraction always yields three
- * Communities, one of which ("Sherlock Holmes") is a singleton with no
- * Relationships — a clean, unambiguous target: toggle hulls off, ask a
- * GLOBAL question (every Community becomes a trace step, per
- * {@code AnswerGlobalSearch}'s own class Javadoc), and Replay through until
- * this Community's own step is current.
+ * <p>The demo dataset's deterministic extraction always yields two
+ * three-member Communities ("Irene Adler", "King", "Godfrey Norton" first,
+ * then "Holmes", "Professor Moriarty", "Europe"), while "Sherlock Holmes",
+ * with no Relationships, is below {@code MIN_COMMUNITY_SIZE} and gets no
+ * hull at all. Toggle hulls off, ask a GLOBAL question (every Community
+ * becomes a trace step, per {@code AnswerGlobalSearch}'s own class Javadoc),
+ * and Replay until the Irene Adler Community's own step is current.
  */
 class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
 
-    private static final String SHERLOCK_HOLMES_IDENTITY = "sherlock holmes::person";
+    private static final String IRENE_ADLER_IDENTITY = "irene adler::concept";
 
     @Test
     void communityStepHullIsVisibleDuringReplayEvenWhenToggledOff() {
@@ -56,11 +57,11 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
         Locator caption = page.locator("#replay-caption");
         Locator stepForward = page.locator("#replay-step-forward");
 
-        // Step forward (there are exactly 3 Community steps) until the
-        // caption names the singleton "Sherlock Holmes" community.
+        // Step forward (there are exactly 2 Community steps) until the
+        // caption names the "Irene Adler" community, the first step.
         boolean found = false;
         for (int i = 0; i < 5 && !found; i++) {
-            if (caption.textContent().contains("Sherlock Holmes")) {
+            if (caption.textContent().contains("Irene Adler")) {
                 found = true;
                 break;
             }
@@ -69,28 +70,33 @@ class ReplayCommunityHullVisibilityUiTest extends UiTestSupport {
             }
             stepForward.click();
         }
-        assertThat(caption).containsText("Sherlock Holmes");
+        assertThat(caption).containsText("Irene Adler");
 
-        // Read the singleton's own community id directly off the rendered
-        // graph (Cytoscape's compound-node structure) and check its hull's
-        // actual resolved opacity — no backend call involved.
-        Number singletonOpacity = (Number) page.evaluate(
+        // Read this Community's id directly off the rendered graph
+        // (Cytoscape's compound-node structure) and check its hull's actual
+        // resolved opacity — no backend call involved.
+        Number currentStepOpacity = (Number) page.evaluate(
                 "identity => {"
                         + "  const communityId = window.GraphCanvas.communityIdForEntity(identity);"
                         + "  return communityId ? window.GraphCanvas.communityHullOpacity(communityId) : null;"
                         + "}",
-                SHERLOCK_HOLMES_IDENTITY);
+                IRENE_ADLER_IDENTITY);
 
-        org.assertj.core.api.Assertions.assertThat(singletonOpacity).isNotNull();
-        org.assertj.core.api.Assertions.assertThat(singletonOpacity.doubleValue()).isGreaterThan(0.0);
+        org.assertj.core.api.Assertions.assertThat(currentStepOpacity).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(currentStepOpacity.doubleValue()).isGreaterThan(0.0);
+
+        // "Sherlock Holmes" has no Community (below MIN_COMMUNITY_SIZE), so it
+        // is a plain node without a hull parent.
+        org.assertj.core.api.Assertions.assertThat(page.evaluate(
+                "() => window.GraphCanvas.communityIdForEntity('sherlock holmes::person')")).isNull();
 
         // Sanity check the fix is actually scoped: a hull that is neither the
         // current nor the previous Replay step stays hidden — the toggle's
         // "with vs. without" comparison must still work for everything else
-        // while Replay is open. "Professor Moriarty" sits in a third,
-        // unrelated Community in the demo corpus's deterministic extraction
-        // (neither Sherlock Holmes's own singleton nor "King", the current
-        // step's previous-step neighbor, which is also force-shown by design).
+        // while Replay is open. "Professor Moriarty" sits in the second
+        // Community, whose step comes after the current one (only the
+        // current and the previous step are force-shown, by design, and the
+        // first step has no previous one).
         Number untouchedHullOpacity = (Number) page.evaluate(
                 "() => {"
                         + "  const communityId = window.GraphCanvas.communityIdForEntity('professor moriarty::concept');"

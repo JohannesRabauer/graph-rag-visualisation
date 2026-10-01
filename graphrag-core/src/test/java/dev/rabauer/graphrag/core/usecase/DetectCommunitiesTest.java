@@ -21,6 +21,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DetectCommunitiesTest {
@@ -67,7 +69,7 @@ class DetectCommunitiesTest {
         Map<String, List<String>> callbackInvocations = new LinkedHashMap<>();
         Map<String, Integer> persistedCommunityCountAtCallbackTime = new LinkedHashMap<>();
 
-        List<Community> communities = new DetectCommunities(graphStore).detect(
+        List<Community> communities = new DetectCommunities(graphStore, null, 1).detect(
                 new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content"))),
                 (community, memberEntityIdentities) -> {
                     callbackInvocations.put(community.id(), memberEntityIdentities);
@@ -111,7 +113,7 @@ class DetectCommunitiesTest {
         };
         Map<String, List<String>> callbackInvocations = new LinkedHashMap<>();
 
-        List<Community> communities = new DetectCommunities(graphStore).detect(
+        List<Community> communities = new DetectCommunities(graphStore, null, 1).detect(
                 new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content"))),
                 (community, members) -> callbackInvocations.put(community.id(), members));
 
@@ -130,7 +132,7 @@ class DetectCommunitiesTest {
     }
 
     @Test
-    void defaultPortGroupsTwoBridgedCliquesIntoOneCommunityAndKeepsAnIsolatedEntityAlone() {
+    void defaultPortGroupsTwoBridgedCliquesIntoOneCommunityAndLeavesAnIsolatedEntityOut() {
         List<Entity> entities = new ArrayList<>();
         for (String name : List.of("A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4", "Loner")) {
             entities.add(new Entity(name, "Node"));
@@ -146,10 +148,12 @@ class DetectCommunitiesTest {
                 new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content"))),
                 (community, members) -> callbackInvocations.put(community.id(), members));
 
-        assertEquals(2, communities.size());
+        assertEquals(1, communities.size());
         assertEquals(List.of(id("A1"), id("A2"), id("A3"), id("A4"), id("B1"), id("B2"), id("B3"), id("B4")),
                 callbackInvocations.get("community-1"));
-        assertEquals(List.of(id("Loner")), callbackInvocations.get("community-2"));
+        assertEquals(1, callbackInvocations.size());
+        assertTrue(graphStore.persistedMemberships.stream()
+                .noneMatch(membership -> membership.entityIdentity().equals(id("Loner"))));
     }
 
     @Test
@@ -168,7 +172,7 @@ class DetectCommunitiesTest {
         };
         RecordingLlm llm = new RecordingLlm();
 
-        new DetectCommunities(graphStore, llm).detect(corpus());
+        new DetectCommunities(graphStore, llm, 1).detect(corpus());
 
         assertEquals(List.of("Alpha node", "Beta node"),
                 llm.memberCalls.get(0).stream().map(Entity::description).toList());
@@ -254,11 +258,115 @@ class DetectCommunitiesTest {
             }
         };
 
-        Community community = new DetectCommunities(graphStore, nullPort).detect(corpus()).get(0);
+        Community community = new DetectCommunities(graphStore, nullPort, 1).detect(corpus()).get(0);
 
         assertEquals(new Community("community-1", "Sherlock Holmes & Dr. Watson",
                 "This community centers on Sherlock Holmes, Dr. Watson."), community);
         assertTrue(namesOnlyCalls.isEmpty());
+    }
+
+    @Test
+    void keepsOnlyGroupsOfAtLeastThreeMembersNumberedContiguouslyWithoutLlmCallsForSmallGroups() {
+        List<Entity> entities = new ArrayList<>();
+        for (String name : List.of("S1", "P1", "P2", "T1", "T2", "T3", "F1", "F2", "F3", "F4", "F5")) {
+            entities.add(new Entity(name, "Node"));
+        }
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, List.of()) {
+            @Override
+            public List<List<String>> detectCommunities(String corpusId) {
+                return List.of(
+                        List.of(id("S1")),
+                        List.of(id("P1"), id("P2")),
+                        List.of(id("T1"), id("T2"), id("T3")),
+                        List.of(id("F1"), id("F2"), id("F3"), id("F4"), id("F5")));
+            }
+        };
+        RecordingLlm llm = new RecordingLlm();
+        Map<String, List<String>> callbackInvocations = new LinkedHashMap<>();
+
+        List<Community> communities = new DetectCommunities(graphStore, llm).detect(corpus(),
+                (community, members) -> callbackInvocations.put(community.id(), members));
+
+        assertEquals(3, DetectCommunities.MIN_COMMUNITY_SIZE);
+        assertEquals(List.of("community-1", "community-2"), communities.stream().map(Community::id).toList());
+        assertEquals(communities, graphStore.persistedCommunities);
+        assertEquals(Map.of(
+                "community-1", List.of(id("T1"), id("T2"), id("T3")),
+                "community-2", List.of(id("F1"), id("F2"), id("F3"), id("F4"), id("F5"))), callbackInvocations);
+        assertEquals(8, graphStore.persistedMemberships.size());
+        assertTrue(graphStore.persistedMemberships.stream().map(CommunityMembership::entityIdentity)
+                .noneMatch(identity -> List.of(id("S1"), id("P1"), id("P2")).contains(identity)));
+        assertEquals(2, llm.memberCalls.size());
+        assertEquals(List.of("T1", "T2", "T3"), llm.memberCalls.get(0).stream().map(Entity::name).toList());
+        assertEquals(List.of("F1", "F2", "F3", "F4", "F5"),
+                llm.memberCalls.get(1).stream().map(Entity::name).toList());
+    }
+
+    @Test
+    void countsDistinctMemberIdentitiesTowardsTheMinimumSize() {
+        // Two Entities share one identity (differing details), so the group has only two distinct members.
+        List<Entity> entities = List.of(
+                new Entity("A", "Node", "first", List.of()),
+                new Entity("A", "Node", "second", List.of()),
+                new Entity("B", "Node"));
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities,
+                List.of(new Relationship("A", "Node", "links", "B", "Node")));
+        RecordingLlm llm = new RecordingLlm();
+
+        assertTrue(new DetectCommunities(graphStore, llm).detect(corpus()).isEmpty());
+        assertTrue(llm.memberCalls.isEmpty());
+    }
+
+    @Test
+    void aMinimumSizeOfOneRestoresSingletonAndPairCommunities() {
+        List<Entity> entities = List.of(
+                new Entity("S1", "Node"), new Entity("P1", "Node"), new Entity("P2", "Node"),
+                new Entity("T1", "Node"), new Entity("T2", "Node"), new Entity("T3", "Node"));
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, List.of(
+                new Relationship("P1", "Node", "links", "P2", "Node"),
+                new Relationship("T1", "Node", "links", "T2", "Node"),
+                new Relationship("T2", "Node", "links", "T3", "Node")));
+        RecordingLlm llm = new RecordingLlm();
+        Map<String, List<String>> callbackInvocations = new LinkedHashMap<>();
+
+        List<Community> communities = new DetectCommunities(graphStore, llm, 1).detect(corpus(),
+                (community, members) -> callbackInvocations.put(community.id(), members));
+
+        assertEquals(List.of("community-1", "community-2", "community-3"),
+                communities.stream().map(Community::id).toList());
+        assertEquals(Map.of(
+                "community-1", List.of(id("S1")),
+                "community-2", List.of(id("P1"), id("P2")),
+                "community-3", List.of(id("T1"), id("T2"), id("T3"))), callbackInvocations);
+        assertEquals(6, graphStore.persistedMemberships.size());
+        assertEquals(3, llm.memberCalls.size());
+    }
+
+    @Test
+    void persistsNothingAndReportsNothingWhenEveryGroupIsTooSmall() {
+        List<Entity> entities = List.of(
+                new Entity("S1", "Node"), new Entity("P1", "Node"), new Entity("P2", "Node"));
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities,
+                List.of(new Relationship("P1", "Node", "links", "P2", "Node")));
+        RecordingLlm llm = new RecordingLlm();
+        List<String> callbacks = new ArrayList<>();
+
+        List<Community> communities = new DetectCommunities(graphStore, llm).detect(corpus(),
+                (community, members) -> callbacks.add(community.id()));
+
+        assertEquals(List.of(), communities);
+        assertTrue(graphStore.persistedCommunities.isEmpty());
+        assertTrue(graphStore.persistedMemberships.isEmpty());
+        assertNull(graphStore.lastPersistedCommunitiesCorpusId);
+        assertNull(graphStore.lastPersistedMembershipsCorpusId);
+        assertTrue(callbacks.isEmpty());
+        assertTrue(llm.memberCalls.isEmpty());
+    }
+
+    @Test
+    void rejectsAMinimumSizeBelowOne() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new DetectCommunities(new RecordingGraphStore(List.of(), List.of()), null, 0));
     }
 
     @Test
@@ -276,7 +384,7 @@ class DetectCommunitiesTest {
         RecordingLlm llm = new RecordingLlm();
         llm.response = new CommunitySummary("Baker Street Detectives", "Holmes and Watson solve cases together.");
 
-        List<Community> communities = new DetectCommunities(graphStore, llm).detect(corpus());
+        List<Community> communities = new DetectCommunities(graphStore, llm, 1).detect(corpus());
 
         assertEquals(new Community("community-1", "Baker Street Detectives",
                 "Holmes and Watson solve cases together."), communities.get(0));

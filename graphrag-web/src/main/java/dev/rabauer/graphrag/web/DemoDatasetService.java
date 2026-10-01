@@ -28,10 +28,10 @@ public class DemoDatasetService {
     private List<UploadedDocument> sherlockDocuments() {
         return List.of(
                 new UploadedDocument("A Scandal in Bohemia.txt",
-                        "Irene Adler, professional adventuress, had outwitted Sherlock Holmes by stealing the photograph and turning the King's leverage against him. Holmes admired her ingenuity and recognized that she had triumphed by thinking several moves ahead."),
+                        "Irene Adler, professional adventuress, had outwitted Sherlock Holmes by stealing the photograph and turning the King's leverage against him. Holmes admired her ingenuity and recognized that she had triumphed by thinking several moves ahead. Irene Adler married Godfrey Norton in secret."),
                 new UploadedDocument("The Adventure of the Speckled Band.txt",
                         "A hidden clue in a locked room, a fluttering band of speckled silk, and a sudden death in a chamber of silence. Holmes followed the trail of motive, means, and opportunity to expose the murderer."),
                 new UploadedDocument("The Final Problem.txt",
-                        "Professor Moriarty had become the intellectual rival Holmes feared most: a criminal mastermind whose reach extended across Europe. The case turned on deduction, timing, and the willingness to face a dangerous adversary without hesitation."));
+                        "Professor Moriarty had become the intellectual rival Holmes feared most: a criminal mastermind whose reach extended across Europe. The case turned on deduction, timing, and the willingness to face a dangerous adversary without hesitation. Holmes chased Professor Moriarty to the edge of the falls."));
     }
 }

@@ -394,7 +394,7 @@ class Neo4jGraphStoreAdapterTest {
     }
 
     @Test
-    void leidenKeepsAnIsolatedEntityAsItsOwnCommunity() {
+    void leidenKeepsAnIsolatedEntityAsItsOwnGroupButDetectCommunitiesLeavesItOut() {
         Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
         String corpusId = "corpus-leiden-isolated-" + System.nanoTime();
         persistBridgedCliques(adapter, corpusId);
@@ -405,6 +405,14 @@ class Neo4jGraphStoreAdapterTest {
         assertTrue(groups.contains(List.of(id("Loner"))), () -> "groups: " + groups);
         assertEquals(3, groups.size(), () -> "groups: " + groups);
         assertEquals(9, groups.stream().mapToInt(List::size).sum());
+
+        // The port still returns the singleton; the use case drops it (MIN_COMMUNITY_SIZE = 3).
+        List<Community> communities = new DetectCommunities(adapter).detect(new Corpus(corpusId, List.of()));
+        assertEquals(List.of("community-1", "community-2"), communities.stream().map(Community::id).toList());
+        assertTrue(adapter.communityMemberships(corpusId).stream()
+                .noneMatch(membership -> membership.entityIdentity().equals(id("Loner"))));
+        assertTrue(adapter.entities(corpusId).stream()
+                .anyMatch(entity -> entity.normalizedIdentity().equals(id("Loner"))), "the Loner stays an ordinary Entity");
     }
 
     @Test

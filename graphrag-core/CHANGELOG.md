@@ -16,6 +16,14 @@ The next release is **2.0.0**. It contains breaking changes, including the names
   - The packages move from `io.graphrag.core.{domain,port,usecase}` to `dev.rabauer.graphrag.core.{domain,port,usecase}`.
   - Consumers update their dependency coordinates and replace `io.graphrag.core` with `dev.rabauer.graphrag.core` in their imports. No class or method names changed.
   - The project version is now `2.0.0-SNAPSHOT`.
+- **Behaviour change — Communities need at least 3 members.**
+  - `DetectCommunities` now drops every group from `GraphStorePort.detectCommunities` with fewer than 3 distinct member identities.
+  - A dropped group produces no `Community`, no `CommunityMembership`, no `LlmPort.summarizeCommunity` call and no `onCommunityDetected` callback. Its Entities stay ordinary Entities in the graph, still reachable by Local Search, but Global and DRIFT Search no longer see them.
+  - Community ids stay `community-1..n`, contiguous over the kept groups, in the same deterministic order as before.
+  - When no group is large enough, nothing is persisted and `detect` returns an empty list.
+  - New public constant `DetectCommunities.MIN_COMMUNITY_SIZE = 3` and a new constructor `DetectCommunities(GraphStorePort, LlmPort, int minCommunitySize)`. The existing constructors default to 3; pass `1` to restore the old behaviour, where every group (singletons included) became a Community. A value below 1 throws `IllegalArgumentException`.
+  - The `GraphStorePort.detectCommunities` contract is unchanged: adapters still return every group, singletons included.
+  - The `noCommunitiesYet()` reasons of `GlobalSearchAnswer` and `DriftSearchAnswer` are reworded: a corpus can now have no Communities after detection has finished, so they no longer imply that detection is still running.
 
 ### Added
 

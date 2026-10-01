@@ -60,9 +60,13 @@ class MainScreenDetailPanelUiTest extends UiTestSupport {
         tap("holmes::person");
         assertThat(panel).not().hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
 
-        // "King" is in a different Community from Sherlock Holmes (demo
-        // corpus's deterministic extraction) — read the community id
-        // directly off the rendered graph rather than any backend call.
+        // Sherlock Holmes has no Relationships, so its group is below
+        // MIN_COMMUNITY_SIZE: it renders as a plain node with no hull parent
+        // (and its detail panel above still worked). "King" is in a
+        // three-member Community — read the community id directly off the
+        // rendered graph rather than any backend call.
+        org.assertj.core.api.Assertions.assertThat(page.evaluate(
+                "() => window.GraphCanvas.communityIdForEntity('sherlock holmes::person')")).isNull();
         String communityId = (String) page.evaluate(
                 "() => window.GraphCanvas.communityIdForEntity('king::concept')");
         org.assertj.core.api.Assertions.assertThat(communityId).isNotNull();

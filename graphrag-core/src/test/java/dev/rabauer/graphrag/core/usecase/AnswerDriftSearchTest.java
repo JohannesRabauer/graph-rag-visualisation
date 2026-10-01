@@ -31,8 +31,9 @@ class AnswerDriftSearchTest {
         assertTrue(result.noAnswer());
         assertNull(result.answer());
         assertEquals(
-                "DRIFT Search cannot run yet because this corpus has no Community summaries. Wait for the Community "
-                        + "pass to finish, then try again.",
+                "DRIFT Search cannot run because this corpus has no Community summaries. Either community "
+                        + "detection is still running, or no group of related entities reached the minimum Community "
+                        + "size of 3 entities. Try again once ingestion completes, or use Local Search.",
                 result.reason());
         assertTrue(result.steps().isEmpty());
     }

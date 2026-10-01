@@ -171,3 +171,11 @@ Status: done
 - Leiden may group the demo corpus differently, so UI tests that assume specific demo community layouts could shift in CI.
 
 **Correction (2026-10-01, after Story 14.2):** the 5 UI failures listed above as "baseline" were caused by `OPENAI_API_KEY` being set in the local shell, which made the Spring/UI tests call the real LLM. With the key unset, as in CI, the full `mvn -B install` passes with 0 failures.
+
+## Post-Release Change (2026-10-01)
+
+The user decided that a Community needs at least 3 members. On a real corpus (history-of-java: 198 entities), Leiden produced 83 Communities, 37 of them single entities and 27 isolated pairs. They cluttered the canvas, cost one LLM summary call each and diluted the Global/DRIFT candidates.
+
+- `DetectCommunities` now drops every group with fewer than 3 distinct member identities (`DetectCommunities.MIN_COMMUNITY_SIZE = 3`, overridable through a new constructor; `1` restores the old behaviour). A dropped group gets no Community, no membership, no summary call and no `community-detected` event. Its Entities stay ordinary Entities, still reachable by Local Search. Ids stay `community-1..n`, contiguous over the kept groups.
+- This supersedes this story's "isolated entities become single-member Communities" for display, summaries and search. The `GraphStorePort.detectCommunities` contract is unchanged: the GDS Leiden and connected-components implementations still return singletons, and the filtering happens in `DetectCommunities` only.
+- The demo dataset produced only groups of 1 and 2 (Irene Adler + King, Sherlock Holmes, Holmes, Professor Moriarty + Europe), so it would have had no Communities at all. One sentence was added to two of its documents ("Irene Adler married Godfrey Norton in secret." and "Holmes chased Professor Moriarty to the edge of the falls."). It now yields two 3-member Communities, and Sherlock Holmes stays a plain node with no hull.

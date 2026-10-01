@@ -31,7 +31,16 @@ import java.util.function.BiConsumer;
  * Community ids are always {@code community-1..n}, assigned in the order of each
  * group's first member in {@link GraphStorePort#entities(String)}, and members
  * keep that entity order, so ids are deterministic for any adapter. An Entity
- * the port leaves out of every group becomes its own single-member Community.</p>
+ * the port leaves out of every group is treated as its own single-member group.</p>
+ *
+ * <p>Only groups with at least {@linkplain #MIN_COMMUNITY_SIZE a minimum number}
+ * of distinct member identities (default {@value #MIN_COMMUNITY_SIZE}) become
+ * Communities. Smaller groups (isolated entities, isolated pairs) produce no
+ * {@link Community}, no {@link CommunityMembership}, no LLM summary call and no
+ * callback; their Entities stay ordinary Entities in the graph, still reachable
+ * by Local Search. The ids {@code community-1..n} are contiguous over the kept
+ * groups, in the same deterministic order. The port itself still returns every
+ * group, singletons included: the filtering happens here only.</p>
  */
 public class DetectCommunities {
 
@@ -39,17 +48,34 @@ public class DetectCommunities {
     static final int MAX_SUMMARY_MEMBERS = 25;
     /** At most this many internal Relationships (highest weight first) are handed to the LLM per Community. */
     static final int MAX_SUMMARY_RELATIONSHIPS = 30;
+    /** Default minimum number of distinct member identities a group needs to become a Community. */
+    public static final int MIN_COMMUNITY_SIZE = 3;
 
     private final GraphStorePort graphStorePort;
     private final LlmPort llmPort;
+    private final int minCommunitySize;
 
     public DetectCommunities(GraphStorePort graphStorePort) {
         this(graphStorePort, null);
     }
 
     public DetectCommunities(GraphStorePort graphStorePort, LlmPort llmPort) {
+        this(graphStorePort, llmPort, MIN_COMMUNITY_SIZE);
+    }
+
+    /**
+     * @param minCommunitySize the minimum number of distinct member identities a
+     *                         group needs to become a Community; {@code 1} keeps
+     *                         every group, singletons included
+     * @throws IllegalArgumentException if {@code minCommunitySize} is below 1
+     */
+    public DetectCommunities(GraphStorePort graphStorePort, LlmPort llmPort, int minCommunitySize) {
+        if (minCommunitySize < 1) {
+            throw new IllegalArgumentException("minCommunitySize must be at least 1, was " + minCommunitySize);
+        }
         this.graphStorePort = graphStorePort;
         this.llmPort = llmPort;
+        this.minCommunitySize = minCommunitySize;
     }
 
     public List<Community> detect(Corpus corpus) {
@@ -73,7 +99,12 @@ public class DetectCommunities {
             return List.of();
         }
 
-        List<List<Entity>> groups = orderedGroups(entities, graphStorePort.detectCommunities(corpus.id()));
+        List<List<Entity>> groups = orderedGroups(entities, graphStorePort.detectCommunities(corpus.id())).stream()
+                .filter(members -> distinctIdentities(members) >= minCommunitySize)
+                .toList();
+        if (groups.isEmpty()) {
+            return List.of();
+        }
 
         List<Community> communities = new ArrayList<>();
         List<CommunityMembership> memberships = new ArrayList<>();
@@ -113,6 +144,10 @@ public class DetectCommunities {
 
     public void run(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
         detect(corpus, onCommunityDetected);
+    }
+
+    private static long distinctIdentities(List<Entity> members) {
+        return members.stream().map(Entity::normalizedIdentity).distinct().count();
     }
 
     private List<Relationship> storedRelationships(String corpusId) {

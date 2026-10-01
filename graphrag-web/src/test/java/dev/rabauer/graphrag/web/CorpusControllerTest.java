@@ -324,17 +324,21 @@ class CorpusControllerTest {
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
                 .emit(eq(corpusId), eq("ingestion-complete"), any());
 
-        assertThat(graphStorePort.communities(corpusId)).isNotEmpty();
-        assertThat(graphStorePort.communityMemberships(corpusId)).isNotEmpty();
+        assertThat(graphStorePort.communities(corpusId)).hasSize(6);
+        assertThat(graphStorePort.communityMemberships(corpusId)).hasSize(18);
+        // The two leftover singletons stay plain Entities without a Community.
+        assertThat(graphStorePort.entities(corpusId)).hasSize(20);
+        assertThat(graphStorePort.communityMemberships(corpusId))
+                .noneMatch(membership -> membership.entityIdentity().startsWith("silas underwood"))
+                .noneMatch(membership -> membership.entityIdentity().startsWith("tessa voss"));
     }
 
     /**
-     * 20 sentences, each naming exactly one two-word proper noun and no
-     * other capitalized words, so {@code LangChain4jLlmPort} extracts 20
-     * distinct Entities with zero Relationships between them — 20 singleton
-     * connected components, i.e. 20 Communities, comfortably more than the
-     * fixed, deterministic count the three-document Sherlock demo dataset
-     * produces.
+     * 20 two-word proper nouns, chained in groups of three by two "met"
+     * sentences each, so {@code LangChain4jLlmPort} extracts 20 distinct
+     * Entities forming 6 three-member groups (6 Communities, comfortably more
+     * than the demo dataset produces) plus 2 leftover singletons, which stay
+     * plain Entities because they are below {@code MIN_COMMUNITY_SIZE}.
      */
     private static String manyDisjointEntitiesCorpusText() {
         String[] names = {
@@ -344,8 +348,13 @@ class CorpusControllerTest {
                 "Pavel Ronan", "Quinn Sorensen", "Rhea Thackeray", "Silas Underwood", "Tessa Voss"
         };
         StringBuilder text = new StringBuilder();
-        for (String name : names) {
-            text.append(name).append(" pioneered a completely unrelated idea. ");
+        for (int i = 0; i < names.length; i++) {
+            if (i % 3 == 0 && i + 2 < names.length) {
+                text.append(names[i]).append(" met ").append(names[i + 1]).append(". ");
+                text.append(names[i + 1]).append(" met ").append(names[i + 2]).append(". ");
+            } else if (i >= names.length - names.length % 3) {
+                text.append(names[i]).append(" pioneered a completely unrelated idea. ");
+            }
         }
         return text.toString();
     }
@@ -454,6 +463,8 @@ class CorpusControllerTest {
         while (text.length() < 14_000) {
             text.append("Ada Lovelace met Charles Babbage over paragraph ").append(paragraph++)
                     .append(" of the engine notes. ")
+                    .append("Charles Babbage met Mary Somerville at the salon. ")
+                    .append("Mary Somerville met Ada Lovelace in the library. ")
                     .append("The notes kept going on about the analytical engine and its many gears. ".repeat(3))
                     .append("\n\n");
         }
@@ -612,8 +623,13 @@ class CorpusControllerTest {
 
             @Override
             public GraphExtraction extract(dev.rabauer.graphrag.core.domain.TextUnit unit, List<String> entityTypes) {
-                return new GraphExtraction(List.of(new dev.rabauer.graphrag.core.domain.Entity("Ada Lovelace", "Person")),
-                        List.of());
+                // Three linked Entities, so a Community (MIN_COMMUNITY_SIZE = 3) is summarized.
+                return new GraphExtraction(List.of(
+                        new dev.rabauer.graphrag.core.domain.Entity("Ada Lovelace", "Person"),
+                        new dev.rabauer.graphrag.core.domain.Entity("Charles Babbage", "Person"),
+                        new dev.rabauer.graphrag.core.domain.Entity("Mary Somerville", "Person")),
+                        List.of(new dev.rabauer.graphrag.core.domain.Relationship("Ada Lovelace", "Person", "worked_with", "Charles Babbage", "Person"),
+                                new dev.rabauer.graphrag.core.domain.Relationship("Mary Somerville", "Person", "tutored", "Ada Lovelace", "Person")));
             }
 
             @Override
@@ -637,7 +653,11 @@ class CorpusControllerTest {
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
     }
 
-    /** Story 15.1: extracts two Entities whose descriptions, not names, carry the meaning. */
+    /**
+     * Story 15.1: extracts Ada Lovelace and Charles Babbage, whose descriptions,
+     * not names, carry the meaning, each linked to two companions, so they
+     * form two separate three-member Communities (MIN_COMMUNITY_SIZE = 3).
+     */
     private static LlmPort adaAndBabbageLlmPort() {
         return new LlmPort() {
             @Override
@@ -650,9 +670,21 @@ class CorpusControllerTest {
                 return new GraphExtraction(List.of(
                         new dev.rabauer.graphrag.core.domain.Entity("Ada Lovelace", "Person",
                                 "wrote the first computer program", List.of()),
+                        new dev.rabauer.graphrag.core.domain.Entity("Mary Somerville", "Person",
+                                "tutored a young mathematician", List.of()),
+                        new dev.rabauer.graphrag.core.domain.Entity("Augustus De Morgan", "Person",
+                                "taught mathematics by letter", List.of()),
                         new dev.rabauer.graphrag.core.domain.Entity("Charles Babbage", "Person",
-                                "designed the difference engine", List.of())),
-                        List.of());
+                                "designed the difference engine", List.of()),
+                        new dev.rabauer.graphrag.core.domain.Entity("Joseph Clement", "Person",
+                                "machined the engine parts", List.of()),
+                        new dev.rabauer.graphrag.core.domain.Entity("John Herschel", "Person",
+                                "catalogued double stars", List.of())),
+                        List.of(
+                                new dev.rabauer.graphrag.core.domain.Relationship("Mary Somerville", "Person", "tutored", "Ada Lovelace", "Person"),
+                                new dev.rabauer.graphrag.core.domain.Relationship("Augustus De Morgan", "Person", "tutored", "Ada Lovelace", "Person"),
+                                new dev.rabauer.graphrag.core.domain.Relationship("Charles Babbage", "Person", "hired", "Joseph Clement", "Person"),
+                                new dev.rabauer.graphrag.core.domain.Relationship("John Herschel", "Person", "befriended", "Charles Babbage", "Person")));
             }
         };
     }
@@ -772,7 +804,7 @@ class CorpusControllerTest {
                 List.<org.springframework.web.multipart.MultipartFile>of(file)).getBody().get("corpusId"));
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("ingestion-complete"), any());
 
-        assertThat(storedEmbeddings(corpusId, "Entity")).hasSize(2).doesNotContainNull();
+        assertThat(storedEmbeddings(corpusId, "Entity")).hasSize(6).doesNotContainNull();
         assertThat(storedEmbeddings(corpusId, "Community")).isNotEmpty().doesNotContainNull();
         try (var session = SharedNeo4jTestContainer.driver().session()) {
             List<String> indexes = session.executeRead(tx -> tx.run("SHOW VECTOR INDEXES YIELD name RETURN name")
@@ -822,13 +854,15 @@ class CorpusControllerTest {
                 List.<org.springframework.web.multipart.MultipartFile>of(file)).getBody().get("corpusId"));
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("ingestion-complete"), any());
 
-        assertThat(storedEmbeddings(corpusId, "Entity")).hasSize(2).containsOnlyNulls();
+        assertThat(storedEmbeddings(corpusId, "Entity")).hasSize(6).containsOnlyNulls();
         assertThat(storedEmbeddings(corpusId, "Community")).isNotEmpty().containsOnlyNulls();
     }
 
     /**
      * Story 15.2: extracts Ada Lovelace and Charles Babbage with one
-     * Relationship, and synthesizes Local answers with {@code answer}.
+     * Relationship, plus Joseph Clement linked to Babbage only (so the three
+     * form a Community, MIN_COMMUNITY_SIZE = 3, without touching Ada's Local
+     * context), and synthesizes answers with {@code answer}.
      */
     private static LlmPort synthesizingLlmPort(
             java.util.function.Function<List<dev.rabauer.graphrag.core.domain.ContextItem>,
@@ -845,9 +879,13 @@ class CorpusControllerTest {
                         new dev.rabauer.graphrag.core.domain.Entity("Ada Lovelace", "Person",
                                 "wrote the first computer program", List.of()),
                         new dev.rabauer.graphrag.core.domain.Entity("Charles Babbage", "Person",
-                                "designed the difference engine", List.of())),
+                                "designed the difference engine", List.of()),
+                        new dev.rabauer.graphrag.core.domain.Entity("Joseph Clement", "Person",
+                                "machined the engine parts", List.of())),
                         List.of(new dev.rabauer.graphrag.core.domain.Relationship("Ada Lovelace", "Person", "worked_with",
-                                "Charles Babbage", "Person", "She annotated his engine.", List.of(), 1)));
+                                "Charles Babbage", "Person", "She annotated his engine.", List.of(), 1),
+                                new dev.rabauer.graphrag.core.domain.Relationship("Charles Babbage", "Person", "hired",
+                                "Joseph Clement", "Person", "He hired a machinist.", List.of(), 1)));
             }
 
             @Override
@@ -1384,8 +1422,9 @@ class CorpusControllerTest {
         assertThat(response.getBody()).containsEntry("traceStepCount", 0);
         assertThat(response.getBody()).containsEntry("noAnswer", true);
         assertThat(response.getBody()).containsEntry("reason",
-                "DRIFT Search cannot run yet because this corpus has no Community summaries. Wait for the Community "
-                        + "pass to finish, then try again.");
+                "DRIFT Search cannot run because this corpus has no Community summaries. Either community "
+                        + "detection is still running, or no group of related entities reached the minimum Community "
+                        + "size of 3 entities. Try again once ingestion completes, or use Local Search.");
         assertThat(response.getBody()).doesNotContainKeys("answer", "mode");
 
         String traceId = String.valueOf(response.getBody().get("traceId"));

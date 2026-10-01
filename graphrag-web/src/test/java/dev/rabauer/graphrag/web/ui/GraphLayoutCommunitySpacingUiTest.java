@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and `componentSpacing` from 1-500 on this exact corpus (recorded while
  * tuning this fix) showed `cose`'s own per-iteration simulated-annealing
  * randomness — not either of these two options — dominates how far a
- * disconnected/singleton Community's node lands from its nearest neighbor;
+ * disconnected, Community-less node lands from its nearest neighbor;
  * neither option reliably keeps that metric under roughly 40x the median edge
  * length even at extreme settings. This bound therefore isn't a tight
  * statistical proof that the tuning halved the typical gap (it does, on
@@ -143,7 +143,7 @@ class GraphLayoutCommunitySpacingUiTest extends UiTestSupport {
                 .isLessThanOrEqualTo(8.0);
 
         // Outlier spacing: across repeated samples, the isolated Entity (no
-        // Relationships, its own singleton Community) should not sit
+        // Relationships, so no Community: below MIN_COMMUNITY_SIZE) should not sit
         // absurdly far from its own closest neighbor — that gap is exactly
         // what "drifts to an outlier distance" (GitHub #34) looks like in
         // rendered positions. See the class Javadoc for why this bound is
@@ -161,7 +161,8 @@ class GraphLayoutCommunitySpacingUiTest extends UiTestSupport {
      * API (the same calls the real corpus-ingestion/SSE path drives) — two
      * 6-member Communities, each a densely-connected chain (5 Relationships
      * apiece), plus one genuinely isolated Entity with no Relationships at
-     * all, in its own singleton Community.
+     * all. As the backend now does for groups below {@code MIN_COMMUNITY_SIZE},
+     * it gets no Community, so it renders as a plain node without a hull.
      */
     private void buildSyntheticCorpus() {
         page.evaluate(
@@ -186,7 +187,6 @@ class GraphLayoutCommunitySpacingUiTest extends UiTestSupport {
                         + "  gc.addCommunity(communityA, communityA, membersA);"
                         + "  gc.addCommunity(communityB, communityB, membersB);"
                         + "  gc.addEntity(isolatedEntity, isolatedEntity, 'concept');"
-                        + "  gc.addCommunity('synthetic-community-isolated', 'synthetic-community-isolated', [isolatedEntity]);"
                         + "}",
                 List.of(COMMUNITY_A, COMMUNITY_B, ISOLATED_ENTITY));
     }

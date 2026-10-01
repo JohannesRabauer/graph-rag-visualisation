@@ -96,7 +96,8 @@ class CanvasSettingsPopoverUiTest extends UiTestSupport {
     void bothTogglesStillFunctionOnceInsideThePopover() {
         loadDemoDatasetAndWaitReady();
 
-        String identity = "sherlock holmes::person";
+        // "Holmes" (a Person) sits in a three-member demo Community.
+        String identity = "holmes::person";
         page.locator("#canvas-settings-toggle").click();
 
         Locator communityToggle = page.locator("#community-visualization-toggle");
