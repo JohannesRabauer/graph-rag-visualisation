@@ -1,0 +1,1146 @@
+THE HISTORY OF JAVA
+===================
+
+From the Green Project at Sun Microsystems to the six-month release train of
+the OpenJDK era.
+
+Compiled from these Wikipedia articles (retrieved 2026-10-01), licensed under the
+Creative Commons Attribution-ShareAlike 4.0 License
+(https://creativecommons.org/licenses/by-sa/4.0/). This compilation is
+shared under the same license. Text was shortened and reformatted.
+  - Java (programming language): https://en.wikipedia.org/wiki/Java_(programming_language)
+  - James Gosling: https://en.wikipedia.org/wiki/James_Gosling
+  - OpenJDK: https://en.wikipedia.org/wiki/OpenJDK
+  - Jakarta EE: https://en.wikipedia.org/wiki/Jakarta_EE
+  - Oracle America, Inc. v. Google, Inc.: https://en.wikipedia.org/wiki/Oracle_America,_Inc._v._Google,_Inc.
+  - Java version history: https://en.wikipedia.org/wiki/Java_version_history
+
+
+PART 1 - ORIGINS AND STEWARDSHIP
+
+== Origins at Sun Microsystems ==
+
+James Gosling, Mike Sheridan, and Patrick Naughton initiated the Java language
+project in June 1991. The language was initially called Oak after an oak tree
+that stood outside Gosling's office. Later the project went by the name Green
+and was finally renamed Java, from Java coffee, a type of coffee from Indonesia.
+Gosling designed Java with a C/C++-style syntax that system and application
+programmers would find familiar.
+Sun Microsystems released the first public implementation as Java 1.0 in 1996.
+It promised write once, run anywhere (WORA) functionality, providing no-cost
+run-times on popular platforms. Fairly secure and featuring configurable
+security, it allowed network- and file-access restrictions. Major web browsers
+soon incorporated the ability to run Java applets within web pages, and Java
+quickly became popular. The Java 1.0 compiler was re-written in Java by Arthur
+van Hoff to comply strictly with the Java 1.0 language specification. With the
+advent of Java 2 (released initially as J2SE 1.2 in December 1998 – 1999), new
+versions had multiple configurations built for different types of platforms.
+J2EE included technologies and APIs for enterprise applications typically run in
+server environments, while J2ME featured APIs optimized for mobile applications.
+The desktop version was renamed J2SE. In 2006, for marketing purposes, Sun
+renamed new J2 versions as Java EE, Java ME, and Java SE, respectively.
+In 1997, Sun Microsystems approached the ISO/IEC JTC 1 standards body and later
+the Ecma International to formalize Java, but it soon withdrew from the process.
+Java remains a de facto standard, controlled through the Java Community Process.
+At one time, Sun made most of its Java implementations available without charge,
+despite their proprietary software status. Sun generated revenue from Java
+through the selling of licenses for specialized products such as the Java
+Enterprise System.
+On November 13, 2006, Sun released much of its Java virtual machine (JVM) as
+free and open-source software (FOSS), under the terms of the GPL-2.0-only
+license. On May 8, 2007, Sun finished the process, making all of its JVM's core
+code available under free software/open-source distribution terms, aside from a
+small portion of code to which Sun did not hold the copyright.
+Sun's vice-president Rich Green said that Sun's ideal role with regard to Java
+was as an evangelist. Following Oracle Corporation's acquisition of Sun
+Microsystems in 2009–10, Oracle has described itself as the steward of Java
+technology with a relentless commitment to fostering a community of
+participation and transparency. This did not prevent Oracle from filing a
+lawsuit against Google shortly after that for using Java inside the Android SDK
+(see the Android section).
+On April 2, 2010, James Gosling resigned from Oracle.
+In January 2016, Oracle announced that Java run-time environments based on JDK 9
+will discontinue the browser plugin.
+Java software runs on most devices from laptops to data centers, game consoles
+to scientific supercomputers.
+Oracle (and others) highly recommend uninstalling outdated and unsupported
+versions of Java, due to unresolved security issues in older versions.
+
+--- Principles ---
+There were five primary goals in creating the Java language:
+
+It must be simple, object-oriented, and familiar.
+It must be robust and secure.
+It must be architecture-neutral and portable.
+It must execute with high performance.
+It must be interpreted, threaded, and dynamic.
+
+--- Versions ---
+
+As of June 2026, Java 8, 11, 17, 21, and 25 are supported as long-term support
+(LTS) versions.
+Oracle released the last zero-cost public update for the legacy version Java 8
+LTS in January 2019 for commercial use, although it will otherwise still support
+Java 8 with public updates for personal use indefinitely. Other vendors such as
+Adoptium continue to offer free builds of OpenJDK's long-term support (LTS)
+versions. These builds may include additional security patches and bug fixes.
+
+== James Gosling ==
+
+Gosling joined Sun Microsystems in 1984, where he worked for the next 26 years.
+At Sun he invented an early Unix windowing system called NeWS, which became a
+lesser-used alternative to the still used X Window System, because Sun did not
+give it an open source license.
+He is known as the father of the Java programming language. He got the idea for
+the Java VM while writing a program to port software from a PERQ by translating
+Perq Q-Code to VAX assembler and emulating the hardware. He is generally
+credited with having invented the Java programming language in 1994.
+He created the original design of Java and implemented the language's original
+compiler and virtual machine. Gosling traces the origins of the approach to his
+early graduate student days, when he created a p-code virtual machine for the
+lab's DEC VAX computer, so that his professor could run programs written in UCSD
+Pascal. In the work leading to Java at Sun, he saw that architecture-neutral
+execution for widely distributed programs could be achieved by implementing a
+similar philosophy: always program for the same virtual machine.
+Another contribution of Gosling's was co-writing the "bundle" program, known as
+"shar", a utility thoroughly detailed in Brian Kernighan and Rob Pike's book The
+Unix Programming Environment.
+He left Sun Microsystems on April 2, 2010, after it was acquired by the Oracle
+Corporation, citing reductions in pay, status, and decision-making ability,
+along with change of role and ethical challenges. He has since taken a very
+critical stance towards Oracle in interviews, noting that "during the
+integration meetings between Sun and Oracle, where we were being grilled about
+the patent situation between Sun and Google, we could see the Oracle lawyer's
+eyes sparkle." He clarified his position during the Oracle v. Google trial over
+Android: "While I have differences with Oracle, in this case they are in the
+right. Google totally slimed Sun. We were all really disturbed, even Jonathan
+[Schwartz]: he just decided to put on a happy face and tried to turn lemons into
+lemonade, which annoyed a lot of folks at Sun." However, he approved of the
+court's ruling that APIs should not be copyrightable.
+In March 2011, Gosling joined Google. Six months later, he followed his
+colleague Bill Vass and joined a startup called Liquid Robotics. In late 2016,
+Liquid Robotics was acquired by Boeing. Following the acquisition, Gosling left
+Liquid Robotics to work at Amazon Web Services as Distinguished Engineer in May
+2017.
+He has worked as an advisor at the Scala company Lightbend, Independent Director
+at Jelastic, and Strategic Advisor for Eucalyptus, and is a board member of
+DIRTT Environmental Solutions.
+On July 2, 2024, Gosling announced he had officially retired.
+
+== OpenJDK: open-sourcing Java ==
+
+--- Sun's promise and initial release ---
+Sun announced in JavaOne 2006 that Java would become open-source software, and
+on October 25, 2006, at the Oracle OpenWorld conference, Jonathan Schwartz said
+that the company intended to announce the open-sourcing of the core Java
+Platform within 30 to 60 days.
+Sun released the Java HotSpot virtual machine and compiler as free software
+under the GNU General Public License on November 13, 2006, with a promise that
+the rest of the JDK (which includes the Java Runtime Environment) would be
+placed under the GPL by March 2007, "except for a few components that Sun does
+not have the right to publish in source form under the GPL". According to free-
+software advocate Richard Stallman, this would end the "Java trap", the vendor
+lock-in that he argues applied to Java and programs written in Java.
+
+--- Release of the class library ---
+Following their promise to release a Java Development Kit (JDK) based almost
+completely on free and open-source code in the first half of 2007, Sun released
+the complete source code of the Java Class Library under the GPL on May 8, 2007,
+except for some limited parts that had been licensed to Sun by third parties and
+Sun was unable to re-license under the GPL. Included in the list of encumbered
+parts were several major components of the Java graphical user interface (GUI).
+Sun stated that it planned to replace the remaining proprietary components with
+alternative implementations and to make the class library completely free.
+When initially released in May 2007, 4% of the OpenJDK class library remained
+proprietary. By the release in May 2008 of OpenJDK 6, less than 1% (the Simple
+Network Management Protocol (SNMP) implementation, which is not part of the Java
+specification) remained, making it possible to build OpenJDK without any binary
+plugs. The binary plug requirement was later dropped from OpenJDK 7 as part of
+b53 in April 2009.
+This was made possible, over the course of the first year, by the work of Sun
+Microsystems and the OpenJDK community. Each encumbrance was either released as
+free and open-source software or replaced with an alternative. Beginning in
+December 2010, all the so-called binary plugs were replaced by open-source
+software replacements, making the whole JDK open sourced and the binary plugs
+not necessary anymore.
+
+--- Community improvements ---
+On November 5, 2007, Red Hat announced an agreement with Sun, signing Sun's
+broad contributor agreement (which covers participation in all Sun-led free and
+open-source software projects by all Red Hat engineers) and Sun's OpenJDK
+Community Technology Compatibility Kit (TCK) License Agreement (which gives the
+company access to the test suite that determines whether a project based on
+OpenJDK complies with the Java SE 6 specification).
+Also in November 2007, the Porters Group was created on OpenJDK to aid in
+efforts to port OpenJDK to different processor architectures and operating
+systems. The Berkeley Software Distribution (BSD) porting project led by Kurt
+Miller and Greg Lewis and the Mac OS X porting project (based on the BSD one)
+led by Landon Fuller have expressed interest in joining OpenJDK via the Porters
+Group. As of January 2008, both are part of the mailing list discussions.
+Another project pending formalization on the Porters Group is the Haiku Java
+Team led by Bryan Varner.
+In December 2007, Sun moved the revision control of OpenJDK from TeamWare to
+Mercurial (and later to Git and GitHub), as part of the process of releasing it
+to open-source communities.
+OpenJDK has comparatively strict procedures of accepting code contributions:
+every proposed contribution must be reviewed by another OpenJDK committer and
+the contributor must have signed the Sun/Oracle Contributor Agreement (SCA/OCA).
+Preferably, there should also be a jtreg test demonstrating the bug has been
+fixed. Initially, the external patch submission process was slow and, until
+September 2008, commits to the codebase were only made by Sun engineers. The
+process has improved and, as of 2010, simple patches and backports from OpenJDK
+7 to OpenJDK 6 can take place within hours rather than days.
+In 2011, an unofficial port of OpenJDK 6.0 to OS/2 was first released. This port
+is included in the OS/2 derivative ArcaOS.
+On 25 September 2013, Microsoft and Azul Systems collaborated to create Zulu, a
+build of OpenJDK for users of the Windows Azure cloud. Zulu is available as a
+free download from the community site Zulu.org. It is also possible to get Zulu
+on Amazon Web Services via Canonical's Juju Charm Store, the Docker Hub, and
+Azul Systems repositories. Azul contributes bug fixes and enhancements back to
+the OpenJDK project and has several project committers on staff. Red Hat
+resigned leadership of OpenJDK 6 at the beginning of 2017 and this was then
+taken up by Azul Systems.
+Since April 2016 there are unsupported community builds of OpenJDK for Microsoft
+Windows on GitHub in the project ojdkbuild which are released in pace with
+updates for Oracle JDK. From build 8u151 on, the MSI-installer offers an
+optional component for using Java Web Start based on the IcedTea-Web project.
+In 2020, a port of OpenJDK 8 to OpenVMS on the Itanium platform was released.
+The number of external contributions to OpenJDK is growing since project
+inception. OpenJDK 11, released in September 2018, received 20% of external
+fixes and brought 17 new JEPs (features), out of which 3 were contributed by the
+community. Namely, JEP 315: "Improve Aarch64 Intrinsics" (contributed by
+BellSoft), JEP 318: "Epsilon: A No-Op Garbage Collector" (by Red Hat) and JEP
+331: "Low-Overhead Heap Profiling" (contributed by Google).
+
+--- Collaboration with IBM, Apple, and SAP ---
+On October 11, 2010, IBM, the biggest participant in the Apache Harmony project,
+decided to join Oracle on the OpenJDK project, effectively shifting its efforts
+from Harmony to OpenJDK. Bob Sutor, IBM's head of Linux and open source, blogged
+that "IBM will be shifting its development effort from the Apache Project
+Harmony to OpenJDK".
+On November 12, 2010, Apple Inc. (three weeks after deprecating its own Java
+runtime port) and Oracle Corporation announced the OpenJDK project for Mac OS X.
+Apple will contribute most of the key components, tools and technology needed
+for a Java SE 7 implementation on Mac OS X, including a 32-bit and 64-bit
+HotSpot-based Java virtual machine, class libraries, a networking stack and the
+foundation for a new graphical client.
+On January 11, 2011, the Mac OS X Port Project was created on OpenJDK, and Apple
+made the first public contribution of code to the project. The initial Apple
+contribution built on the OpenJDK BSD port.
+In July 2011, SAP AG announced that SAP officially joined the OpenJDK project.
+
+== Jakarta EE: enterprise Java moves to the Eclipse Foundation ==
+
+The platform created by Sun Microsystems was known as Java 2 Platform,
+Enterprise Edition or J2EE from version 1.2, until the name was changed to Java
+Platform, Enterprise Edition or Java EE in version 1.5.
+After Sun was acquired in 2009, Java EE was maintained by Oracle under the Java
+Community Process. On September 12, 2017, Oracle Corporation announced that it
+would submit Java EE to the Eclipse Foundation. The Eclipse top-level project
+has been named Eclipse Enterprise for Java (EE4J). The Eclipse Foundation could
+not agree with Oracle over the use of javax and Java trademarks. Oracle owns the
+trademark for the name "Java" and the platform was renamed from Java EE to
+Jakarta EE. The name refers to the largest city on the island of Java and also
+the capital of Indonesia, Jakarta. The name should not be confused with the
+former Jakarta Project which fostered a number of current and former Java
+projects at the Apache Software Foundation.
+
+== Oracle v. Google: the Java API lawsuit ==
+
+--- Java development ---
+Java was originally developed at Sun Microsystems starting in December 1990. It
+included a new programming language, a virtual machine, and a set of libraries
+for use with the language. These libraries are documented for programmers via
+application programming interfaces (APIs), which tell programmers what
+information to provide to library functions and what results to expect back,
+eliminating any need for the programmer to know how the library they are using
+does what it does. These libraries together provide the "Java virtual machine"
+which programmers write programs to use (run upon). The common way in which a
+common set of libraries are used across all "Java virtual machines" allows for
+interoperability, or as marketed by Sun, "Write once, run anywhere"; a
+programmer need only create one version of their software which, because of the
+single group of APIs common to all Java virtual machines, can thus be run on any
+computing platform that supports Java.
+The Java language was released to the public in 1995, under the Sun Community
+Source License, making the source code freely available but requiring that
+products using the code were maintained to the Java standard, and that any
+commercial derivative works were licensed by Sun. While anyone could program in
+the language itself, Sun maintained the Java Platform, Standard Edition (Java
+SE) and Mobile Edition (Java ME) libraries, provided to users as pre-compiled
+Java bytecode, and their respective APIs, as well as the Technology
+Compatibility Kits (TCKs) that tested an implementation against the Java
+standard. Over 2006 and 2007, due to pressure from developers, Sun changed the
+license of the various Java packages to use the GNU General Public License with
+a "classpath exception", allowing developers the access necessary to make
+derivative works and the ability to release applications under a different
+license. This led to the OpenJDK (Open Java Development Kit), first released in
+2007. Sun retained strong control over the language and standards itself,
+licensing the necessary elements like TCKs for commercial users. At this time,
+Sun's business model changed to focusing on licensing of the Java platform to
+embedded devices, particularly mobile phones, and had already made licensing
+deals with Nokia, Motorola, and Research In Motion.
+
+--- Android development ---
+Android, Inc. was founded in 2003 by Andy Rubin, Rich Miner, Nick Sears, and
+Chris White to develop a mobile phone platform. Google purchased Android in 2005
+and continued developing the Android operating system. During the development of
+Android, Google wanted to incorporate the Java SE libraries. Google's executive
+chairman Eric Schmidt had approached Sun's president Jonathan I. Schwartz about
+licensing the Java libraries for use in Android. Sun offered a licensing deal of
+between US$30 and 50 million. Schmidt said Google would have paid for that
+license, but they were concerned that Sun had also requested some shared control
+of Android along with the fee. Google states that they wanted more control in
+order to open source the language and allow third parties to take better
+advantage of its code; Oracle states that Sun refused because Google's intention
+was essentially to fork Java to a Google version of the language, and to prevent
+it being inter-operable with other versions, an idea which was "anathema" to the
+"write once run anywhere" basis of the language. Because of these differences of
+view, the negotiations failed to reach a deal and Sun refused Google a license
+for Java.
+At this point in time, the OpenJDK implementation offered by Sun was not as
+mature or complete as the Java Standard Edition. Instead of licensing Java,
+Google chose to develop a cleanroom version of the Java Standard Edition
+libraries, developing the libraries from a completely fresh start without any
+access to Sun's code. This became the engine behind Android's Dalvik virtual
+machine, a core part of the new system. Part of the virtual machine included 37
+API calls and around 11,500 lines of code deemed central to Java, which were
+taken from Apache Harmony, an open-source cleanroom Java implementation
+developed by the Apache Software Foundation (ASF). Prior to this, the ASF had
+tried to obtain necessary licenses from Sun to support the Apache Harmony
+project as to call it an official Java implementation, but could not, in part
+due to incompatible licensing with Java's GNU General Public License and ASF's
+Apache License, nor could it gain access to the Java TCKs to validate the
+Harmony project against Sun's implementation. Though Google stated they used
+this code to ensure interoperability with the Java Standard Edition for other
+programmers, during the second appeal hearing, Google stated that it had used
+this code for commercial reasons to rapidly complete Android and to avoid the
+"drudgery" of recreating the code. ASF ceased maintaining Apache Harmony in
+2011, leading Google to take over maintenance of these libraries.
+Google released a beta of the Android platform on November 5, 2007 then, one
+week later, the software development kit (SDK) which they noted included some
+Java technologies. Sun's president Schwartz congratulated Google the same day,
+saying they had "strapped another set of rockets to the community's momentum –
+and to the vision defining opportunity across our (and other) planets." During
+the trial, Schwartz said that at that time of Android's release, despite knowing
+Google may have bypassed their licensing requirements, "We decided to grit our
+teeth and support it so anyone supporting it would see us as part of the value
+chain".
+Oracle announced it would purchase Sun in April 2009 for US$7.4 billion, and
+completed the acquisition in January 2010. Besides allowing them to enter the
+hardware business, Oracle's CEO Larry Ellison called the Java language "the
+single most important software asset we have ever acquired". Oracle continued to
+develop Java and pursue licensing opportunities following its acquisition of
+Sun.
+By the release of Android Lollipop (v5.0) in 2014, Google removed the Dalvik
+virtual machine and replaced it with the Android Runtime, which had been built
+within Google without any of the Java source code.
+However, Android continued to use the JavaSE APIs through the extent of the
+case's litigation up until Android Nougat when it was fully replaced by OpenJDK.
+
+
+PART 2 - RELEASE HISTORY
+
+== How Java evolves ==
+
+The Java language has undergone several changes since JDK 1.0 as well as a
+number of additions of classes and packages to the standard library. Since J2SE
+1.4, the evolution of the Java language has been governed by the Java Community
+Process (JCP), which uses Java Specification Requests (JSRs) to propose and
+specify additions and changes to the Java platform. The language is specified by
+the Java Language Specification (JLS); changes to the JLS are managed under JSR
+901. In September 2017, Mark Reinhold, chief architect of the Java Platform,
+proposed to change the release train to "one feature release every six months"
+rather than the then-current two-year schedule. This proposal took effect for
+all following versions, and is still the current release schedule.
+In addition to the language changes, other changes have been made to the Java
+Class Library over the years, which has grown from a few hundred classes in JDK
+1.0 to over three thousand in J2SE 5. Entire new APIs, such as Swing and Java2D,
+have been introduced, and a number of the original JDK 1.0 classes and methods
+have been deprecated, and very few APIs have been removed (at least one, for
+threading, in Java 22). Some programs allow the conversion of Java programs from
+one version of the Java platform to an older one (for example Java 5.0
+backported to 1.4) (see Java backporting tools).
+Regarding Oracle's Java SE support roadmap, Java SE 25 (LTS) is the latest
+version as of September 2025 (and Java 26 a later released version) while
+versions 21, 17, 11 and 8 are the other still supported (long-term support −
+LTS) versions, where Oracle customers will receive Oracle Premier Support.
+Oracle continues to release no-cost public Java 8 updates for development and
+personal use indefinitely.
+In the case of OpenJDK, both commercial long-term support and free software
+updates are available from multiple organizations in the broader community.
+Java 27 was released on 15 September 2026 and Java 25 LTS was released on 16
+September 2025.
+
+== JDK 1.0 ==
+
+The first version was released on January 23, 1996. The first stable version,
+JDK 1.0.2, is called Java 1.
+
+It included:
+
+core language features (basic java types in java.lang, and utility classes in
+java.util)
+support for graphics (AWT framework)
+support for creating a Java applet
+libraries for I/O and networking
+
+== JDK 1.1 ==
+
+Major additions in the release on February 19, 1997 included:
+
+extensive retooling of the Abstract Window Toolkit (AWT) event model
+inner classes added to the language
+JavaBeans
+Java Database Connectivity (JDBC) and support for sql
+Java remote method invocation (RMI) and serialization
+reflection which supported Introspection only, no modification at runtime was
+possible. (The ability to modify objects reflectively was added in J2SE 1.2, by
+introducing the AccessibleObject class and its subclasses such as the Field
+class.)
+Just-in-time compilation (JIT) on Microsoft Windows platforms, produced for
+JavaSoft by Symantec
+Internationalization and Unicode support originating from Taligent
+
+== J2SE 1.2 ==
+
+The release on December 8, 1998 and subsequent releases through J2SE 5.0 were
+rebranded retrospectively Java 2 and the version name "J2SE" (Java 2 Platform,
+Standard Edition) replaced JDK to distinguish the base platform from J2EE (Java
+2 Platform, Enterprise Edition) and J2ME (Java 2 Platform, Micro Edition). This
+was a significant release of Java as it tripled the size of the Java platform to
+1520 classes in 59 packages. Major additions included:
+
+strictfp keyword (by JVM 17 an obsolete keyword, should not be used in new code)
+The Swing graphical API was integrated into the core classes.
+Sun's JVM was equipped with a JIT compiler for the first time.
+Java plug-in
+Java IDL, an IDL implementation for CORBA interoperability
+Collections framework
+
+== J2SE 1.3 ==
+
+The most notable changes in the May 8, 2000 release were:
+
+HotSpot JVM included (the HotSpot JVM was first released in April 1999 for the
+J2SE 1.2 JVM)
+RMI was modified to support optional compatibility with CORBA.
+Java Naming and Directory Interface (JNDI) included in core libraries
+(previously available as an extension)
+Java Platform Debugger Architecture (JPDA)
+JavaSound
+Synthetic proxy classes
+Java 1.3 is the last release of Java to officially support Microsoft Windows 95.
+
+== J2SE 1.4 ==
+
+The February 6, 2002 release was the first release of the Java platform
+developed under the Java Community Process as JSR 59. Major changes included:
+
+Language changes
+assert keyword (specified in JSR 41)
+Library improvements
+Regular expressions modeled after Perl regular expressions
+Exception chaining allows an exception to encapsulate original lower-level
+exception
+Internet Protocol version 6 (IPv6) support
+Non-blocking I/O (named NIO) (specified in JSR 51)
+Logging API (specified in JSR 47)
+Image I/O API for reading and writing images in formats like JPEG and PNG
+Integrated XML parser and XSLT processor (JAXP) (specified in JSR 5 and JSR 63)
+Integrated security and cryptography extensions (JCE, JSSE, JAAS)
+Java Web Start included (Java Web Start was first released in March 2001 for
+J2SE 1.3) (specified in JSR 56)
+Preferences API (java.util.prefs)
+Public support and security updates for Java 1.4 ended in October 2008. Paid
+security updates for Oracle customers ended in February 2013.
+
+== Java SE 5 ==
+
+The release on September 30, 2004 was originally numbered 1.5, which is still
+used as the internal version number. The number was changed to "better reflect
+the level of maturity, stability, scalability and security of the J2SE". This
+version was developed under JSR 176.
+Java SE 5 entered its end-of-public-updates period on April 8, 2008; updates are
+no longer available to the public as of November 3, 2009. Updates were available
+to paid Oracle customers until May 2015.
+Tiger added a number of significant new language features:
+
+Generics: provides compile-time (static) type safety for collections and
+eliminates the need for most typecasts (type conversion) (specified by JSR 14)
+Metadata: also called annotations; allows language constructs such as classes
+and methods to be tagged with additional data, which can then be processed by
+metadata-aware utilities (specified by JSR 175)
+Autoboxing/unboxing: automatic conversions between primitive types (such as int)
+and primitive wrapper classes (such as Integer) (specified by JSR 201)
+Enumerations: the enum keyword creates a typesafe, ordered list of values (such
+as Day.MONDAY, Day.TUESDAY, etc.); previously this could only be achieved by
+non-typesafe constant integers or manually constructed classes (typesafe enum
+pattern) (specified by JSR 201)
+Varargs: the last parameter of a method can now be declared using a type name
+followed by three dots (e.g. void drawtext(String... lines)); in the calling
+code any number of parameters of that type can be used and they are then placed
+in an array to be passed to the method, or alternatively the calling code can
+pass an array of that type
+Enhanced for each loop: the for loop syntax is extended with special syntax for
+iterating over each member of either an array or any Iterable, such as the
+standard Collection classes (specified by JSR 201)
+Improved semantics of execution for multi-threaded Java programs; the new Java
+memory model addresses issues of complexity, effectiveness, and performance of
+previous specifications
+Static imports
+There were also the following improvements to the standard libraries:
+
+Automatic stub generation for RMI objects
+Swing: New skinnable look and feel, called synth
+The concurrency utilities in package java.util.concurrent
+Scanner class for parsing data from various input streams and buffers
+Java 5 is the last release of Java to officially support Microsoft Windows 98
+and Windows ME, while Windows Vista was the newest version of Windows that Java
+SE 5 was supported on prior to Java 5 going end-of-life in October 2009.
+Java 5 Update 5 (1.5.0_05) is the last release of Java to work on Windows 95
+(with Internet Explorer 5.5 installed) and Windows NT 4.0.
+Java 5 was first available on Apple Mac OS X 10.4 (Tiger) and was the default
+version of Java installed on Apple Mac OS X 10.5 (Leopard).
+Public support and security updates for Java 1.5 ended in November 2009. Paid
+security updates for Oracle customers ended in April 2015.
+
+--- Versioning change ---
+This version introduced a new versioning system for the Java language, although
+the old versioning system continued to be used for developer libraries:
+
+Both version numbers "1.5.0" and "5.0" are used to identify this release of the
+Java 2 Platform Standard Edition. Version "5.0" is the product version, while
+"1.5.0" is the developer version. The number "5.0" is used to better reflect the
+level of maturity, stability, scalability and security of the J2SE.
+This correspondence continued through later releases (Java 6 = JDK 1.6, Java 7 =
+JDK 1.7, and so on).
+
+== Java SE 6 ==
+
+As of the version released on December 11, 2006, Sun replaced the name "J2SE"
+with Java SE and dropped the ".0" from the version number. Internal numbering
+for developers remains 1.6.0.
+This version was developed under JSR 270.
+During the development phase, new builds including enhancements and bug fixes
+were released approximately weekly. Beta versions were released in February and
+June 2006, leading up to a final release that occurred on December 11, 2006.
+Major changes included in this version:
+
+Support for older Win9x versions dropped; unofficially, Java 6 Update 7 was the
+last release of Java shown to work on these versions of Windows. This is
+believed to be due to the major changes in Update 10.
+Scripting Language Support (JSR 223): Generic API for tight integration with
+scripting languages, and built-in Mozilla JavaScript Rhino integration.
+Dramatic performance improvements for the core platform, and Swing.
+Improved Web Service support through JAX-WS (JSR 224).
+JDBC 4.0 support (JSR 221).
+Java Compiler API (JSR 199): an API allowing a Java program to select and invoke
+a Java Compiler programmatically.
+Upgrade of JAXB to version 2.0: Including integration of a StAX parser.
+Support for pluggable annotations (JSR 269).
+Many GUI improvements, such as integration of SwingWorker in the API, table
+sorting and filtering, and true Swing double-buffering (eliminating the gray-
+area effect).
+JVM improvements include: synchronization and compiler performance
+optimizations, new algorithms and upgrades to existing garbage collection
+algorithms, and application start-up performance.
+Java 6 can be installed to Mac OS X 10.5 (Leopard) running on 64-bit (Core 2 Duo
+and higher) processor machines. Java 6 is also supported by both 32-bit and
+64-bit machines running Mac OS X 10.6 (Snow Leopard).
+Java 6 reached the end of its supported life in February 2013, at which time all
+public updates, including security updates, were scheduled to be stopped. Oracle
+released two more updates to Java 6 in March and April 2013, which patched some
+security vulnerabilities.
+
+--- Java 6 updates ---
+After Java 6 release, Sun, and later Oracle, released several updates which,
+while not changing any public API, enhanced end-user usability or fixed bugs.
+
+== Java SE 7 ==
+
+Java 7 was a major update that launched on July 7, 2011 and was made available
+for developers on July 28, 2011. The development period was organized into
+thirteen milestones; on June 6, 2011, the last of the thirteen milestones was
+finished. On average, 8 builds (which generally included enhancements and bug
+fixes) were released per milestone. The feature list at the OpenJDK 7 project
+lists many of the changes.
+Additions in Java 7 include:
+
+JVM support for dynamic languages, with the new invokedynamic bytecode under
+JSR-292, following the prototyping work currently done on the Multi Language
+Virtual Machine
+Compressed 64-bit pointers (available in Java 6 with -XX:+UseCompressedOops)
+Project Coin language features:
+Strings in switch
+Automatic resource management in try-statement aka try-with-resources statement
+Improved type inference for generic instance creation, aka the diamond operator
+<>
+Simplified varargs method declaration
+Binary integer literals
+Allowing underscores in numeric literals
+Catching multiple exception types and rethrowing exceptions with improved type
+checking
+Concurrency utilities under JSR 166
+New file I/O library (defined by JSR 203) adding support for multiple file
+systems, file metadata and symbolic links. The new packages are java.nio.file,
+java.nio.file.attribute and java.nio.file.spi
+Timsort is used to sort collections and arrays of objects instead of merge sort
+Library-level support for elliptic curve cryptography algorithms
+An XRender pipeline for Java 2D, which improves handling of features specific to
+modern GPUs
+New platform APIs for the graphics features originally implemented in version
+6u10 as unsupported APIs
+Enhanced library-level support for new network protocols, including SCTP and
+Sockets Direct Protocol
+Upstream updates to XML and Unicode
+Java deployment rule sets
+Lambda (Java's implementation of lambda functions), Jigsaw (Java's
+implementation of modules), and part of Coin were dropped from Java 7, and
+released as part of Java 8 (except for Jigsaw, which was released in Java 9).
+Java 7 was the default version to download on java.com from April 2012 until
+Java 8 was released.
+
+--- Java 7 updates ---
+Oracle issued public updates to the Java 7 family on a quarterly basis until
+April 2015 when the product reached the end of its public availability. Further
+updates for JDK 7, which continued until July 2022, are only made available to
+customers with a support contract.
+
+== Java SE 8 (LTS) ==
+
+Java 8 was released on 18 March 2014, and included some features that were
+planned for Java 7 but later deferred.
+Work on features was organized in terms of JDK Enhancement Proposals (JEPs).
+
+JSR 335, JEP 126: Language-level support for lambda expressions (officially,
+lambda expressions; unofficially, closures) under Project Lambda and default
+methods (virtual extension methods) which can be used to add methods to
+interfaces without breaking existing implementations. There was an ongoing
+debate in the Java community on whether to add support for lambda expressions.
+Sun later declared that lambda expressions would be included in Java and asked
+for community input to refine the feature. Supporting lambda expressions also
+enables functional-style operations on streams of elements, such as MapReduce-
+inspired transformations on collections. Default methods can be used by an
+author of an API to add new methods to an interface without breaking the old
+code using it. Although it was not their primary intent, default methods can
+also be used for multiple inheritance of behavior (but not state).
+JEP 174: Project Nashorn, a JavaScript runtime which can run JavaScript code
+embedded within applications
+JEP 104: Annotation on Java types
+Unsigned integer arithmetic
+JEP 120: Repeating annotations
+JEP 150: Date and time API
+JEP 178: Statically-linked JNI libraries
+JEP 153: Launch JavaFX applications (direct launching of JavaFX application
+JARs)
+JEP 122: Remove the permanent generation
+Java 8 is not supported on Windows XP but as of JDK 8 update 25, it can still be
+installed and run under Windows XP. Previous updates of JDK 8 could be run under
+XP by downloading archived zip format file and unzipping it for the executable.
+The last version of Java 8 could run on XP is update 251.
+From October 2014, Java 8 was the default version to download (and then again
+the download replacing Java 9) from the official website. "Oracle will continue
+to provide Public Updates and auto updates of Java SE 8, Indefinitely for
+Personal Users".
+
+
+== Java SE 9 ==
+
+Java SE 9 was made available on September 21, 2017 due to controversial
+acceptance of the current implementation of Project Jigsaw by Java Executive
+Committee which led Oracle to fix some open issues and concerns and to refine
+some critical technical questions. In the last days of June 2017, Java Community
+Process expressed nearly unanimous consensus on the proposed Module System
+scheme.
+
+JSR 376: Modularization of the JDK under Project Jigsaw (Java Platform Module
+System)
+JavaDB was removed from JDK
+JEP 193: Variable handles, define a standard means to invoke the equivalents of
+various java.util.concurrent.atomic and sun.misc.Unsafe operations
+JEP 213: Milling Project Coin, allow @SafeVarargs on private instance methods;
+Allow effectively-final variables to be used as resources in the try-with-
+resources statement; Allow diamond with anonymous classes if the argument type
+of the inferred type is denotable; Complete the removal, begun in Java SE 8, of
+underscore from the set of legal identifier names; Support for private methods
+in interfaces
+JEP 222: jshell: The Java Shell (Read-Eval-Print Loop): JShell is a REPL
+command-line interface for the Java language.
+JEP 254: Compact Strings
+JEP 263: HiDPI graphics: automatic scaling and sizing
+JEP 266: More concurrency updates, it includes a Java implementation of Reactive
+Streams, including a new Flow class that included the interfaces previously
+provided by Reactive Streams
+JEP 268: XML catalogs
+JEP 282: jlink: The Java Linker, create a tool that can assemble and optimize a
+set of modules and their dependencies into a custom run-time image. It
+effectively allows to produce a fully usable executable including the JVM to run
+it
+JEP 295: Ahead-of-Time Compilation, ahead-of-time compilation provided by
+GraalVM
+The first Java 9 release candidate was released on August 9, 2017. The first
+stable release of Java 9 was on September 21, 2017.
+
+--- History ---
+At JavaOne 2011, Oracle discussed features they hoped to release for Java 9 in
+2016. Java 9 should include better support for multi-gigabyte heaps, better
+native code integration, a different default garbage collector (G1, for "shorter
+response times") and a self-tuning JVM. In early 2016, the release of Java 9 was
+rescheduled for March 2017 and later again postponed four more months to July
+2017.
+
+
+== Java SE 10 ==
+
+OpenJDK 10 was released on March 20, 2018, with twelve new features confirmed.
+Among these features were:
+
+JEP 286: Local-Variable Type Inference
+JEP 296: Consolidate the JDK Forest into a Single Repository
+JEP 304: Garbage-Collector Interface
+JEP 307: Parallel Full GC for G1
+JEP 310: Application Class-Data Sharing
+JEP 312: Thread-Local Handshakes
+JEP 313: Remove the Native-Header Generation Tool (javah)
+JEP 314: Additional Unicode Language-Tag Extensions
+JEP 316: Heap Allocation on Alternative Memory Devices
+JEP 317: Experimental Java-Based JIT Compiler
+JEP 319: Root Certificates
+JEP 322: Time-Based Release Versioning
+The first of these JEP 286 Local-Variable Type Inference, allows the var keyword
+to be used for local variables with the actual type calculated by the compiler.
+Due to this change, developers can do the following instead of manually
+specifying the variable's type:
+
+    var list = new ArrayList<String>();   // inferred as ArrayList<String>
+
+== Java SE 11 (LTS) ==
+
+JDK 11 was released on September 25, 2018 and the version is currently open for
+bug fixes. It offers LTS, or Long-Term Support. Among others, Java 11 includes a
+number of new features, such as:
+
+JEP 181: Nest-Based Access Control
+JEP 309: Dynamic Class-File Constants
+JEP 315: Improve Aarch64 Intrinsics
+JEP 318: Epsilon: A No-Op Garbage Collector
+JEP 320: Remove the Java EE and CORBA Modules
+JEP 321: HTTP Client (Standard)
+JEP 323: Local-Variable Syntax for Lambda Parameters
+JEP 324: Key Agreement with Curve25519 and Curve448
+JEP 327: Unicode 10
+JEP 328: Flight Recorder
+JEP 329: ChaCha20 and Poly1305 Cryptographic Algorithms
+JEP 330: Launch Single-File Source-Code Programs
+JEP 331: Low-Overhead Heap Profiling
+JEP 332: Transport Layer Security (TLS) 1.3
+JEP 333: ZGC: A Scalable Low-Latency Garbage Collector (Experimental)
+JEP 335: Deprecate the Nashorn JavaScript Engine
+JEP 336: Deprecate the Pack200 Tools and API
+A number of features from previous releases were dropped; in particular, Java
+applets and Java Web Start are no longer available. JavaFX, Java EE and CORBA
+modules have been removed from JDK.
+
+
+== Java SE 12 ==
+
+JDK 12 was released on March 19, 2019. Among others, Java 12 includes a number
+of new features, such as:
+
+JEP 189: Shenandoah: A Low-Pause-Time Garbage Collector (Experimental)
+JEP 230: Microbenchmark Suite
+JEP 325: Switch Expressions (Preview)
+JEP 334: JVM Constants API
+JEP 340: One AArch64 Port, Not Two
+JEP 341: Default CDS Archives
+JEP 344: Abortable Mixed Collections for G1
+JEP 346: Promptly Return Unused Committed Memory from G1
+The preview feature JEP 325 extends the switch statement so it can also be used
+as an expression, and adds a new form of case label where the right hand side is
+an expression. No break statement is needed. For complex expressions a yield
+statement can be used. This becomes standard in Java SE 14.
+
+
+== Java SE 13 ==
+
+JDK 13 was released on September 17, 2019. Java 13 includes the following new
+features, as well as "hundreds of smaller enhancements and thousands of bug
+fixes".
+
+JEP 350: Dynamic CDS Archives
+JEP 351: ZGC: Uncommit Unused Memory
+JEP 353: Reimplement the Legacy Socket API
+JEP 354: Switch Expressions (Preview)
+JEP 355: Text Blocks (Preview)
+JEP 355 Text Blocks allows multiline string literals:
+
+    String html = """
+        <p>Hello, world</p>
+        """;
+
+== Java SE 14 ==
+
+JDK 14 was released on March 17, 2020. Java 14 includes the following new
+features, as well as "hundreds of smaller enhancements and thousands of bug
+fixes".
+
+JEP 305: Pattern Matching for instanceof (Preview)
+JEP 343: Packaging Tool (Incubator)
+JEP 345: NUMA-Aware Memory Allocation for G1
+JEP 349: JFR Event Streaming
+JEP 352: Non-Volatile Mapped Byte Buffers
+JEP 358: Helpful NullPointerExceptions
+JEP 359: Records (Preview)
+JEP 361: Switch Expressions (Standard)
+JEP 362: Deprecate the Solaris and SPARC Ports
+JEP 363: Remove the Concurrent Mark Sweep (CMS) Garbage Collector
+JEP 364: ZGC on macOS
+JEP 365: ZGC on Windows
+JEP 366: Deprecate the ParallelScavenge + SerialOld GC Combination
+JEP 367: Remove the Pack200 Tools and API
+JEP 368: Text Blocks (Second Preview)
+JEP 370: Foreign-Memory Access API (Incubator)
+JEP 305, Pattern Matching for instanceof simplifies the common case of an
+instanceof test being immediately followed by cast, replacing
+
+with
+
+JEP 359 Records allows easy creation of simple immutable Tuple-like classes.
+
+
+== Java SE 15 ==
+
+JDK 15 was released on September 15, 2020. Java 15 adds e.g. support for multi-
+line string literals (aka Text Blocks). The Shenandoah and Z garbage collectors
+(latter sometimes abbreviated ZGC) are now ready for use in production (i.e. no
+longer marked experimental). Support for Oracle's Solaris operating system (and
+SPARC CPUs) is dropped (while still available in e.g. Java 11). The Nashorn
+JavaScript Engine is removed. Also removed some root CA certificates.
+
+JEP 339: Edwards-Curve Digital Signature Algorithm (EdDSA)
+JEP 360: Sealed Classes (Preview)
+JEP 371: Hidden Classes
+JEP 372: Remove the Nashorn JavaScript Engine
+JEP 373: Reimplement the Legacy DatagramSocket API
+JEP 374: Disable and Deprecate Biased Locking
+JEP 375: Pattern Matching for instanceof (Second Preview)
+JEP 377: ZGC: A Scalable Low-Latency Garbage Collector
+JEP 378: Text Blocks
+JEP 379: Shenandoah: A Low-Pause-Time Garbage Collector
+JEP 381: Remove the Solaris and SPARC Ports
+JEP 383: Foreign-Memory Access API (Second Incubator)
+JEP 384: Records (Second Preview)
+JEP 385: Deprecate RMI Activation for Removal
+JEP 360 Sealed Classes adds sealed classes and interfaces that restrict which
+other classes or interfaces may extend or implement them. Only those classes
+specified in a permits clause may extend the class or interface.
+
+Together with records, sealed classes are sum types. They work well with other
+recent features like records, switch expressions, and pattern matching for
+instance-of. They all form part of a system for "Pattern matching in Java" first
+discussed by Gavin Bierman and Brian Goetz, in September 2018.
+
+
+== Java SE 16 ==
+
+JDK 16 was released on March 16, 2021. Java 16 removes Ahead-of-Time compilation
+(and Graal JIT) options. The Java implementation itself was and is still written
+in C++, while as of Java 16, more recent C++14 (but still not e.g. C++17 or
+C++20) is allowed. The code was also moved to GitHub, dropping Mercurial as the
+source control system.
+
+JEP 338: Vector API (Incubator)
+JEP 347: Enable C++14 Language Features
+JEP 357: Migrate from Mercurial to Git
+JEP 369: Migrate to GitHub
+JEP 376: ZGC: Concurrent Thread-Stack Processing
+JEP 380: Unix-Domain Socket Channels
+JEP 386: Alpine Linux Port — not yet stable
+JEP 387: Elastic Metaspace
+JEP 388: Windows/AArch64 Port
+JEP 389: Foreign Linker API (Incubator)
+JEP 390: Warnings for Value-Based Classes
+JEP 392: Packaging Tool
+JEP 393: Foreign-Memory Access API (Third Incubator)
+JEP 394: Pattern Matching for instanceof
+JEP 395: Records
+JEP 396: Strongly Encapsulate JDK Internals by Default
+JEP 397: Sealed Classes (Second Preview)
+
+
+== Java SE 17 (LTS) ==
+
+JDK 17 was released in September 2021. Java 17 is the 2nd long-term support
+(LTS) release since switching to the new 6-month release cadence (the first
+being Java 11).
+
+JEP 306: Restore Always-Strict Floating-Point Semantics
+JEP 356: Enhanced Pseudo-Random Number Generators
+JEP 382: New macOS Rendering Pipeline
+JEP 391: macOS/AArch64 Port
+JEP 398: Deprecate the Applet API for Removal
+JEP 403: Strongly Encapsulate JDK Internals
+JEP 406: Pattern Matching for switch (Preview)
+JEP 407: Remove RMI Activation
+JEP 409: Sealed Classes
+JEP 410: Remove the Experimental AOT and JIT Compiler
+JEP 411: Deprecate the Security Manager for Removal
+JEP 412: Foreign Function & Memory API (Incubator)
+JEP 414: Vector API (Second Incubator)
+JEP 415: Context-Specific Deserialization Filters
+JEP 406 extends the pattern matching syntax used in instanceof operations to
+switch statements and expressions. It allows cases to be selected based on the
+type of the argument, null cases and refining patterns
+
+
+== Java SE 18 ==
+
+JDK 18 was released on March 22, 2022.
+
+JEP 400: UTF-8 by Default
+JEP 408: Simple Web Server
+JEP 413: Code Snippets in Java API Documentation
+JEP 416: Reimplement Core Reflection with Method Handles
+JEP 417: Vector API (Third Incubator)
+JEP 418: Internet-Address Resolution SPI
+JEP 419: Foreign Function & Memory API (Second Incubator)
+JEP 420: Pattern Matching for switch (Second Preview)
+JEP 421: Deprecate Finalization for Removal
+
+
+== Java SE 19 ==
+
+JDK 19 was released on 20 September 2022.
+
+JEP 405: Record Patterns (Preview)
+JEP 422: Linux/RISC-V Port
+JEP 424: Foreign Function & Memory API (Preview)
+JEP 425: Virtual Threads (Preview)
+JEP 426: Vector API (Fourth Incubator)
+JEP 427: Pattern Matching for switch (Third Preview)
+JEP 428: Structured Concurrency (Incubator)
+JEP 405 allows record patterns, extending the pattern matching capabilities of
+instanceof operators, and switch expressions, to include record patterns that
+explicitly refer to the components of the record.
+
+Such patterns can include nested patterns, where the components of records are
+themselves records, allowing patterns to match more object graphs.
+
+
+== Java SE 20 ==
+
+Java 20 was released on 21 March 2023. All JEPs were either incubators or
+previews.
+
+JEP 429: Scoped Values (Incubator)
+JEP 432: Record Patterns (Second Preview)
+JEP 433: Pattern Matching for switch (Fourth Preview)
+JEP 434: Foreign Function & Memory API (Second Preview)
+JEP 436: Virtual Threads (Second Preview)
+JEP 437: Structured Concurrency (Second Incubator)
+JEP 438: Vector API (Fifth Incubator)
+
+
+== Java SE 21 (LTS) ==
+
+Java 21 was released on 19 September 2023. The 32-bit version of Java for
+Windows on x86 was deprecated for removal with this release. The following JEPs
+were added, including eight JEPs that graduated from the incubating and preview
+stages, compared to Java 20 which only had previewing and incubating JEPs. Java
+21 introduces features first previewed in Java 17 (pattern matching for switch
+statements) and Java 19 (record patterns). All JEPs added with Java 21 include
+the following:
+
+JEP 430: String Templates (Preview)
+JEP 431: Sequenced Collections
+JEP 439: Generational ZGC
+JEP 440: Record Patterns
+JEP 441: Pattern Matching for switch
+JEP 442: Foreign Function & Memory API (Third Preview)
+JEP 443: Unnamed Patterns and Variables (Preview)
+JEP 444: Virtual Threads
+JEP 445: Unnamed Classes and Instance Main Methods (Preview)
+JEP 446: Scoped Values (Preview)
+JEP 448: Vector API (Sixth Incubator)
+JEP 449: Deprecate the Windows 32-bit x86 Port for Removal
+JEP 451: Prepare to Disallow the Dynamic Loading of Agents
+JEP 452: Key Encapsulation Mechanism API
+JEP 453: Structured Concurrency (Preview)
+JEP 445, previewing unnamed classes, allows for a barebones Main class without
+boilerplate code:
+
+    void main() {
+        System.out.println("Hello, World!");
+    }
+
+instead of:
+
+    public class HelloWorld {
+        public static void main(String[] args) {
+            System.out.println("Hello, World!");
+        }
+    }
+
+
+== Java SE 22 ==
+
+Java 22 was released on 19 March 2024. The following features, or JEPs, were
+added with this release:
+
+JEP 423: Region Pinning for G1
+JEP 447: Statements before super(...) (Preview)
+JEP 454: Foreign Function & Memory API
+JEP 456: Unnamed Variables & Patterns
+JEP 457: Class-File API (Preview)
+JEP 458: Launch Multi-File Source-Code Programs
+JEP 459: String Templates (Second Preview)
+JEP 460: Vector API (Seventh Incubator)
+JEP 461: Stream Gatherers (Preview)
+JEP 462: Structured Concurrency (Second Preview)
+JEP 463: Implicitly Declared Classes and Instance Main Methods (Second Preview)
+JEP 464: Scoped Values (Second Preview)
+An API related to Java's threading implementation,
+java.lang.Thread.countStackFrames, was removed.
+
+== Java SE 23 ==
+
+Java 23 was released on 17 September 2024, with the following JEPs:
+
+JEP 455: Primitive Types in Patterns, instanceof, and switch (Preview)
+JEP 466: Class-File API (Second Preview)
+JEP 467: Markdown Documentation Comments
+JEP 469: Vector API (Eighth Incubator)
+JEP 473: Stream Gatherers (Second Preview)
+JEP 471: Deprecate the Memory-Access Methods in sun.misc.Unsafe for Removal
+JEP 474: ZGC: Generational Mode by Default
+JEP 476: Module Import Declarations (Preview)
+JEP 477: Implicitly Declared Classes and Instance Main Methods (Third Preview)
+JEP 480: Structured Concurrency (Third Preview)
+JEP 481: Scoped Values (Third Preview)
+JEP 482: Flexible Constructor Bodies (Second Preview)
+The String Templates preview feature was removed in Java 23 due to issues with
+the design of the feature.
+
+== Java SE 24 ==
+
+The specification for Java 24 was finalized in December 2024, with 24 JEPs
+making it into the release and it was released on 18 March 2025.
+The following JEPs were targeted to this version of Java SE:
+
+JEP 404: Generational Shenandoah (Experimental)
+JEP 450: Compact Object Headers (Experimental) (formerly known as Project
+Lilliput)
+JEP 472: Prepare to Restrict the Use of JNI
+JEP 475: Late Barrier Expansion for G1
+JEP 478: Key Derivation Function API (Preview)
+JEP 479: Remove the Windows 32-bit x86 Port
+JEP 483: Ahead-of-Time Class Loading & Linking
+JEP 484: Class-File API
+JEP 485: Stream Gatherers
+JEP 486: Permanently Disable the Security Manager
+JEP 487: Scoped Values (Fourth Preview)
+JEP 488: Primitive Types in Patterns, instanceof, and switch (Second Preview)
+JEP 489: Vector API (Ninth Incubator)
+JEP 490: ZGC: Remove the Non-Generational Mode
+JEP 491: Synchronize Virtual Threads without Pinning
+JEP 492: Flexible Constructor Bodies (Third Preview)
+JEP 493: Linking Run-Time Images without JMODs
+JEP 494: Module Import Declarations (Second Preview)
+JEP 495: Simple Source Files and Instance Main Methods (Fourth Preview)
+JEP 496: Quantum-Resistant Module-Lattice-Based Key Encapsulation Mechanism
+JEP 497: Quantum-Resistant Module-Lattice-Based Digital Signature Algorithm
+JEP 498: Warn upon Use of Memory-Access Methods in sun.misc.Unsafe
+JEP 499: Structured Concurrency (Fourth Preview)
+JEP 501: Deprecate the 32-bit x86 Port for Removal
+Java SE 24 is the last release of Java to officially support the 32-bit x86
+edition of Microsoft Windows 10.
+
+== Java SE 25 (LTS) ==
+
+The specification for Java 25 was finalized in July 2025, with 18 JEPs making it
+into the release. Java 25 was released on September 16, 2025.
+
+JEP 470: PEM Encodings of Cryptographic Objects (Preview)
+JEP 502: Stable Values (Preview)
+JEP 503: Remove the 32-bit x86 Port
+JEP 505: Structured Concurrency (Fifth Preview)
+JEP 506: Scoped Values
+JEP 507: Primitive Types in Patterns, instanceof, and switch (Third Preview)
+JEP 508: Vector API (Tenth Incubator)
+JEP 509: JFR CPU-Time Profiling (Experimental)
+JEP 510: Key Derivation Function API
+JEP 511: Module Import Declarations
+JEP 512: Compact Source Files and Instance Main Methods
+JEP 513: Flexible Constructor Bodies
+JEP 514: Ahead-of-Time Command-Line Ergonomics
+JEP 515: Ahead-of-Time Method Profiling
+JEP 518: JFR Cooperative Sampling
+JEP 519: Compact Object Headers
+JEP 520: JFR Method Timing & Tracing
+JEP 521: Generational Shenandoah
+
+== Java SE 26 ==
+
+The specification for Java 26 was finalized in December 2025, with 10 JEPs
+making it into the release. Java 26 was released on March 17, 2026.
+The following JEPs were targeted to this release of Java SE:
+
+JEP 500: Prepare to Make Final Mean Final
+JEP 504: Remove the Applet API
+JEP 516: Ahead-of-Time Object Caching with Any GC
+JEP 517: HTTP/3 for the HTTP Client API
+JEP 522: G1 GC: Improve Throughput by Reducing Synchronization
+JEP 524: PEM Encodings of Cryptographic Objects (Second Preview)
+JEP 525: Structured Concurrency (Sixth Preview)
+JEP 526: Lazy Constants (Second Preview)
+JEP 529: Vector API (Eleventh Incubator)
+JEP 530: Primitive Types in Patterns, instanceof, and switch (Fourth Preview)
+Java 26 removes support for creating Java applets with the Applet API, after
+having been deprecated since the release of Java 17 in September 2021.
+
+== Java SE 27 ==
+
+The specification for Java 27 was finalized in August 2026, with 9 JEPs making
+it into the release. It was released on September 15, 2026.
+The following JEPs were targeted to this release of Java SE:
+
+JEP 523: Make G1 the Default Garbage Collector in All Environments
+JEP 527: Post-Quantum Hybrid Key Exchange for TLS 1.3
+JEP 531: Lazy Constants (Third Preview)
+JEP 532: Primitive Types in Patterns, instanceof, and switch (Fifth Preview)
+JEP 533: Structured Concurrency (Seventh Preview)
+JEP 534: Compact Object Headers by Default
+JEP 536: JFR In-Process Data Redaction
+JEP 537: Vector API (Twelfth Incubator)
+JEP 538: PEM Encodings of Cryptographic Objects (Third Preview)
+Java 27 removes several outdated key exchange algorithms from default security
+providers. It also removes legacy object header formats when running on
+supported platforms. It deprecates non-compact object headers, non-hybrid TLS
+key exchange algorithms, and old APIs related to PEM parsing.
+
+== Future features ==
+
+Project Valhalla: Value classes, whose objects lack identity, but can in certain
+cases get an improved memory layout (with less indirection), or have their
+allocation optimized away entirely.
+Project Panama:
+Improved interoperability with native code, to enable Java source code to call
+functions and use data types from other languages, in a way that is easier and
+has better performance than today (this part of Project Panama is getting
+stabilized in Java 22 under JEP 454: Foreign Function & Memory API).
+Vector API, a portable and relatively low-level abstraction layer for SIMD
+programming. Its stabilization is dependent on Project Valhalla.
+Project Lilliput: Reduce the size of Java object headers. First down to 64 bits,
+and then down to 32 bits.
+Reducing startup time and warm-up time (time to peak performance) in JIT mode:
+Project CRaC enables making snapshots of whole JVM (together with the running
+application) and restoring it with necessary adjustments (reopening files,
+sockets, etc).
+Project Leyden, among other things, will allow partial or (in the long term)
+full AOT compiling, reducing overall dynamism (by adopting so called "closed-
+world constraints") to reduce dynamic compiling overhead.
+Project Babylon aims to extend the Java language's reach to alternative
+programming models with an enhancement to its reflective programming abilities,
+called code reflection (i.e., reflection over code itself). The stated main goal
+is to run Java code on GPUs, with SQL and other programming models as secondary
+targets.
