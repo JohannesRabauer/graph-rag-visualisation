@@ -8,8 +8,24 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
 
 class EntityDetailSourcesUiTest extends UiTestSupport {
 
+    // The shared Neo4j container keeps other tests' corpora; without this the
+    // page-load auto-restore of a leftover corpus races the demo click.
+    private void disableAutoRestore() {
+        page.route("**/api/corpora", (Route route) -> {
+            if ("GET".equals(route.request().method())) {
+                route.fulfill(new Route.FulfillOptions()
+                        .setStatus(200)
+                        .setContentType("application/json")
+                        .setBody("{\"corpora\":[]}"));
+            } else {
+                route.resume();
+            }
+        });
+    }
+
     @Test
     void entityDetailShowsDescriptionLazySourcePassagesFailuresAndRelationshipTooltips() {
+        disableAutoRestore();
         String body = "event: entity-extracted\n"
                 + "data: {\"type\":\"entity-extracted\",\"data\":"
                 + "{\"identity\":\"ada lovelace::person\",\"name\":\"Ada Lovelace\",\"type\":\"Person\","
@@ -91,6 +107,7 @@ class EntityDetailSourcesUiTest extends UiTestSupport {
 
     @Test
     void openPanelFollowsReEmittedEntitiesAndHidesEmptySectionsAndTooltips() {
+        disableAutoRestore();
         page.addInitScript(FAKE_EVENT_SOURCE);
         page.navigate(baseUrl() + "/");
         page.locator("#demo-dataset-button").click();

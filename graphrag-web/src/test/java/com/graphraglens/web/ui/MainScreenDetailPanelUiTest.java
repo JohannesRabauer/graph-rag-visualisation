@@ -26,7 +26,7 @@ class MainScreenDetailPanelUiTest extends UiTestSupport {
     }
 
     @Test
-    void clickingEntitiesOnTheMainScreenOpensClosesAndSwapsTheDetailPanelAndHullTapsAreIgnored() {
+    void clickingEntitiesOnTheMainScreenOpensClosesAndSwapsTheDetailPanelAndHullTapsOpenCommunityMode() {
         loadDemoDatasetAndWaitReady();
 
         Locator panel = page.locator("#entity-detail-panel");
@@ -54,9 +54,9 @@ class MainScreenDetailPanelUiTest extends UiTestSupport {
         assertThat(panel).hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
         assertThat(name).containsText("Holmes");
 
-        // Close it, then tap a Community hull — hull taps are routed to
-        // focusCommunity, never to the Entity detail callback, so the panel
-        // must stay closed.
+        // Close it, then tap a Community hull — hull taps open the panel in
+        // Community mode (never as an Entity), covered in depth by the
+        // community-hull test below.
         tap("holmes::person");
         assertThat(panel).not().hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
 
@@ -67,7 +67,8 @@ class MainScreenDetailPanelUiTest extends UiTestSupport {
                 "() => window.GraphCanvas.communityIdForEntity('king::concept')");
         org.assertj.core.api.Assertions.assertThat(communityId).isNotNull();
         tap("community::" + communityId);
-        assertThat(panel).not().hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
+        assertThat(panel).hasClass(java.util.regex.Pattern.compile(OPEN_CLASS_PATTERN));
+        assertThat(page.locator("#entity-detail-eyebrow")).hasText("Community");
     }
 
     @Test

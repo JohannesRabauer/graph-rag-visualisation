@@ -45,6 +45,16 @@ class EntityTypeColorToggleUiTest extends UiTestSupport {
         return color == null ? null : color.replace(" ", "");
     }
 
+    // Node colors animate over a 0.25s Cytoscape transition, so a read right
+    // after a toggle can still return the old color. Two entities of
+    // different types only share a fill once both have settled on neutral.
+    private void waitForNeutralFill(String identity) {
+        page.waitForFunction(
+                "id => window.GraphCanvas.entityNodeFillColor(id)"
+                        + " === window.GraphCanvas.entityNodeFillColor('king::concept')",
+                identity);
+    }
+
     private String chipStyle(String property) {
         String raw = (String) page.evaluate(
                 "property => { var chip = document.querySelector('#entity-detail-tags .node-detail-tag');"
@@ -106,6 +116,7 @@ class EntityTypeColorToggleUiTest extends UiTestSupport {
 
         openSettingsPopover();
         page.locator("#entity-type-color-toggle").uncheck();
+        waitForNeutralFill("sherlock holmes::person");
 
         String neutralChipBackground = chipStyle("backgroundColor");
         String neutralNodeFill = (String) page.evaluate(
@@ -194,6 +205,9 @@ class EntityTypeColorToggleUiTest extends UiTestSupport {
         Boolean isStepActive = (Boolean) page.evaluate(
                 "id => window.GraphCanvas.elementHasClass(id, 'step-active')", identifier);
         org.assertj.core.api.Assertions.assertThat(isStepActive).isTrue();
+        page.waitForFunction(
+                "id => window.GraphCanvas.entityNodeBorderColor(id).replace(/ /g, '') === 'rgb(232,93,43)'",
+                identifier);
 
         String activeBorder = normalizeColor((String) page.evaluate(
                 "id => window.GraphCanvas.entityNodeBorderColor(id)", identifier));
@@ -239,6 +253,7 @@ class EntityTypeColorToggleUiTest extends UiTestSupport {
         page.keyboard().press("Space");
 
         assertThat(toggle).not().isChecked();
+        waitForNeutralFill("sherlock holmes::person");
 
         String neutralChipBackground = chipStyle("backgroundColor");
         String neutralNodeFill = normalizeColor((String) page.evaluate(

@@ -128,8 +128,20 @@ class Neo4jCorpusRegistryTest {
         assertFalse(restarted.isOffline(corpusId));
     }
 
+    /**
+     * Reconciliation counts every BUILDING corpus in the database, and other
+     * tests in this class leave corpora BUILDING in the shared container, so
+     * the reconcile tests start from an empty registry.
+     */
+    private static void deleteAllCorpusMeta() {
+        try (var session = driver.session()) {
+            session.run("MATCH (c:CorpusMeta) DETACH DELETE c").consume();
+        }
+    }
+
     @Test
     void reconcileInterruptedCorporaFlipsOnlyBuildingCorporaToFailed() {
+        deleteAllCorpusMeta();
         Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
 
         Corpus interrupted = newCorpus("corpus-building-" + System.nanoTime());
@@ -153,6 +165,7 @@ class Neo4jCorpusRegistryTest {
 
     @Test
     void reconcileInterruptedCorporaIsANoOpWhenNoCorporaAreBuilding() {
+        deleteAllCorpusMeta();
         Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
         Corpus ready = newCorpus("corpus-ready-only-" + System.nanoTime());
         registry.put(ready);

@@ -43,6 +43,10 @@ class CorpusSwitcherUiTest extends UiTestSupport {
     private void uploadTextCorpusAndWaitReady(String filename, String content) {
         page.setInputFiles("#corpus-file-input",
                 new FilePayload(filename, "text/plain", content.getBytes(StandardCharsets.UTF_8)));
+        // The status line already reads "Ready" from the previous corpus, so
+        // wait for the chip to switch to this upload before trusting it.
+        assertThat(page.locator("#corpus-chip"))
+                .containsText(filename, new LocatorAssertions.ContainsTextOptions().setTimeout(20000));
         assertThat(page.locator("#workflow-status-text"))
                 .containsText("Ready", new LocatorAssertions.ContainsTextOptions().setTimeout(20000));
     }

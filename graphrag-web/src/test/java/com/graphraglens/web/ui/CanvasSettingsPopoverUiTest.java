@@ -125,6 +125,12 @@ class CanvasSettingsPopoverUiTest extends UiTestSupport {
                 "id => window.GraphCanvas.entityNodeFillColor(id)", identity));
         entityTypeToggle.uncheck();
         assertThat(entityTypeToggle).not().isChecked();
+        // Node colors animate over a 0.25s transition; entities of different
+        // types only share a fill once both have settled on neutral.
+        page.waitForFunction(
+                "id => window.GraphCanvas.entityNodeFillColor(id)"
+                        + " === window.GraphCanvas.entityNodeFillColor('king::concept')",
+                identity);
         String neutralFill = normalizeColor((String) page.evaluate(
                 "id => window.GraphCanvas.entityNodeFillColor(id)", identity));
         org.assertj.core.api.Assertions.assertThat(neutralFill).isNotEqualTo(coloredFill);
