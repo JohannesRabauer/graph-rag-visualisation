@@ -3,6 +3,7 @@ package io.graphrag.core.usecase;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.EmbeddingPort;
 import io.graphrag.core.port.GraphStorePort;
 
@@ -63,6 +64,7 @@ final class SemanticTestFixtures {
         final Map<String, List<Entity>> entitiesByCorpus = new LinkedHashMap<>();
         final Map<String, List<Relationship>> relationshipsByCorpus = new LinkedHashMap<>();
         final Map<String, List<Community>> communitiesByCorpus = new LinkedHashMap<>();
+        final Map<String, List<TextUnit>> textUnitsByCorpus = new LinkedHashMap<>();
         final Map<String, Map<String, float[]>> entityEmbeddingsByCorpus = new HashMap<>();
         final Map<String, Map<String, float[]>> communityEmbeddingsByCorpus = new HashMap<>();
 
@@ -80,6 +82,16 @@ final class SemanticTestFixtures {
         FakeGraphStore communities(String corpusId, Community... communities) {
             communitiesByCorpus.computeIfAbsent(corpusId, ignored -> new ArrayList<>()).addAll(List.of(communities));
             return this;
+        }
+
+        FakeGraphStore textUnits(String corpusId, TextUnit... textUnits) {
+            textUnitsByCorpus.computeIfAbsent(corpusId, ignored -> new ArrayList<>()).addAll(List.of(textUnits));
+            return this;
+        }
+
+        @Override
+        public Collection<TextUnit> textUnits(String corpusId) {
+            return textUnitsByCorpus.getOrDefault(corpusId, List.of());
         }
 
         @Override

@@ -426,6 +426,7 @@
         : step.kind === 'VECTOR_QUERY_EMBEDDED' ? 'embedded query'
         : step.kind === 'VECTOR_CHUNK' ? 'retrieved chunk'
         : step.kind === 'SYNTHESIS' ? 'synthesized answer'
+        : step.kind === 'TEXT_UNIT' ? 'read passage'
         : 'matched entity';
     return 'Step ' + (index + 1) + ' / ' + total + ' — ' + verb + ' ' + step.label;
   }

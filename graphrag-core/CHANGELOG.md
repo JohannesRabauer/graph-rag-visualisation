@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `LlmPort.synthesizesAnswers()` (default `false`) and
+  `LlmPort.synthesizeAnswer(String question, List<ContextItem> context)`
+  (default `null`): an answer-synthesizing LLM writes the Local Search answer
+  from a numbered context and cites items inline as `[n]`. Existing
+  implementations and lambdas keep the templated answer. Additive, minor
+  change.
+- `AnswerLocalSearch(GraphStorePort, EmbeddingPort, LlmPort)` constructor.
+  With a synthesizing port, Local Search assembles a bounded context and
+  records each item as a trace step as it is added: the seed Entities (up to
+  3 semantic seeds, else the keyword seed), up to 10 Relationships touching a
+  seed (highest `weight` first, ties in stored order), and up to 5 Text Units
+  they cite (ranked by the summed weight of the citing Relationships plus 1
+  per citing seed; a missing Text Unit is skipped, a store failure propagates). Citations
+  pointing at anything but a Text Unit of that context are dropped and the
+  rest renumbered `1..k` in order of first appearance. A `NOT_IN_CONTEXT` or
+  blank answer becomes a no-answer result with the steps kept; an LLM failure
+  propagates. With a null or non-synthesizing port the output is unchanged.
+- `RetrievalStep.Kind.TEXT_UNIT`: a source passage read into a synthesized
+  Local answer's context; identifier is the Text Unit id, label its excerpt
+  (first 200 characters, whitespace-collapsed, "…" when cut). Not fully
+  additive: an exhaustive `switch` over `RetrievalStep.Kind` without a
+  `default` branch no longer compiles.
+- `ContextItem(number, kind, text, textUnitId)`, `Citation(textUnitId,
+  documentName, excerpt)` and `SynthesizedAnswer(notInContext, text)` value
+  records. `SynthesizedAnswer.NOT_IN_CONTEXT` is the sentinel answer, and
+  `isNotInContextSentinel(text)` matches it ignoring case, surrounding
+  whitespace and quotes, and trailing punctuation.
+- `LocalSearchAnswer` gains `noAnswer`, `reason` and `citations` components
+  (`[i]` in the answer is `citations[i-1]`) and the `synthesized(...)` and
+  `notInContext(reason, steps)` factories. The `(answer, steps)` constructor,
+  `matched(...)` and `noMatch()` remain and produce no citations. Not fully
+  additive: record deconstruction patterns (`LocalSearchAnswer(var a, var s)`)
+  and calls to the canonical constructor must be updated to the five
+  components.
 - `EmbeddingPort.isSemantic()`: whether the port is a real semantic embedding
   model. The default is `true`; deterministic offline stubs return `false`.
   Additive, minor change.

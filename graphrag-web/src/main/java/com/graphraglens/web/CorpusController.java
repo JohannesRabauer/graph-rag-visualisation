@@ -6,6 +6,7 @@ import com.graphraglens.adapter.langchain4j.OpenAiLlmPort;
 import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
+import io.graphrag.core.domain.Citation;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.EmbeddedChunk;
 import io.graphrag.core.domain.Entity;
@@ -84,6 +85,9 @@ public class CorpusController {
     static final String SEMANTIC_MATCHING_FAILURE_MESSAGE =
             "Semantic matching failed: the embedding call for your question did not succeed, so no starting "
                     + "points could be found. Nothing was retried — try again when ready.";
+    static final String ANSWER_SYNTHESIS_FAILURE_MESSAGE =
+            "The LLM call failed while writing the answer to your question. Nothing was retried — "
+                    + "try again when ready.";
     private static final String GRAPH_BUILDING_MESSAGE =
             "The graph is still building for this corpus. Wait for “Knowledge Graph — Ready”, then ask your question.";
     private static final String GRAPH_FAILED_MESSAGE =
@@ -371,14 +375,44 @@ public class CorpusController {
             return vectorBaselineResponse(question, corpus.id());
         }
 
-        LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort, embeddingPort).answer(question, corpus.id());
+        return localSearchResponse(question, corpus.id());
+    }
+
+    /**
+     * Story 15.2: with an answer-synthesizing {@link #llmPort} the answer is
+     * generated and cited. A successful answer always carries
+     * {@code citations} ({@code []} for the templated answer); "not in the
+     * context" is AD-13's no-answer shape, which has no {@code citations}. An LLM failure surfaces through
+     * {@link #handleLlmCallFailure}.
+     */
+    private ResponseEntity<Map<String, Object>> localSearchResponse(String question, String corpusId) {
+        LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort, embeddingPort, llmPort)
+                .answer(question, corpusId);
         String traceId = captureTrace(result.steps());
+
+        if (result.noAnswer()) {
+            return ResponseEntity.ok(Map.of(
+                    "answerId", UUID.randomUUID().toString(),
+                    "traceId", traceId,
+                    "traceStepCount", result.steps().size(),
+                    "noAnswer", true,
+                    "reason", result.reason()));
+        }
+
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
                 "traceId", traceId,
                 "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
-                "mode", mode.toUpperCase(Locale.ROOT)));
+                "mode", "LOCAL",
+                "citations", result.citations().stream().map(CorpusController::citationPayload).toList()));
+    }
+
+    private static Map<String, Object> citationPayload(Citation citation) {
+        return Map.of(
+                "textUnitId", citation.textUnitId(),
+                "documentName", citation.documentName(),
+                "excerpt", citation.excerpt());
     }
 
     private ResponseEntity<Map<String, Object>> globalSearchResponse(String question, String corpusId) {
@@ -495,6 +529,17 @@ public class CorpusController {
         LOG.warn("Semantic matching failed at query time: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of("error", SEMANTIC_MATCHING_FAILURE_MESSAGE));
+    }
+
+    /**
+     * Story 15.2: the answer-synthesis LLM call failed at query time. There is
+     * no templated fallback, so the failure stays visible.
+     */
+    @ExceptionHandler(OpenAiLlmPort.LlmCallFailedException.class)
+    public ResponseEntity<Map<String, String>> handleLlmCallFailure(OpenAiLlmPort.LlmCallFailedException ex) {
+        LOG.warn("LLM call failed at query time: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(Map.of("error", ANSWER_SYNTHESIS_FAILURE_MESSAGE));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -1,16 +1,26 @@
 package io.graphrag.core.usecase;
 
+import io.graphrag.core.domain.Citation;
+import io.graphrag.core.domain.ContextItem;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.RetrievalStep;
+import io.graphrag.core.domain.SynthesizedAnswer;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.EmbeddingPort;
 import io.graphrag.core.port.GraphStorePort;
+import io.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -34,17 +44,36 @@ import java.util.Set;
  * {@code graph-canvas.js}'s {@code addRelationship()} uses for its rendered
  * edge ids, so Retrieval Trace Replay can resolve and highlight the real
  * edge on the canvas — not just the two Entities either side of it.
+ *
+ * <p>Story 15.2: with an answer-synthesizing {@link LlmPort}
+ * ({@link LlmPort#synthesizesAnswers()}), the answer is generated instead of
+ * templated. A bounded context is assembled — the seeds, up to
+ * {@value #MAX_CONTEXT_RELATIONSHIPS} Relationships touching them (highest
+ * weight first) and up to {@value #MAX_CONTEXT_TEXT_UNITS} Text Units those
+ * cite — each item recorded as a trace step as it is added. The model's
+ * inline {@code [n]} citations are resolved by {@link CitationResolver}, so
+ * every citation is a {@code TEXT_UNIT} step of the same trace. Without such
+ * a port the templated path below runs exactly as before.
  */
 public class AnswerLocalSearch {
 
     /** How many seed Entities the semantic path records as trace steps. */
     static final int SEMANTIC_SEED_COUNT = 3;
+    /** Story 15.2: Relationships touching a seed that enter the synthesis context. */
+    static final int MAX_CONTEXT_RELATIONSHIPS = 10;
+    /** Story 15.2: cited Text Units that enter the synthesis context. */
+    static final int MAX_CONTEXT_TEXT_UNITS = 5;
+    static final int EXCERPT_CHARS = 200;
+    static final String NOT_IN_CONTEXT_REASON =
+            "The passages and graph facts retrieved for this question do not answer it. "
+                    + "Try asking about a named entity or relationship visible in the graph.";
 
     private final GraphStorePort graphStorePort;
     private final EmbeddingPort embeddingPort;
+    private final LlmPort llmPort;
 
     public AnswerLocalSearch(GraphStorePort graphStorePort) {
-        this(graphStorePort, null);
+        this(graphStorePort, null, null);
     }
 
     /**
@@ -54,11 +83,24 @@ public class AnswerLocalSearch {
      *                      port keeps pure keyword matching
      */
     public AnswerLocalSearch(GraphStorePort graphStorePort, EmbeddingPort embeddingPort) {
+        this(graphStorePort, embeddingPort, null);
+    }
+
+    /**
+     * @param llmPort when {@link LlmPort#synthesizesAnswers()} (Story 15.2), the
+     *                answer is generated from a cited context; null or a
+     *                non-synthesizing port keeps the templated answer
+     */
+    public AnswerLocalSearch(GraphStorePort graphStorePort, EmbeddingPort embeddingPort, LlmPort llmPort) {
         this.graphStorePort = graphStorePort;
         this.embeddingPort = embeddingPort;
+        this.llmPort = llmPort;
     }
 
     public LocalSearchAnswer answer(String question, String corpusId) {
+        if (llmPort != null && llmPort.synthesizesAnswers()) {
+            return synthesizedAnswer(question, corpusId);
+        }
         Set<String> tokens = KeywordMatcher.tokenize(question);
         List<RetrievalStep> steps = new ArrayList<>();
 
@@ -101,6 +143,126 @@ public class AnswerLocalSearch {
         String answer = "In this corpus graph, " + hop.source() + " "
                 + hop.type().replace('_', ' ').toLowerCase(Locale.ROOT) + " " + hop.target() + ".";
         return LocalSearchAnswer.matched(answer, steps);
+    }
+
+    /**
+     * Story 15.2: assembles the bounded context (seeds, Relationships, Text
+     * Units — each recorded as a step as it is added), asks the LLM, and
+     * resolves its citations.
+     */
+    private LocalSearchAnswer synthesizedAnswer(String question, String corpusId) {
+        List<Entity> seeds = new ArrayList<>(semanticSeeds(question, corpusId));
+        if (seeds.isEmpty()) {
+            Entity keywordSeed = bestMatchingEntity(orEmpty(graphStorePort.entities(corpusId)),
+                    KeywordMatcher.tokenize(question));
+            if (keywordSeed == null) {
+                return LocalSearchAnswer.noMatch();
+            }
+            seeds.add(keywordSeed);
+        }
+
+        List<RetrievalStep> steps = new ArrayList<>();
+        List<ContextItem> context = new ArrayList<>();
+
+        Set<String> seedIdentities = new LinkedHashSet<>();
+        for (Entity seed : seeds) {
+            seedIdentities.add(seed.normalizedIdentity());
+            steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, seed.normalizedIdentity(), seed.name()));
+            context.add(new ContextItem(context.size() + 1, RetrievalStep.Kind.ENTITY, entityText(seed), null));
+        }
+
+        List<Relationship> touching = new ArrayList<>();
+        for (Relationship relationship : orEmpty(graphStorePort.relationships(corpusId))) {
+            if (relationship == null) {
+                continue;
+            }
+            String sourceIdentity = Entity.identityOf(relationship.source(), relationship.sourceType());
+            String targetIdentity = Entity.identityOf(relationship.target(), relationship.targetType());
+            if (seedIdentities.contains(sourceIdentity) || seedIdentities.contains(targetIdentity)) {
+                touching.add(relationship);
+            }
+        }
+        // List.sort is stable, so equal weights keep their stored order.
+        touching.sort(Comparator.comparingInt(Relationship::weight).reversed());
+        List<Relationship> included = touching.subList(0, Math.min(MAX_CONTEXT_RELATIONSHIPS, touching.size()));
+        for (Relationship relationship : included) {
+            steps.add(relationshipStep(relationship));
+            context.add(new ContextItem(context.size() + 1, RetrievalStep.Kind.RELATIONSHIP,
+                    relationshipText(relationship), null));
+        }
+
+        // Rank cited Text Units: +weight per included Relationship, +1 per seed; ties keep first-seen order.
+        Map<String, Integer> scoreByUnit = new LinkedHashMap<>();
+        for (Entity seed : seeds) {
+            for (String unitId : seed.sourceTextUnitIds()) {
+                scoreByUnit.merge(unitId, 1, Integer::sum);
+            }
+        }
+        for (Relationship relationship : included) {
+            for (String unitId : relationship.sourceTextUnitIds()) {
+                scoreByUnit.merge(unitId, relationship.weight(), Integer::sum);
+            }
+        }
+        List<String> rankedUnits = new ArrayList<>(scoreByUnit.keySet());
+        rankedUnits.sort(Comparator.comparingInt((String unitId) -> scoreByUnit.get(unitId)).reversed());
+
+        Map<String, Citation> citationsByUnit = new LinkedHashMap<>();
+        for (String unitId : rankedUnits) {
+            if (citationsByUnit.size() >= MAX_CONTEXT_TEXT_UNITS) {
+                break;
+            }
+            Optional<TextUnit> loaded = loadTextUnit(corpusId, unitId);
+            if (loaded.isEmpty() || loaded.get().text() == null) {
+                continue;
+            }
+            TextUnit unit = loaded.get();
+            String excerpt = excerpt(unit.text());
+            citationsByUnit.put(unitId, new Citation(unitId, unit.documentName(), excerpt));
+            steps.add(new RetrievalStep(RetrievalStep.Kind.TEXT_UNIT, unitId, excerpt));
+            context.add(new ContextItem(context.size() + 1, RetrievalStep.Kind.TEXT_UNIT, unit.text(), unitId));
+        }
+
+        SynthesizedAnswer synthesized = llmPort.synthesizeAnswer(question, List.copyOf(context));
+        if (synthesized == null || synthesized.notInContext() || synthesized.text().isBlank()
+                || SynthesizedAnswer.isNotInContextSentinel(synthesized.text())) {
+            return LocalSearchAnswer.notInContext(NOT_IN_CONTEXT_REASON, steps);
+        }
+        CitationResolver.Resolution resolution =
+                CitationResolver.resolve(synthesized.text(), context, citationsByUnit);
+        if (resolution.text().isBlank()) {
+            return LocalSearchAnswer.notInContext(NOT_IN_CONTEXT_REASON, steps);
+        }
+        return LocalSearchAnswer.synthesized(resolution.text(), steps, resolution.citations());
+    }
+
+    /** A missing Text Unit is skipped; a store failure propagates (FR-5). */
+    private Optional<TextUnit> loadTextUnit(String corpusId, String unitId) {
+        Optional<TextUnit> loaded = graphStorePort.textUnit(corpusId, unitId);
+        return loaded == null ? Optional.empty() : loaded;
+    }
+
+    private static RetrievalStep relationshipStep(Relationship relationship) {
+        String edgeId = Entity.identityOf(relationship.source(), relationship.sourceType())
+                + "->" + relationship.type() + "->"
+                + Entity.identityOf(relationship.target(), relationship.targetType());
+        return new RetrievalStep(RetrievalStep.Kind.RELATIONSHIP, edgeId,
+                relationship.source() + " —" + relationship.type().replace('_', ' ') + "→ " + relationship.target());
+    }
+
+    private static String entityText(Entity entity) {
+        String text = entity.name() + " (" + entity.type() + ")";
+        return entity.description().isEmpty() ? text : text + ": " + entity.description();
+    }
+
+    private static String relationshipText(Relationship relationship) {
+        String text = relationship.source() + " -[" + relationship.type() + "]-> " + relationship.target();
+        return relationship.description().isEmpty() ? text : text + ": " + relationship.description();
+    }
+
+    /** The first {@value #EXCERPT_CHARS} characters, whitespace-collapsed, with "…" when cut. */
+    static String excerpt(String passage) {
+        String collapsed = passage == null ? "" : passage.trim().replaceAll("\\s+", " ");
+        return collapsed.length() <= EXCERPT_CHARS ? collapsed : collapsed.substring(0, EXCERPT_CHARS) + "…";
     }
 
     /**

@@ -1050,7 +1050,8 @@
     if (!step || !step.identifier) {
       return null;
     }
-    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS') {
+    // TEXT_UNIT steps (Story 15.2) are source passages, not graph nodes.
+    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS' || step.kind === 'TEXT_UNIT') {
       return null;
     }
     return step.kind === 'COMMUNITY' ? 'community::' + step.identifier : step.identifier;
@@ -1157,7 +1158,7 @@
     if (!cy || !step) {
       return;
     }
-    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS') {
+    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS' || step.kind === 'TEXT_UNIT') {
       return;
     }
     if (step.kind === 'RELATIONSHIP') {

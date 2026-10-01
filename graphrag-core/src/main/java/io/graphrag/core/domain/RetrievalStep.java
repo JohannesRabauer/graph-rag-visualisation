@@ -39,6 +39,13 @@ public record RetrievalStep(Kind kind, String identifier, String label) {
          * Identifier is the chunk's {@link io.graphrag.core.domain.Chunk#id()};
          * label is the similarity score formatted as {@code "score=0.XXX"}.
          */
-        VECTOR_CHUNK
+        VECTOR_CHUNK,
+        /**
+         * Records a source passage read into a synthesized Local Search
+         * answer's context (Story 15.2). Identifier is the
+         * {@link io.graphrag.core.domain.TextUnit#id()}; label is the
+         * passage excerpt.
+         */
+        TEXT_UNIT
     }
 }

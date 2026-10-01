@@ -1,9 +1,12 @@
 package com.graphraglens.adapter.langchain4j;
 
 import io.graphrag.core.domain.CommunitySummary;
+import io.graphrag.core.domain.ContextItem;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.RetrievalStep;
+import io.graphrag.core.domain.SynthesizedAnswer;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.usecase.EntityTypes;
 import dev.langchain4j.data.message.AiMessage;
@@ -213,6 +216,87 @@ class OpenAiLlmPortTest {
 
         assertThrows(OpenAiLlmPort.LlmCallFailedException.class,
                 () -> port.summarizeCommunity(MEMBERS, RELATIONSHIPS));
+    }
+
+    private static final List<ContextItem> ANSWER_CONTEXT = List.of(
+            new ContextItem(1, RetrievalStep.Kind.ENTITY, "Irene Adler (Person): An opera singer.", null),
+            new ContextItem(2, RetrievalStep.Kind.RELATIONSHIP, "Sherlock Holmes -[admired]-> Irene Adler", null),
+            new ContextItem(3, RetrievalStep.Kind.TEXT_UNIT, "P".repeat(2000), "tu-a"));
+
+    @Test
+    void synthesizesAnswers() {
+        assertTrue(new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, "{}"),
+                new FakeChatModel(FinishReason.STOP, "")).synthesizesAnswers());
+    }
+
+    @Test
+    void answerPromptNumbersEveryItemDemandsCitationsAndTruncatesPassages() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, "{}"),
+                new FakeChatModel(FinishReason.STOP, ""));
+
+        String prompt = port.answerPrompt("Who is Irene Adler?", ANSWER_CONTEXT);
+
+        assertTrue(prompt.toLowerCase().contains("json"));
+        assertTrue(prompt.contains("[1] Entity: Irene Adler (Person): An opera singer."));
+        assertTrue(prompt.contains("[2] Relationship: Sherlock Holmes -[admired]-> Irene Adler"));
+        assertTrue(prompt.contains("[3] Source passage: "));
+        assertTrue(prompt.contains("[n]"));
+        assertTrue(prompt.contains("only with the numbers of \"Source passage\" items"));
+        assertTrue(prompt.contains("Entity and Relationship items are background facts"));
+        assertTrue(prompt.contains("Never put [n] on an Entity or Relationship item."));
+        assertFalse(prompt.contains("Prefer citing"));
+        assertTrue(prompt.contains(OpenAiLlmPort.NOT_IN_CONTEXT));
+        assertTrue(prompt.contains("Question: Who is Irene Adler?"));
+        assertTrue(prompt.contains("P".repeat(OpenAiLlmPort.MAX_PROMPT_CONTEXT_ITEM_CHARS)));
+        assertFalse(prompt.contains("P".repeat(OpenAiLlmPort.MAX_PROMPT_CONTEXT_ITEM_CHARS + 1)));
+    }
+
+    @Test
+    void synthesizeAnswerParsesTheAnswerFromOneJsonCall() {
+        FakeChatModel json = new FakeChatModel(FinishReason.STOP,
+                "```json\n{\"answer\":\"She is a singer [3].\",\"notInContext\":false}\n```",
+                OpenAiLlmPort.MAX_ANSWER_OUTPUT_TOKENS);
+        OpenAiLlmPort port = new OpenAiLlmPort(json, new FakeChatModel(FinishReason.STOP, ""));
+
+        SynthesizedAnswer answer = port.synthesizeAnswer("Who is Irene Adler?", ANSWER_CONTEXT);
+
+        assertEquals(new SynthesizedAnswer(false, "She is a singer [3]."), answer);
+        assertEquals(1, json.requests.size());
+        assertTrue(json.requests.getFirst().contains("[3] Source passage"));
+    }
+
+    @Test
+    void synthesizeAnswerReportsNotInContext() {
+        for (String body : List.of("{\"answer\":\"NOT_IN_CONTEXT\",\"notInContext\":false}",
+                "{\"answer\":\" \\\"not_in_context.\\\" \",\"notInContext\":false}",
+                "{\"answer\":\"\",\"notInContext\":true}")) {
+            OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, body,
+                    OpenAiLlmPort.MAX_ANSWER_OUTPUT_TOKENS), new FakeChatModel(FinishReason.STOP, ""));
+
+            assertEquals(new SynthesizedAnswer(true, ""), port.synthesizeAnswer("q", ANSWER_CONTEXT));
+        }
+    }
+
+    @Test
+    void synthesizeAnswerThrowsOnInvalidJsonLengthOrModelFailure() {
+        OpenAiLlmPort invalid = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, "Not JSON.",
+                OpenAiLlmPort.MAX_ANSWER_OUTPUT_TOKENS), new FakeChatModel(FinishReason.STOP, ""));
+        assertTrue(assertThrows(OpenAiLlmPort.LlmCallFailedException.class,
+                () -> invalid.synthesizeAnswer("q", ANSWER_CONTEXT)).getMessage().contains("not valid JSON"));
+
+        OpenAiLlmPort truncated = new OpenAiLlmPort(new FakeChatModel(FinishReason.LENGTH,
+                "{\"answer\":\"cut", OpenAiLlmPort.MAX_ANSWER_OUTPUT_TOKENS), new FakeChatModel(FinishReason.STOP, ""));
+        assertTrue(assertThrows(OpenAiLlmPort.LlmCallFailedException.class,
+                () -> truncated.synthesizeAnswer("q", ANSWER_CONTEXT)).getMessage().contains("output-token limit"));
+
+        ChatModel failing = new ChatModel() {
+            @Override
+            public ChatResponse chat(ChatRequest request) {
+                throw new IllegalStateException("boom");
+            }
+        };
+        OpenAiLlmPort down = new OpenAiLlmPort(failing, new FakeChatModel(FinishReason.STOP, ""));
+        assertThrows(OpenAiLlmPort.LlmCallFailedException.class, () -> down.synthesizeAnswer("q", ANSWER_CONTEXT));
     }
 
     private static final class FakeChatModel implements ChatModel {

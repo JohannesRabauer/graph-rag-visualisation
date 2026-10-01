@@ -3,10 +3,12 @@ package io.graphrag.core.port;
 import io.graphrag.core.domain.Chunk;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunitySummary;
+import io.graphrag.core.domain.ContextItem;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.SynthesizedAnswer;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.domain.UploadedDocument;
 
@@ -116,6 +118,28 @@ public interface LlmPort {
                 .reduce((a, b) -> a + "\n---\n" + b)
                 .orElse("");
         return "Based on the retrieved text passages: " + combined;
+    }
+
+    /**
+     * Whether {@link #synthesizeAnswer(String, List)} really generates a
+     * Local Search answer (Story 15.2). The default is false, so offline
+     * stubs and lambdas keep the deterministic templated answer.
+     */
+    default boolean synthesizesAnswers() {
+        return false;
+    }
+
+    /**
+     * Writes a Local Search answer from a numbered, bounded context, citing
+     * items inline as {@code [n]} (Story 15.2). Only called when
+     * {@link #synthesizesAnswers()} is true.
+     *
+     * @param question the user's question
+     * @param context  the context items, numbered {@code 1..n} in order; never null
+     * @return the raw answer (citations unresolved), or null by default
+     */
+    default SynthesizedAnswer synthesizeAnswer(String question, List<ContextItem> context) {
+        return null;
     }
 
     default GraphExtraction extractEntitiesAndRelationships(Corpus corpus) {

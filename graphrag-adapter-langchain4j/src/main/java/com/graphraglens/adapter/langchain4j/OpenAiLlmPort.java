@@ -3,10 +3,13 @@ package com.graphraglens.adapter.langchain4j;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.graphrag.core.domain.CommunitySummary;
+import io.graphrag.core.domain.ContextItem;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.RetrievalStep;
+import io.graphrag.core.domain.SynthesizedAnswer;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.LlmPort;
 import io.graphrag.core.usecase.EntityTypes;
@@ -46,6 +49,9 @@ public class OpenAiLlmPort implements LlmPort {
     static final int MAX_EXTRACTION_OUTPUT_TOKENS = 4096;
     static final int MAX_SUMMARY_OUTPUT_TOKENS = 512;
     static final int MAX_PROMPT_DESCRIPTION_CHARS = 300;
+    static final int MAX_ANSWER_OUTPUT_TOKENS = 1024;
+    static final int MAX_PROMPT_CONTEXT_ITEM_CHARS = 1500;
+    static final String NOT_IN_CONTEXT = SynthesizedAnswer.NOT_IN_CONTEXT;
 
     private final ChatModel jsonChatModel;
     private final ChatModel textChatModel;
@@ -309,6 +315,116 @@ public class OpenAiLlmPort implements LlmPort {
             summary = LlmPort.super.summarizeCommunity(members);
         }
         return new CommunitySummary(title, summary);
+    }
+
+    /** Story 15.2: this adapter really generates Local Search answers. */
+    @Override
+    public boolean synthesizesAnswers() {
+        return true;
+    }
+
+    /**
+     * Story 15.2: one JSON-mode OpenAI call that answers {@code question} from
+     * the numbered context, citing items inline as {@code [n]}. No retries; a
+     * failed call, a {@code length} finish or a non-JSON response surfaces as
+     * {@link LlmCallFailedException}. Citations are resolved in core.
+     */
+    @Override
+    public SynthesizedAnswer synthesizeAnswer(String question, List<ContextItem> context) {
+        ChatResponse response;
+        try {
+            response = jsonChatModel.chat(ChatRequest.builder()
+                    .messages(UserMessage.from(answerPrompt(question, context)))
+                    .maxOutputTokens(MAX_ANSWER_OUTPUT_TOKENS)
+                    .build());
+        } catch (RuntimeException e) {
+            throw new LlmCallFailedException("OpenAI answer synthesis call failed", e);
+        }
+        if (response != null && response.finishReason() == FinishReason.LENGTH) {
+            throw new LlmCallFailedException("OpenAI answer response hit the output-token limit ("
+                    + MAX_ANSWER_OUTPUT_TOKENS + ")", null);
+        }
+
+        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
+        return parseAnswer(text);
+    }
+
+    /**
+     * Builds the answer prompt: every context item numbered {@code [1]..[n]}
+     * in order, each text truncated to {@value #MAX_PROMPT_CONTEXT_ITEM_CHARS}
+     * characters. Package-private so tests can check it without a network call.
+     */
+    String answerPrompt(String question, List<ContextItem> context) {
+        StringBuilder items = new StringBuilder();
+        if (context != null) {
+            for (ContextItem item : context) {
+                if (item == null) {
+                    continue;
+                }
+                items.append('[').append(item.number()).append("] ").append(label(item.kind())).append(": ")
+                        .append(truncate(item.text(), MAX_PROMPT_CONTEXT_ITEM_CHARS)).append('\n');
+            }
+        }
+        if (items.isEmpty()) {
+            items.append("(no context)\n");
+        }
+
+        return """
+                You answer a question about a document collection using only the numbered context \
+                below: entities and relationships from its knowledge graph, and source passages.
+
+                Rules:
+                - Use only facts stated in the context. Do not use outside knowledge.
+                - Entity and Relationship items are background facts: use them, but never cite them.
+                - Cite every claim inline only with the numbers of "Source passage" items that \
+                support it, written as [n], for example [3] or [4][5]. Never put [n] on an Entity \
+                or Relationship item.
+                - If the context does not answer the question, set "answer" to "%s" and \
+                "notInContext" to true.
+
+                Respond with strict JSON only (no markdown, no commentary) using exactly this shape:
+                { "answer": "string", "notInContext": false }
+
+                Context:
+                %s
+                Question: %s
+                """.formatted(NOT_IN_CONTEXT, items, question == null ? "" : question.trim());
+    }
+
+    SynthesizedAnswer parseAnswer(String response) {
+        if (response == null || response.isBlank()) {
+            throw new LlmCallFailedException("OpenAI answer response was empty", null);
+        }
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(stripMarkdownFences(response));
+        } catch (Exception e) {
+            throw new LlmCallFailedException("OpenAI answer response was not valid JSON: " + response, e);
+        }
+        if (root == null || !root.isObject()) {
+            throw new LlmCallFailedException("OpenAI answer response was not a JSON object: " + response, null);
+        }
+        JsonNode answerNode = root.path("answer");
+        String answer = answerNode.isTextual() ? answerNode.asText().trim() : "";
+        boolean notInContext = root.path("notInContext").asBoolean(false) || SynthesizedAnswer.isNotInContextSentinel(answer);
+        return new SynthesizedAnswer(notInContext, notInContext ? "" : answer);
+    }
+
+    private static String label(RetrievalStep.Kind kind) {
+        return switch (kind) {
+            case ENTITY -> "Entity";
+            case RELATIONSHIP -> "Relationship";
+            case TEXT_UNIT -> "Source passage";
+            default -> kind.name();
+        };
+    }
+
+    private static String truncate(String text, int maxChars) {
+        if (text == null) {
+            return "";
+        }
+        String trimmed = text.trim();
+        return trimmed.length() <= maxChars ? trimmed : trimmed.substring(0, maxChars);
     }
 
     private static String truncate(String text) {
