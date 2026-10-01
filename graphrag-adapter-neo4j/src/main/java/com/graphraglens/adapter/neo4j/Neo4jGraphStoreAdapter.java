@@ -197,6 +197,34 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     }
 
     @Override
+    public void retypeEntity(String corpusId, String previousIdentity, Entity resolved) {
+        requireCorpusId(corpusId);
+        if (previousIdentity == null || previousIdentity.isBlank() || resolved == null) {
+            return;
+        }
+        try (Session session = driver.session()) {
+            session.executeWrite(tx -> tx.run(
+                    "MATCH (e:Entity {corpusId: $corpusId, normalizedIdentity: $previousIdentity}) "
+                            + "SET e.normalizedIdentity = $normalizedIdentity, e.name = $name, e.type = $type, "
+                            + "e.description = $description, e.sourceTextUnitIds = $sourceTextUnitIds "
+                            + "WITH e "
+                            + "OPTIONAL MATCH (e)-[out:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->() "
+                            + "SET out.source = $name, out.sourceType = $type "
+                            + "WITH e "
+                            + "OPTIONAL MATCH ()-[in:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->(e) "
+                            + "SET in.target = $name, in.targetType = $type",
+                    Map.of(
+                            "corpusId", corpusId,
+                            "previousIdentity", previousIdentity,
+                            "normalizedIdentity", resolved.normalizedIdentity(),
+                            "name", resolved.name(),
+                            "type", resolved.type(),
+                            "description", resolved.description(),
+                            "sourceTextUnitIds", resolved.sourceTextUnitIds())).consume());
+        }
+    }
+
+    @Override
     public void persistTextUnits(String corpusId, Collection<TextUnit> textUnits) {
         requireCorpusId(corpusId);
         if (textUnits == null || textUnits.isEmpty()) {

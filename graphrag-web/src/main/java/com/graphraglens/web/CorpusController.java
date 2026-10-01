@@ -456,7 +456,9 @@ public class CorpusController {
                         entity -> corpusProgressService.emit(corpus.id(), "entity-extracted",
                                 entityEventPayload(entity)),
                         relationship -> corpusProgressService.emit(corpus.id(), "relationship-extracted",
-                                relationshipEventPayload(relationship)));
+                                relationshipEventPayload(relationship)),
+                        (previousIdentity, entity) -> corpusProgressService.emit(corpus.id(), "entity-retyped",
+                                entityRetypedEventPayload(previousIdentity, entity)));
                 new DetectCommunities(graphStorePort, llmPortToUse).run(corpus,
                         (community, memberEntityIdentities) -> corpusProgressService.emit(corpus.id(), "community-detected",
                                 communityEventPayload(community, memberEntityIdentities)));
@@ -501,6 +503,12 @@ public class CorpusController {
                 "name", entity.name(),
                 "type", entity.type(),
                 "description", entity.description());
+    }
+
+    private Map<String, Object> entityRetypedEventPayload(String previousIdentity, Entity entity) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(entityEventPayload(entity));
+        payload.put("previousIdentity", previousIdentity);
+        return payload;
     }
 
     private Map<String, Object> relationshipEventPayload(Relationship relationship) {

@@ -62,4 +62,39 @@ class PassageProgressStatusUiTest extends UiTestSupport {
         assertThat(page.locator("#entity-detail-relationships li")).hasCount(1);
         assertThat(page.locator("#entity-detail-relationships li")).hasText("→ wrote_about → Analytical Engine");
     }
+
+    @Test
+    void entityRetypedEventMigratesTheNodeAndPreservesItsEdges() {
+        String body = "event: entity-extracted\n"
+                + "data: {\"type\":\"entity-extracted\",\"data\":"
+                + "{\"identity\":\"jaguar::animal\",\"name\":\"Jaguar\",\"type\":\"Animal\"}}\n\n"
+                + "event: entity-extracted\n"
+                + "data: {\"type\":\"entity-extracted\",\"data\":"
+                + "{\"identity\":\"market::concept\",\"name\":\"Market\",\"type\":\"Concept\"}}\n\n"
+                + "event: relationship-extracted\n"
+                + "data: {\"type\":\"relationship-extracted\",\"data\":"
+                + "{\"sourceIdentity\":\"jaguar::animal\",\"source\":\"Jaguar\","
+                + "\"targetIdentity\":\"market::concept\",\"target\":\"Market\",\"type\":\"appears_in\"}}\n\n"
+                + "event: entity-retyped\n"
+                + "data: {\"type\":\"entity-retyped\",\"data\":"
+                + "{\"previousIdentity\":\"jaguar::animal\",\"identity\":\"jaguar::organization\","
+                + "\"name\":\"Jaguar\",\"type\":\"Organization\"}}\n\n";
+        page.route("**/api/corpora/*/progress", (Route route) -> route.fulfill(
+                new Route.FulfillOptions()
+                        .setStatus(200)
+                        .setContentType("text/event-stream")
+                        .setBody(body)));
+
+        page.navigate(baseUrl() + "/");
+        page.locator("#demo-dataset-button").click();
+        page.waitForFunction("() => window.GraphCanvas && window.GraphCanvas.simulateTap('jaguar::organization')",
+                null, new Page.WaitForFunctionOptions().setTimeout(20000));
+
+        assertThat(page.locator("#entity-detail-type")).hasText("Type: Organization");
+        assertThat(page.locator("#entity-detail-relationships li")).hasText("→ appears_in → Market");
+        org.assertj.core.api.Assertions.assertThat(
+                page.evaluate("() => window.GraphCanvas.entityNodeFillColor('jaguar::animal')")).isNull();
+        org.assertj.core.api.Assertions.assertThat(
+                page.evaluate("() => window.GraphCanvas.entityNodeFillColor('jaguar::organization')")).isNotNull();
+    }
 }

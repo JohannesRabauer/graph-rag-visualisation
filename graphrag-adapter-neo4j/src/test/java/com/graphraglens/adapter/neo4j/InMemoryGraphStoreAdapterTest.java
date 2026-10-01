@@ -66,6 +66,22 @@ class InMemoryGraphStoreAdapterTest {
     }
 
     @Test
+    void retypeEntityMovesEntityKeyAndUpdatesRelationshipEndpointTypes() {
+        InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
+        adapter.persistEntities("corpus-a", List.of(new Entity("Jaguar", "Animal")));
+        adapter.persistRelationships("corpus-a", List.of(
+                new Relationship("Jaguar", "Animal", "appears_in", "Market", "Concept")));
+
+        adapter.retypeEntity("corpus-a", Entity.identityOf("Jaguar", "Animal"),
+                new Entity("Jaguar", "Organization", "A company.", List.of("u1")));
+
+        assertEquals(List.of(new Entity("Jaguar", "Organization", "A company.", List.of("u1"))),
+                adapter.entities("corpus-a"));
+        assertEquals("Organization", adapter.relationships("corpus-a").getFirst().sourceType());
+        assertEquals("jaguar::organization", adapter.entities().getFirst().normalizedIdentity());
+    }
+
+    @Test
     void readsScopedCommunitiesAndMembershipsByCorpusId() {
         InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
 

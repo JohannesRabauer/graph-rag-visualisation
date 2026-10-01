@@ -877,6 +877,50 @@
     queueLayout();
   }
 
+  function retypeEntity(previousIdentity, identity, name, type) {
+    if (!cy || !previousIdentity || !identity || previousIdentity === identity) {
+      if (identity) {
+        addEntity(identity, name, type);
+      }
+      return;
+    }
+    var oldNode = cy.getElementById(previousIdentity);
+    var position = oldNode && oldNode.length > 0 ? oldNode.position() : null;
+    var parent = oldNode && oldNode.length > 0 ? oldNode.parent().id() : null;
+    var incidentEdges = [];
+    if (oldNode && oldNode.length > 0) {
+      oldNode.connectedEdges().forEach(function (edge) {
+        incidentEdges.push({
+          source: edge.data('source') === previousIdentity ? identity : edge.data('source'),
+          target: edge.data('target') === previousIdentity ? identity : edge.data('target'),
+          label: edge.data('label') || ''
+        });
+      });
+      oldNode.connectedEdges().remove();
+      oldNode.remove();
+    }
+    addEntity(identity, name, type);
+    var newNode = cy.getElementById(identity);
+    if (newNode && newNode.length > 0) {
+      if (position) {
+        newNode.position(position);
+      }
+      if (parent) {
+        newNode.move({ parent: parent });
+      }
+    }
+    incidentEdges.forEach(function (edge) {
+      var edgeId = edge.source + '->' + (edge.label || 'related_to') + '->' + edge.target;
+      if (cy.getElementById(edgeId).length === 0) {
+        cy.add({
+          group: 'edges',
+          data: { id: edgeId, source: edge.source, target: edge.target, label: edge.label }
+        });
+      }
+    });
+    queueLayout();
+  }
+
   function addCommunity(communityId, summary, memberEntityIdentities) {
     if (!cy || !communityId) {
       return;
@@ -1637,6 +1681,7 @@
   window.GraphCanvas = {
     init: init,
     addEntity: addEntity,
+    retypeEntity: retypeEntity,
     addRelationship: addRelationship,
     addCommunity: addCommunity,
     setHullsVisible: setHullsVisible,

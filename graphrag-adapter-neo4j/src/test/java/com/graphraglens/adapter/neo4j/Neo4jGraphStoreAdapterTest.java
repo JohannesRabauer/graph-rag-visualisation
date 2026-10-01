@@ -119,6 +119,31 @@ class Neo4jGraphStoreAdapterTest {
     }
 
     @Test
+    void retypeEntityMovesNodeKeyAndUpdatesIncidentRelationshipEndpointTypes() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-retype-" + System.nanoTime();
+        Entity oldJaguar = new Entity("Jaguar", "Animal");
+        Relationship relationship = new Relationship("Jaguar", "Animal", "appears_in", "Market", "Concept");
+        Entity newJaguar = new Entity("Jaguar", "Organization", "A company.", List.of("u1"));
+
+        adapter.persistEntities(corpusId, List.of(oldJaguar));
+        adapter.persistRelationships(corpusId, List.of(relationship));
+        adapter.retypeEntity(corpusId, oldJaguar.normalizedIdentity(), newJaguar);
+
+        assertEquals(newJaguar, adapter.entities(corpusId).stream()
+                .filter(entity -> entity.normalizedIdentity().equals(newJaguar.normalizedIdentity()))
+                .findFirst().orElseThrow());
+        assertEquals("Organization", adapter.relationships(corpusId).getFirst().sourceType());
+        try (var session = driver.session()) {
+            Long oldCount = session.executeRead(tx -> tx.run(
+                    "MATCH (e:Entity {corpusId: $corpusId, normalizedIdentity: $identity}) RETURN count(e) AS count",
+                    Map.of("corpusId", corpusId, "identity", oldJaguar.normalizedIdentity()))
+                    .single().get("count").asLong());
+            assertEquals(0L, oldCount);
+        }
+    }
+
+    @Test
     void legacyEntityAndRelationshipPropertiesCoalesceOnRead() {
         Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
         String corpusId = "corpus-legacy-" + System.nanoTime();

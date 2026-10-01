@@ -13,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -20,7 +22,7 @@ import java.util.function.Consumer;
  * at a time (AD-24): the corpus is split by {@link TextUnitSplitter}, each
  * unit is extracted against {@link EntityTypes#ALL}, its types are
  * normalised, and the unit plus its extraction are persisted before the next
- * unit starts (AD-14). Any unit failure stops the whole pass — no retries,
+ * unit starts (AD-14). Any unit failure stops the whole pass â€” no retries,
  * no partial "best effort" continuation.
  */
 public class ExtractEntitiesAndRelationships {
@@ -38,16 +40,13 @@ public class ExtractEntitiesAndRelationships {
      * and returns the merged (identity-deduplicated) result.
      */
     public GraphExtraction extract(Corpus corpus) {
+        EntityResolver resolver = new EntityResolver();
         Map<String, Entity> entities = new LinkedHashMap<>();
         Map<String, Relationship> relationships = new LinkedHashMap<>();
         for (TextUnit unit : TextUnitSplitter.split(corpus)) {
             GraphExtraction extraction = extractUnit(unit);
-            for (Entity entity : extraction.entities()) {
-                entities.merge(entity.normalizedIdentity(), entity, GraphElementMerger::merge);
-            }
-            for (Relationship relationship : extraction.relationships()) {
-                relationships.merge(relationshipKey(relationship), relationship, GraphElementMerger::merge);
-            }
+            accumulateResolved(extraction, resolver, entities, relationships, null,
+                    new RetypeSink(relationships, null, null));
         }
         return new GraphExtraction(new ArrayList<>(entities.values()), new ArrayList<>(relationships.values()));
     }
@@ -73,8 +72,15 @@ public class ExtractEntitiesAndRelationships {
      */
     public void run(Corpus corpus, Consumer<TextUnitProgress> onTextUnitExtracted,
                     Consumer<Entity> onEntityPersisted, Consumer<Relationship> onRelationshipPersisted) {
+        run(corpus, onTextUnitExtracted, onEntityPersisted, onRelationshipPersisted, null);
+    }
+
+    public void run(Corpus corpus, Consumer<TextUnitProgress> onTextUnitExtracted,
+                    Consumer<Entity> onEntityPersisted, Consumer<Relationship> onRelationshipPersisted,
+                    BiConsumer<String, Entity> onEntityRetyped) {
         List<TextUnit> units = TextUnitSplitter.split(corpus);
         int total = units.size();
+        EntityResolver resolver = new EntityResolver();
         Map<String, Entity> mergedEntities = new LinkedHashMap<>();
         Map<String, Relationship> mergedRelationships = new LinkedHashMap<>();
         for (int i = 0; i < total; i++) {
@@ -82,23 +88,25 @@ public class ExtractEntitiesAndRelationships {
             GraphExtraction extraction = extractUnit(unit);
             Map<String, Entity> changedEntities = new LinkedHashMap<>();
             Map<String, Relationship> changedRelationships = new LinkedHashMap<>();
-            for (Entity entity : extraction.entities()) {
-                String key = entity.normalizedIdentity();
-                changedEntities.put(key, mergedEntities.merge(key, entity, GraphElementMerger::merge));
-            }
-            for (Relationship relationship : extraction.relationships()) {
-                String key = relationshipKey(relationship);
-                changedRelationships.put(key,
-                        mergedRelationships.merge(key, relationship, GraphElementMerger::merge));
-            }
+            Map<String, Entity> retypedEntities = new LinkedHashMap<>();
+            accumulateResolved(extraction, resolver, mergedEntities, mergedRelationships, changedEntities,
+                    new RetypeSink(mergedRelationships, changedRelationships, retypedEntities));
             GraphExtraction mergedExtraction = new GraphExtraction(
                     new ArrayList<>(changedEntities.values()), new ArrayList<>(changedRelationships.values()));
 
             graphStorePort.persistTextUnits(corpus.id(), List.of(unit));
+            for (Map.Entry<String, Entity> retyped : retypedEntities.entrySet()) {
+                graphStorePort.retypeEntity(corpus.id(), retyped.getKey(), retyped.getValue());
+            }
             graphStorePort.persist(corpus.id(), mergedExtraction);
 
             if (onTextUnitExtracted != null) {
                 onTextUnitExtracted.accept(new TextUnitProgress(i + 1, total, unit.documentName()));
+            }
+            if (onEntityRetyped != null) {
+                for (Map.Entry<String, Entity> retyped : retypedEntities.entrySet()) {
+                    onEntityRetyped.accept(retyped.getKey(), retyped.getValue());
+                }
             }
             if (onEntityPersisted != null) {
                 for (Entity entity : mergedExtraction.entities()) {
@@ -111,6 +119,88 @@ public class ExtractEntitiesAndRelationships {
                 }
             }
         }
+    }
+
+    private static void accumulateResolved(GraphExtraction extraction, EntityResolver resolver,
+                                           Map<String, Entity> mergedEntities,
+                                           Map<String, Relationship> mergedRelationships,
+                                           Map<String, Entity> changedEntities,
+                                           RetypeSink retypeSink) {
+        for (Entity entity : extraction.entities()) {
+            EntityResolver.ResolvedEntity resolved = resolver.resolve(entity);
+            Optional<String> previousIdentity = resolved.previousIdentity();
+            if (previousIdentity.isPresent()) {
+                Entity previous = mergedEntities.remove(previousIdentity.get());
+                if (previous != null) {
+                    Entity rekeyedPrevious = new Entity(resolved.entity().name(), resolved.entity().type(),
+                            previous.description(), previous.sourceTextUnitIds());
+                    mergedEntities.merge(resolved.entity().normalizedIdentity(), rekeyedPrevious,
+                            GraphElementMerger::merge);
+                }
+            }
+            String key = resolved.entity().normalizedIdentity();
+            Entity merged = mergedEntities.merge(key, resolved.entity(), GraphElementMerger::merge);
+            if (changedEntities != null) {
+                changedEntities.put(key, merged);
+            }
+            if (previousIdentity.isPresent() && retypeSink != null) {
+                if (retypeSink.retypedEntities != null) {
+                    retypeSink.retypedEntities.put(previousIdentity.get(), merged);
+                }
+                retypeSink.rekeyRelationships(previousIdentity.get(), merged);
+            }
+        }
+        for (Relationship relationship : extraction.relationships()) {
+            Relationship resolved = resolver.resolve(relationship);
+            String key = relationshipKey(resolved);
+            Relationship merged = mergedRelationships.merge(key, resolved, GraphElementMerger::merge);
+            if (retypeSink != null && retypeSink.changedRelationships != null) {
+                retypeSink.changedRelationships.put(key, merged);
+            }
+        }
+    }
+
+    private record RetypeSink(Map<String, Relationship> mergedRelationships,
+                              Map<String, Relationship> changedRelationships,
+                              Map<String, Entity> retypedEntities) {
+
+        private void rekeyRelationships(String previousIdentity, Entity resolved) {
+            Map<String, Relationship> replacements = new LinkedHashMap<>();
+            List<String> replacedKeys = new ArrayList<>();
+            for (Map.Entry<String, Relationship> entry : mergedRelationships.entrySet()) {
+                Relationship updated = rekeyRelationship(entry.getValue(), previousIdentity, resolved);
+                if (updated != entry.getValue()) {
+                    replacedKeys.add(entry.getKey());
+                    String updatedKey = relationshipKey(updated);
+                    replacements.merge(updatedKey, updated, GraphElementMerger::merge);
+                    if (changedRelationships != null) {
+                        changedRelationships.merge(updatedKey, updated, GraphElementMerger::merge);
+                    }
+                }
+            }
+            for (String key : replacedKeys) {
+                mergedRelationships.remove(key);
+                if (changedRelationships != null) {
+                    changedRelationships.remove(key);
+                }
+            }
+            mergedRelationships.putAll(replacements);
+        }
+    }
+
+    private static Relationship rekeyRelationship(Relationship relationship, String previousIdentity, Entity resolved) {
+        boolean sourceMatches = Entity.identityOf(relationship.source(), relationship.sourceType()).equals(previousIdentity);
+        boolean targetMatches = Entity.identityOf(relationship.target(), relationship.targetType()).equals(previousIdentity);
+        if (!sourceMatches && !targetMatches) {
+            return relationship;
+        }
+        return new Relationship(
+                sourceMatches ? resolved.name() : relationship.source(),
+                sourceMatches ? resolved.type() : relationship.sourceType(),
+                relationship.type(),
+                targetMatches ? resolved.name() : relationship.target(),
+                targetMatches ? resolved.type() : relationship.targetType(),
+                relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());
     }
 
     private GraphExtraction extractUnit(TextUnit unit) {

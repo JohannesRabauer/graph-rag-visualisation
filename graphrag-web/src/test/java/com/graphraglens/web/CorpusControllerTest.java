@@ -379,6 +379,30 @@ class CorpusControllerTest {
         assertThat(communityPayload).containsKeys("communityId", "summary", "memberEntityIdentities");
     }
 
+    @Test
+    void typeFlipEmitsEntityRetypedProgressEventWithPreviousIdentity() {
+        LlmPort flippingLlmPort = unit -> {
+            String documentName = unit.documents().getFirst().filename();
+            String type = documentName.equals("jaguar-animal.txt") ? "Animal" : "Organization";
+            return new GraphExtraction(List.of(new io.graphrag.core.domain.Entity("Jaguar", type)), List.of());
+        };
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, flippingLlmPort, graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null);
+        List<org.springframework.web.multipart.MultipartFile> files = List.of(
+                new MockMultipartFile("files", "jaguar-animal.txt", "text/plain", "Jaguar".getBytes(StandardCharsets.UTF_8)),
+                new MockMultipartFile("files", "jaguar-org-1.txt", "text/plain", "Jaguar".getBytes(StandardCharsets.UTF_8)),
+                new MockMultipartFile("files", "jaguar-org-2.txt", "text/plain", "Jaguar".getBytes(StandardCharsets.UTF_8)));
+
+        ResponseEntity<Map<String, Object>> response = controller.upload(files);
+        String corpusId = String.valueOf(response.getBody().get("corpusId"));
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("entity-retyped"),
+                org.mockito.ArgumentMatchers.argThat(payload ->
+                        "jaguar::concept".equals(payload.get("previousIdentity"))
+                                && "jaguar::organization".equals(payload.get("identity"))));
+    }
+
     /**
      * Story 13.1: a document well over one Text Unit long, every paragraph
      * naming a proper noun, so each unit yields at least one Entity.

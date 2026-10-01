@@ -39,6 +39,10 @@ public interface GraphStorePort {
         persistRelationships(relationships);
     }
 
+    default void retypeEntity(String corpusId, String previousIdentity, Entity resolved) {
+        // Optional for graph-store implementations that can rename/re-key nodes.
+    }
+
     default void persistCommunities(Collection<Community> communities) {
         // Optional for graph-store implementations that support first-class community nodes.
     }

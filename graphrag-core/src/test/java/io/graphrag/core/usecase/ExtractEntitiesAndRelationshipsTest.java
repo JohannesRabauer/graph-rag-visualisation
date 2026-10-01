@@ -279,10 +279,115 @@ class ExtractEntitiesAndRelationshipsTest {
         assertEquals(1, relationshipCallbacks.size());
     }
 
+    @org.junit.jupiter.api.Test
+    void resolvesCasePunctuationVariantsBeforePersisting() {
+        Corpus corpus = new Corpus("c1", List.of(
+                new UploadedDocument("a.txt", "OpenAI appears."),
+                new UploadedDocument("b.txt", "openai appears again.")));
+        LlmPort llmPort = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus ignored) {
+                throw new AssertionError("unused");
+            }
+
+            @Override
+            public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+                return unit.documentName().equals("a.txt")
+                        ? new GraphExtraction(List.of(new Entity("OpenAI", "Organization")), List.of())
+                        : new GraphExtraction(List.of(new Entity("openai.", "Organization")), List.of());
+            }
+        };
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+        EntityResolver resolver = new EntityResolver();
+
+        GraphExtraction extracted = new ExtractEntitiesAndRelationships(llmPort, store).extract(corpus);
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus);
+
+        assertEquals(List.of("OpenAI"), extracted.entities().stream().map(Entity::name).toList());
+        assertTrue(store.persistedEntities.stream()
+                .anyMatch(entity -> entity.name().equals("OpenAI") && entity.sourceTextUnitIds().size() == 2));
+        assertEquals(EntityResolver.nameKey("Ada  Lovelace"), EntityResolver.nameKey("\uFF21\uFF24\uFF21 Lovelace"));
+        assertEquals("Ada  Lovelace", resolver.resolve(new Entity("Ada  Lovelace", "Person")).entity().name());
+        assertEquals("Ada  Lovelace", resolver.resolve(new Entity("\uFF21\uFF24\uFF21 Lovelace", "Person")).entity().name());
+        assertEquals("...", EntityResolver.nameKey("..."));
+    }
+
+    @org.junit.jupiter.api.Test
+    void typeConflictsKeepMajorityTypeAndTieKeepsEarliest() {
+        Corpus corpus = new Corpus("c1", List.of(
+                new UploadedDocument("a.txt", "Paris one."),
+                new UploadedDocument("b.txt", "Paris two.")));
+        LlmPort llmPort = unit -> unit.documents().getFirst().filename().equals("a.txt")
+                ? new GraphExtraction(List.of(new Entity("Paris", "Location")), List.of())
+                : new GraphExtraction(List.of(new Entity("Paris", "Person")), List.of());
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus);
+
+        assertEquals("Location", store.persistedEntities.getLast().type());
+        assertEquals(List.of(), store.retyped);
+    }
+
+    @org.junit.jupiter.api.Test
+    void typeFlipRekeysStoredEntityRelationshipsAndCallbacksAfterPersistence() {
+        Corpus corpus = new Corpus("c1", List.of(
+                new UploadedDocument("a.txt", "Jaguar animal."),
+                new UploadedDocument("b.txt", "Jaguar org."),
+                new UploadedDocument("c.txt", "Jaguar org again.")));
+        LlmPort llmPort = unit -> {
+            String name = unit.documents().getFirst().filename();
+            String type = name.equals("a.txt") ? "Animal" : "Organization";
+            return new GraphExtraction(List.of(new Entity("Jaguar", type)),
+                    List.of(new Relationship("Jaguar", type, "appears_in", "Market", "Concept")));
+        };
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+        List<String> events = new ArrayList<>();
+
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus,
+                ignored -> events.add("unit persisted=" + store.persistCalls),
+                entity -> events.add("entity " + entity.normalizedIdentity()),
+                relationship -> events.add("relationship " + relationship.sourceType()),
+                (previous, entity) -> events.add("retyped persisted=" + store.persistCalls + " " + previous
+                        + "->" + entity.normalizedIdentity()));
+
+        assertEquals(List.of("jaguar::concept->jaguar::organization"), store.retyped);
+        assertEquals("Organization", store.persistedEntities.getLast().type());
+        assertEquals("Organization", store.persistedRelationships.getLast().sourceType());
+        assertTrue(events.contains("retyped persisted=3 jaguar::concept->jaguar::organization"));
+        assertTrue(events.indexOf("retyped persisted=3 jaguar::concept->jaguar::organization")
+                < events.lastIndexOf("entity jaguar::organization"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void relationshipEndpointsResolveToKnownEntitiesAndEndpointOnlyNamesCanLaterFlipType() {
+        Corpus corpus = new Corpus("c1", List.of(
+                new UploadedDocument("a.txt", "OpenAI and Acme relationship."),
+                new UploadedDocument("b.txt", "Acme entity.")));
+        LlmPort llmPort = unit -> unit.documents().getFirst().filename().equals("a.txt")
+                ? new GraphExtraction(
+                        List.of(new Entity("OpenAI", "Organization")),
+                        List.of(new Relationship("openai,", "Product", "founded_by", "Sam Altman", "Person"),
+                                new Relationship("Acme", "Person", "partnered_with", "OpenAI", "Organization")))
+                : new GraphExtraction(List.of(new Entity("Acme", "Organization")), List.of());
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus);
+
+        Relationship foundedBy = store.persistedRelationships.stream()
+                .filter(relationship -> relationship.type().equals("founded_by"))
+                .findFirst().orElseThrow();
+        Relationship acme = store.persistedRelationships.getLast();
+        assertEquals("OpenAI", foundedBy.source());
+        assertEquals("Organization", foundedBy.sourceType());
+        assertEquals(List.of("acme::person->acme::organization"), store.retyped);
+        assertEquals("Organization", acme.sourceType());
+    }
+
     private static final class PerUnitRecordingGraphStorePort implements GraphStorePort {
         private final List<TextUnit> persistedUnits = new ArrayList<>();
         private final List<Entity> persistedEntities = new ArrayList<>();
         private final List<Relationship> persistedRelationships = new ArrayList<>();
+        private final List<String> retyped = new ArrayList<>();
         private int persistCalls;
 
         @Override
@@ -305,6 +410,11 @@ class ExtractEntitiesAndRelationshipsTest {
         @Override
         public void persistTextUnits(String corpusId, java.util.Collection<TextUnit> textUnits) {
             persistedUnits.addAll(textUnits);
+        }
+
+        @Override
+        public void retypeEntity(String corpusId, String previousIdentity, Entity resolved) {
+            retyped.add(previousIdentity + "->" + resolved.normalizedIdentity());
         }
     }
 

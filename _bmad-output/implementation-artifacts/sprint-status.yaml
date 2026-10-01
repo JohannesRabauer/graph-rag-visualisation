@@ -129,7 +129,7 @@ development_status:
   epic-13: in-progress
   13-1-extract-the-knowledge-graph-passage-by-passage: done
   13-2-give-every-entity-and-relationship-a-description-and-sources: done
-  13-3-resolve-duplicate-entities-before-they-reach-neo4j: backlog
+  13-3-resolve-duplicate-entities-before-they-reach-neo4j: review
   13-4-show-descriptions-and-source-passages-in-the-detail-panel: backlog
   epic-13-retrospective: optional
 

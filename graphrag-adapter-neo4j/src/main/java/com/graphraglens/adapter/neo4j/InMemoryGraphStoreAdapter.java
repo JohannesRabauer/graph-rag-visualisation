@@ -119,6 +119,22 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
     }
 
     @Override
+    public void retypeEntity(String corpusId, String previousIdentity, Entity resolved) {
+        if (previousIdentity == null || previousIdentity.isBlank() || resolved == null) {
+            return;
+        }
+        entities.remove(previousIdentity);
+        entities.put(resolved.normalizedIdentity(), resolved);
+        if (corpusId != null && !corpusId.isBlank()) {
+            Map<String, Entity> scopedEntities = scopedMap(entitiesByCorpusId, corpusId);
+            scopedEntities.remove(previousIdentity);
+            scopedEntities.put(resolved.normalizedIdentity(), resolved);
+            retypeRelationships(scopedMap(relationshipsByCorpusId, corpusId), previousIdentity, resolved);
+        }
+        retypeRelationships(relationships, previousIdentity, resolved);
+    }
+
+    @Override
     public void persistCommunities(Collection<Community> input) {
         if (input == null) {
             return;
@@ -243,5 +259,31 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
     private static <T> Map<String, T> readScopedMap(Map<String, Map<String, T>> index, String corpusId) {
         Map<String, T> scoped = index.get(corpusId);
         return scoped == null ? Collections.emptyMap() : scoped;
+    }
+
+    private static void retypeRelationships(Map<String, Relationship> index, String previousIdentity, Entity resolved) {
+        Map<String, Relationship> rewritten = new LinkedHashMap<>();
+        List<String> removed = new ArrayList<>();
+        for (Map.Entry<String, Relationship> entry : index.entrySet()) {
+            Relationship relationship = entry.getValue();
+            boolean sourceMatches = Entity.identityOf(relationship.source(), relationship.sourceType()).equals(previousIdentity);
+            boolean targetMatches = Entity.identityOf(relationship.target(), relationship.targetType()).equals(previousIdentity);
+            if (!sourceMatches && !targetMatches) {
+                continue;
+            }
+            removed.add(entry.getKey());
+            Relationship updated = new Relationship(
+                    sourceMatches ? resolved.name() : relationship.source(),
+                    sourceMatches ? resolved.type() : relationship.sourceType(),
+                    relationship.type(),
+                    targetMatches ? resolved.name() : relationship.target(),
+                    targetMatches ? resolved.type() : relationship.targetType(),
+                    relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());
+            rewritten.put(updated.source() + "::" + updated.type() + "::" + updated.target(), updated);
+        }
+        for (String key : removed) {
+            index.remove(key);
+        }
+        index.putAll(rewritten);
     }
 }

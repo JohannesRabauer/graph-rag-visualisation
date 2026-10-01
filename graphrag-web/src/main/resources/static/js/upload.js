@@ -1442,6 +1442,40 @@
       }
     });
 
+    activeProgressSource.addEventListener('entity-retyped', function (event) {
+      try {
+        var payload = JSON.parse(event.data);
+        var data = payload && payload.data;
+        if (data && window.GraphCanvas) {
+          window.GraphCanvas.retypeEntity(data.previousIdentity, data.identity, data.name, data.type);
+          activeRelationships.forEach(function (relationship) {
+            if (relationship.sourceIdentity === data.previousIdentity) {
+              relationship.sourceIdentity = data.identity;
+              relationship.source = data.name;
+            }
+            if (relationship.targetIdentity === data.previousIdentity) {
+              relationship.targetIdentity = data.identity;
+              relationship.target = data.name;
+            }
+          });
+          if (selectedEntityIdentity === data.previousIdentity) {
+            selectedEntityIdentity = data.identity;
+            selectedEntityType = data.type;
+            if (entityDetailName) {
+              entityDetailName.textContent = data.name || data.identity;
+            }
+            if (entityDetailType) {
+              entityDetailType.textContent = 'Type: ' + (data.type || 'Unknown');
+            }
+            renderEntityDetailRelationships(data.identity);
+            renderEntityDetailTags(data.type);
+          }
+        }
+      } catch (e) {
+        console.warn('Invalid SSE entity-retyped payload', e);
+      }
+    });
+
     activeProgressSource.addEventListener('relationship-extracted', function (event) {
       try {
         var payload = JSON.parse(event.data);
