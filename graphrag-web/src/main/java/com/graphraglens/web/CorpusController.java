@@ -31,6 +31,7 @@ import io.graphrag.core.usecase.DriftSearchAnswer;
 import io.graphrag.core.usecase.GlobalSearchAnswer;
 import io.graphrag.core.usecase.IngestCorpus;
 import io.graphrag.core.usecase.LocalSearchAnswer;
+import io.graphrag.core.usecase.TextUnitProgress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -450,6 +451,8 @@ public class CorpusController {
         CompletableFuture.runAsync(() -> {
             try {
                 new BuildKnowledgeGraph(llmPortToUse, graphStorePort).run(corpus,
+                        progress -> corpusProgressService.emit(corpus.id(), "text-unit-extracted",
+                                textUnitEventPayload(progress)),
                         entity -> corpusProgressService.emit(corpus.id(), "entity-extracted",
                                 entityEventPayload(entity)),
                         relationship -> corpusProgressService.emit(corpus.id(), "relationship-extracted",
@@ -461,6 +464,8 @@ public class CorpusController {
                 corpusProgressService.emit(corpus.id(), "ingestion-complete",
                         Map.of("message", "Knowledge graph construction and community detection completed for " + corpus.name()));
             } catch (Exception ex) {
+                // The exception message names the failing document and passage (Story 13.1).
+                LOG.warn("Knowledge graph construction failed for corpus {}: {}", corpus.id(), ex.getMessage(), ex);
                 corpusStore.markFailed(corpus.id());
                 corpusProgressService.emit(corpus.id(), "error",
                         Map.of("error", EXTRACTION_FAILURE_MESSAGE));
@@ -481,6 +486,13 @@ public class CorpusController {
                         corpus.id(), ex);
             }
         });
+    }
+
+    private Map<String, Object> textUnitEventPayload(TextUnitProgress progress) {
+        return Map.of(
+                "index", progress.index(),
+                "total", progress.total(),
+                "documentName", progress.documentName() == null ? "" : progress.documentName());
     }
 
     private Map<String, Object> entityEventPayload(Entity entity) {

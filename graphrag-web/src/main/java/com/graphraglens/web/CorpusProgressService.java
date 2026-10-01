@@ -22,11 +22,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class CorpusProgressService {
 
     /**
-     * Well above what the 3-document demo corpus produces (a handful of
-     * Entities/Relationships/Communities plus the three lifecycle events),
-     * so the cap is never expected to actually truncate a real run's buffer.
+     * Well above what a typical corpus produces. Raised from 500 in Story
+     * 13.1: extraction now runs per Text Unit, and each unit re-reports the
+     * Entities/Relationships it found (overlapping passages repeat some),
+     * plus one {@code text-unit-extracted} event per unit.
      */
-    private static final int MAX_BUFFERED_EVENTS_PER_CORPUS = 500;
+    private static final int MAX_BUFFERED_EVENTS_PER_CORPUS = 5_000;
 
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<SseEmitter>> emittersByCorpusId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<BufferedEvent>> bufferedEventsByCorpusId = new ConcurrentHashMap<>();

@@ -1415,6 +1415,21 @@
       }
     });
 
+    // Story 13.1: extraction runs one Text Unit (passage) at a time; each
+    // unit announces itself before its own entity/relationship events.
+    activeProgressSource.addEventListener('text-unit-extracted', function (event) {
+      try {
+        var payload = JSON.parse(event.data);
+        var data = payload && payload.data;
+        if (data && workflowState === 'BUILDING' && workflowStatusText) {
+          workflowStatusText.textContent = 'Extracting passage ' + data.index + ' of ' + data.total
+            + ' — ' + data.documentName;
+        }
+      } catch (e) {
+        console.warn('Invalid SSE text-unit payload', e);
+      }
+    });
+
     activeProgressSource.addEventListener('entity-extracted', function (event) {
       try {
         var payload = JSON.parse(event.data);
@@ -1507,7 +1522,14 @@
     errorBanner.textContent = '';
   }
 
+  // The last state passed to renderWorkflowStatus, so live progress events
+  // (Story 13.1) only rewrite the status line while the graph is building.
+  // Declared without an initializer so a call made before this line runs
+  // (hoisting) is never reset.
+  var workflowState;
+
   function renderWorkflowStatus(state, failureMessage) {
+    workflowState = state;
     if (!workflowStatus || !workflowStatusText) {
       return;
     }

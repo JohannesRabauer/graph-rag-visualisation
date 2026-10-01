@@ -4,6 +4,7 @@ import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.GraphStorePort;
 
 import java.util.ArrayList;
@@ -26,6 +27,29 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
     private final Map<String, Map<String, Relationship>> relationshipsByCorpusId = new LinkedHashMap<>();
     private final Map<String, Map<String, Community>> communitiesByCorpusId = new LinkedHashMap<>();
     private final Map<String, Map<String, CommunityMembership>> communityMembershipsByCorpusId = new LinkedHashMap<>();
+    private final Map<String, Map<String, TextUnit>> textUnitsByCorpusId = new LinkedHashMap<>();
+
+    @Override
+    public void persistTextUnits(String corpusId, Collection<TextUnit> input) {
+        if (corpusId == null || corpusId.isBlank() || input == null) {
+            return;
+        }
+        Map<String, TextUnit> scoped = scopedMap(textUnitsByCorpusId, corpusId);
+        for (TextUnit textUnit : input) {
+            if (textUnit == null) {
+                continue;
+            }
+            scoped.put(textUnit.id(), textUnit);
+        }
+    }
+
+    @Override
+    public List<TextUnit> textUnits(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return List.of();
+        }
+        return new ArrayList<>(readScopedMap(textUnitsByCorpusId, corpusId).values());
+    }
 
     @Override
     public void persistEntities(Collection<Entity> input) {

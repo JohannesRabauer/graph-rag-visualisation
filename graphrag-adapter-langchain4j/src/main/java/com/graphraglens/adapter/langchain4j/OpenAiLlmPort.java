@@ -6,8 +6,10 @@ import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
-import io.graphrag.core.domain.UploadedDocument;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.LlmPort;
+import io.graphrag.core.usecase.EntityTypes;
+import io.graphrag.core.usecase.TextUnitSplitter;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 
@@ -68,25 +70,71 @@ public class OpenAiLlmPort implements LlmPort {
                 .build();
     }
 
+    /**
+     * Story 13.1: extracts the Corpus Text Unit by Text Unit (one OpenAI call
+     * per unit, sequentially, against {@link EntityTypes#ALL}) and merges the
+     * results. The ingestion pipeline does not use this — it drives
+     * {@link #extract(TextUnit, List)} itself so it can persist and report
+     * each unit — but it keeps the whole-Corpus entry point consistent.
+     */
     @Override
     public GraphExtraction extract(Corpus corpus) {
         if (corpus == null || corpus.documents() == null || corpus.documents().isEmpty()) {
             return new GraphExtraction(List.of(), List.of());
         }
 
-        String documentsText = corpus.documents().stream()
-                .filter(document -> document != null && document.content() != null && !document.content().isBlank())
-                .map(UploadedDocument::content)
-                .reduce((left, right) -> left + "\n\n" + right)
-                .orElse("");
+        Map<String, Entity> entitiesByIdentity = new LinkedHashMap<>();
+        Map<String, Relationship> relationshipsByKey = new LinkedHashMap<>();
+        for (TextUnit unit : TextUnitSplitter.split(corpus)) {
+            GraphExtraction extraction = extract(unit, EntityTypes.ALL);
+            for (Entity entity : extraction.entities()) {
+                entitiesByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
+            }
+            for (Relationship relationship : extraction.relationships()) {
+                String key = Entity.identityOf(relationship.source(), relationship.sourceType())
+                        + "::" + relationship.type()
+                        + "::" + Entity.identityOf(relationship.target(), relationship.targetType());
+                relationshipsByKey.putIfAbsent(key, relationship);
+            }
+        }
+        return new GraphExtraction(new ArrayList<>(entitiesByIdentity.values()),
+                new ArrayList<>(relationshipsByKey.values()));
+    }
 
-        if (documentsText.isBlank()) {
+    /**
+     * Story 13.1: one OpenAI extraction call over a single Text Unit,
+     * restricted to {@code entityTypes}. No retries — a failure surfaces as
+     * {@link LlmCallFailedException}.
+     */
+    @Override
+    public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+        if (unit == null || unit.text() == null || unit.text().isBlank()) {
             return new GraphExtraction(List.of(), List.of());
         }
 
-        String prompt = """
-                You are a knowledge-graph extraction engine. Read the text below and identify the \
-                named entities (people, places, organizations, concepts) and the relationships between them.
+        String response;
+        try {
+            response = jsonChatModel.chat(extractionPrompt(unit, entityTypes));
+        } catch (RuntimeException e) {
+            throw new LlmCallFailedException("OpenAI extraction call failed", e);
+        }
+
+        return parseExtraction(response);
+    }
+
+    /**
+     * Builds the per-unit extraction prompt. Package-private so tests can
+     * check it without a network call.
+     */
+    String extractionPrompt(TextUnit unit, List<String> entityTypes) {
+        List<String> types = entityTypes == null || entityTypes.isEmpty() ? EntityTypes.ALL : entityTypes;
+        String typeList = String.join(", ", types);
+        return """
+                You are a knowledge-graph extraction engine. Read the passage below and identify the \
+                named entities and the relationships between them.
+
+                Every entity type, and every relationship's sourceType and targetType, must be exactly \
+                one of: %s. If none fits, use "%s".
 
                 Respond with strict JSON only (no markdown, no commentary) using exactly this shape:
                 {
@@ -94,18 +142,9 @@ public class OpenAiLlmPort implements LlmPort {
                   "relationships": [ { "source": "string", "sourceType": "string", "type": "string", "target": "string", "targetType": "string" } ]
                 }
 
-                Text:
+                Passage (from %s, passage %d):
                 %s
-                """.formatted(documentsText);
-
-        String response;
-        try {
-            response = jsonChatModel.chat(prompt);
-        } catch (RuntimeException e) {
-            throw new LlmCallFailedException("OpenAI extraction call failed", e);
-        }
-
-        return parseExtraction(response);
+                """.formatted(typeList, EntityTypes.CONCEPT, unit.documentName(), unit.ordinal() + 1, unit.text());
     }
 
     @Override

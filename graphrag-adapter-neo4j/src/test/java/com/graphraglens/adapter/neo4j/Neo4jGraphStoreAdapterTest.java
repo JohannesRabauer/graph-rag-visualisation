@@ -4,6 +4,7 @@ import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.TextUnit;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -59,6 +60,23 @@ class Neo4jGraphStoreAdapterTest {
         assertEquals(1, read.size());
         assertEquals("Apple", read.iterator().next().name());
         assertTrue(adapter.entities(otherCorpusId).isEmpty());
+    }
+
+    @Test
+    void persistsTextUnitsAndReadsThemBackForTheirCorpusOnlyWithoutDuplicates() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-tu-" + System.nanoTime();
+        String otherCorpusId = "corpus-tu-other-" + System.nanoTime();
+        TextUnit first = new TextUnit(corpusId + "::doc-0::tu-0", corpusId, "java.txt", 0, "Java began in 1991.");
+        TextUnit second = new TextUnit(corpusId + "::doc-0::tu-1", corpusId, "java.txt", 1, "Java 8 added lambdas.");
+
+        adapter.persistTextUnits(corpusId, List.of(first));
+        adapter.persistTextUnits(corpusId, List.of(second));
+        adapter.persistTextUnits(corpusId, List.of(first));
+
+        assertEquals(List.of(first, second), List.copyOf(adapter.textUnits(corpusId)));
+        assertTrue(adapter.textUnits(otherCorpusId).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> adapter.persistTextUnits(" ", List.of(first)));
     }
 
     @Test

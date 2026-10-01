@@ -4,6 +4,7 @@ import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.GraphStorePort;
 
 import org.neo4j.driver.Driver;
@@ -68,6 +69,9 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 "CREATE CONSTRAINT community_membership_corpus_key IF NOT EXISTS "
                         + "FOR ()-[m:BELONGS_TO]-() "
                         + "REQUIRE (m.corpusId, m.communityId, m.entityIdentity) IS UNIQUE");
+        ensureConstraint(
+                "CREATE CONSTRAINT text_unit_corpus_id IF NOT EXISTS "
+                        + "FOR (t:TextUnit) REQUIRE (t.corpusId, t.id) IS UNIQUE");
     }
 
     /**
@@ -183,6 +187,32 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     }
 
     @Override
+    public void persistTextUnits(String corpusId, Collection<TextUnit> textUnits) {
+        requireCorpusId(corpusId);
+        if (textUnits == null || textUnits.isEmpty()) {
+            return;
+        }
+        try (Session session = driver.session()) {
+            session.executeWrite(tx -> {
+                for (TextUnit textUnit : textUnits) {
+                    if (textUnit == null) {
+                        continue;
+                    }
+                    tx.run("MERGE (t:TextUnit {corpusId: $corpusId, id: $id}) "
+                                    + "SET t.documentName = $documentName, t.ordinal = $ordinal, t.text = $text",
+                            Map.of(
+                                    "corpusId", corpusId,
+                                    "id", textUnit.id(),
+                                    "documentName", textUnit.documentName() == null ? "" : textUnit.documentName(),
+                                    "ordinal", textUnit.ordinal(),
+                                    "text", textUnit.text() == null ? "" : textUnit.text()));
+                }
+                return null;
+            });
+        }
+    }
+
+    @Override
     public void persistCommunities(String corpusId, Collection<Community> communities) {
         requireCorpusId(corpusId);
         if (communities == null || communities.isEmpty()) {
@@ -271,6 +301,30 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                             record.get("type").asString(),
                             record.get("target").asString(),
                             record.get("targetType").asString()));
+                }
+                return result;
+            });
+        }
+    }
+
+    @Override
+    public List<TextUnit> textUnits(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return List.of();
+        }
+        try (Session session = driver.session()) {
+            return session.executeRead(tx -> {
+                List<TextUnit> result = new ArrayList<>();
+                for (Record record : tx.run("MATCH (t:TextUnit {corpusId: $corpusId}) "
+                                + "RETURN t.id AS id, t.documentName AS documentName, t.ordinal AS ordinal, "
+                                + "t.text AS text ORDER BY t.documentName, t.ordinal, t.id",
+                        Map.of("corpusId", corpusId)).list()) {
+                    result.add(new TextUnit(
+                            record.get("id").asString(),
+                            corpusId,
+                            record.get("documentName").asString(),
+                            record.get("ordinal").asInt(),
+                            record.get("text").asString()));
                 }
                 return result;
             });

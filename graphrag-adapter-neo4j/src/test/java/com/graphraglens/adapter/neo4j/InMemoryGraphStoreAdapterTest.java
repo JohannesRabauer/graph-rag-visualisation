@@ -37,6 +37,19 @@ class InMemoryGraphStoreAdapterTest {
     }
 
     @Test
+    void storesTextUnitsPerCorpusById() {
+        InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
+        io.graphrag.core.domain.TextUnit unit =
+                new io.graphrag.core.domain.TextUnit("corpus-a::doc-0::tu-0", "corpus-a", "a.txt", 0, "Text");
+
+        adapter.persistTextUnits("corpus-a", java.util.List.of(unit));
+        adapter.persistTextUnits("corpus-a", java.util.List.of(unit));
+
+        assertEquals(java.util.List.of(unit), adapter.textUnits("corpus-a"));
+        assertEquals(0, adapter.textUnits("corpus-b").size());
+    }
+
+    @Test
     void readsScopedCommunitiesAndMembershipsByCorpusId() {
         InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
 

@@ -80,6 +80,12 @@ class CorpusControllerTest {
     @MockitoSpyBean
     private ConstructVectorIndex constructVectorIndex;
 
+    @Autowired
+    private io.graphrag.core.usecase.IngestCorpus ingestCorpus;
+
+    @Autowired
+    private List<io.graphrag.core.port.DocumentParserPort> documentParsers;
+
     @Test
     void progressEndpointStreamsHeartbeatEventsWithNamedEventEnvelope() throws Exception {
         mockMvc.perform(get("/api/corpora/progress-test/progress"))
@@ -337,6 +343,112 @@ class CorpusControllerTest {
 
         Map<String, Object> communityPayload = payloads.get(eventTypes.indexOf("community-detected"));
         assertThat(communityPayload).containsKeys("communityId", "summary", "memberEntityIdentities");
+    }
+
+    /**
+     * Story 13.1: a document well over one Text Unit long, every paragraph
+     * naming a proper noun, so each unit yields at least one Entity.
+     */
+    private static String multiUnitCorpusText() {
+        StringBuilder text = new StringBuilder();
+        int paragraph = 0;
+        while (text.length() < 14_000) {
+            text.append("Ada Lovelace met Charles Babbage over paragraph ").append(paragraph++)
+                    .append(" of the engine notes. ")
+                    .append("The notes kept going on about the analytical engine and its many gears. ".repeat(3))
+                    .append("\n\n");
+        }
+        text.append("Grace Hopper closed the final passage.");
+        return text.toString();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void multiUnitUploadEmitsOneTextUnitEventPerPassageBeforeThatPassagesEntities() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "engine-notes.txt", "text/plain", multiUnitCorpusText().getBytes(StandardCharsets.UTF_8));
+
+        String responseBody = mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        ArgumentCaptor<String> eventTypeCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(corpusProgressService, org.mockito.Mockito.atLeastOnce())
+                .emit(eq(corpusId), eventTypeCaptor.capture(), payloadCaptor.capture());
+        List<String> eventTypes = eventTypeCaptor.getAllValues();
+        List<Map<String, Object>> payloads = payloadCaptor.getAllValues();
+
+        List<Integer> unitEventPositions = new java.util.ArrayList<>();
+        for (int i = 0; i < eventTypes.size(); i++) {
+            if ("text-unit-extracted".equals(eventTypes.get(i))) {
+                unitEventPositions.add(i);
+            }
+        }
+        assertThat(unitEventPositions).hasSizeGreaterThanOrEqualTo(2);
+        int total = unitEventPositions.size();
+        for (int n = 0; n < total; n++) {
+            Map<String, Object> payload = payloads.get(unitEventPositions.get(n));
+            assertThat(payload).containsEntry("index", n + 1)
+                    .containsEntry("total", total)
+                    .containsEntry("documentName", "engine-notes.txt");
+            // Every unit names a proper noun, so its own entity-extracted
+            // events directly follow it, before the next unit's progress event.
+            assertThat(eventTypes.get(unitEventPositions.get(n) + 1)).isEqualTo("entity-extracted");
+        }
+        assertThat(unitEventPositions.getFirst()).isLessThan(eventTypes.indexOf("entity-extracted"));
+        assertThat(eventTypes.indexOf("relationship-extracted")).isGreaterThan(unitEventPositions.getFirst());
+        int lastUnit = unitEventPositions.getLast();
+        assertThat(eventTypes.indexOf("community-detected")).isGreaterThan(lastUnit);
+        assertThat(eventTypes.lastIndexOf("entity-extracted")).isLessThan(eventTypes.indexOf("community-detected"));
+        assertThat(eventTypes.indexOf("ingestion-complete")).isGreaterThan(eventTypes.lastIndexOf("community-detected"));
+        assertThat(graphStorePort.textUnits(corpusId)).hasSize(total);
+        assertThat(graphStorePort.entities(corpusId))
+                .anyMatch(entity -> entity.name().equals("Grace Hopper"));
+    }
+
+    @Test
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void aFailingSecondPassageMarksTheCorpusFailedEmitsErrorAndLogsTheDocumentAndPassage(
+            org.springframework.boot.test.system.CapturedOutput output) {
+        java.util.List<Integer> calledOrdinals = new java.util.concurrent.CopyOnWriteArrayList<>();
+        LlmPort failingOnSecondUnit = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return new GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public GraphExtraction extract(io.graphrag.core.domain.TextUnit unit, List<String> entityTypes) {
+                calledOrdinals.add(unit.ordinal());
+                if (unit.ordinal() == 1) {
+                    throw new IllegalStateException("simulated LLM outage");
+                }
+                return new GraphExtraction(List.of(new io.graphrag.core.domain.Entity("Ada Lovelace", "Person")),
+                        List.of());
+            }
+        };
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, failingOnSecondUnit, graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null);
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "engine-notes.txt", "text/plain", multiUnitCorpusText().getBytes(StandardCharsets.UTF_8));
+
+        ResponseEntity<Map<String, Object>> response = controller.upload(List.<org.springframework.web.multipart.MultipartFile>of(file));
+        String corpusId = String.valueOf(response.getBody().get("corpusId"));
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"), any());
+        verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
+        assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
+        assertThat(calledOrdinals).containsExactly(0, 1);
+        assertThat(graphStorePort.textUnits(corpusId)).hasSize(1);
+        assertThat(output.getAll()).contains("engine-notes.txt").contains("passage 2");
     }
 
     @Test

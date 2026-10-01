@@ -4,6 +4,7 @@ import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.domain.UploadedDocument;
 import io.graphrag.core.port.LlmPort;
 
@@ -56,25 +57,45 @@ public class LangChain4jLlmPort implements LlmPort {
             if (document == null || document.content() == null || document.content().isBlank()) {
                 continue;
             }
-
-            String[] sentences = document.content().split("(?<=[.!?])\\s+");
-            for (String sentence : sentences) {
-                List<String> names = extractNames(sentence);
-                for (String name : names) {
-                    Entity entity = new Entity(name, inferType(name));
-                    entitiesByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
-                }
-
-                if (names.size() >= 2) {
-                    Relationship relationship = inferRelationship(sentence, names);
-                    if (relationship != null) {
-                        relationships.add(relationship);
-                    }
-                }
-            }
+            extractFromText(document.content(), entitiesByIdentity, relationships);
         }
 
         return new GraphExtraction(new ArrayList<>(entitiesByIdentity.values()), relationships);
+    }
+
+    /**
+     * Story 13.1: the same deterministic sentence/regex extraction, run over a
+     * single Text Unit's passage. The stub only ever infers {@code Person} or
+     * {@code Concept}, both on the fixed list, so {@code entityTypes} needs no
+     * further handling here.
+     */
+    @Override
+    public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+        if (unit == null || unit.text() == null || unit.text().isBlank()) {
+            return new GraphExtraction(List.of(), List.of());
+        }
+        Map<String, Entity> entitiesByIdentity = new LinkedHashMap<>();
+        List<Relationship> relationships = new ArrayList<>();
+        extractFromText(unit.text(), entitiesByIdentity, relationships);
+        return new GraphExtraction(new ArrayList<>(entitiesByIdentity.values()), relationships);
+    }
+
+    private void extractFromText(String text, Map<String, Entity> entitiesByIdentity, List<Relationship> relationships) {
+        String[] sentences = text.split("(?<=[.!?])\\s+");
+        for (String sentence : sentences) {
+            List<String> names = extractNames(sentence);
+            for (String name : names) {
+                Entity entity = new Entity(name, inferType(name));
+                entitiesByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
+            }
+
+            if (names.size() >= 2) {
+                Relationship relationship = inferRelationship(sentence, names);
+                if (relationship != null) {
+                    relationships.add(relationship);
+                }
+            }
+        }
     }
 
     private List<String> extractNames(String sentence) {

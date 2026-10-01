@@ -5,6 +5,7 @@ import io.graphrag.core.domain.CommunityMembership;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.TextUnit;
 
 import java.util.Collection;
 import java.util.List;
@@ -52,6 +53,21 @@ public interface GraphStorePort {
 
     default void persistCommunityMemberships(String corpusId, Collection<CommunityMembership> memberships) {
         persistCommunityMemberships(memberships);
+    }
+
+    /**
+     * Persists the Text Units an extraction ran over, scoped by corpus
+     * (AD-20). Optional: the default is a no-op.
+     */
+    default void persistTextUnits(String corpusId, Collection<TextUnit> textUnits) {
+        // Optional for graph-store implementations that keep source passages.
+    }
+
+    /**
+     * @return the persisted Text Units of {@code corpusId}; empty by default
+     */
+    default Collection<TextUnit> textUnits(String corpusId) {
+        return List.of();
     }
 
     default Collection<Entity> entities() {

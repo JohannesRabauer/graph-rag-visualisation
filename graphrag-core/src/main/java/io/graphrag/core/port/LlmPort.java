@@ -5,6 +5,8 @@ import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
+import io.graphrag.core.domain.TextUnit;
+import io.graphrag.core.domain.UploadedDocument;
 
 import java.util.Collection;
 import java.util.List;
@@ -22,6 +24,24 @@ public interface LlmPort {
      *         never null
      */
     GraphExtraction extract(Corpus corpus);
+
+    /**
+     * Extracts a knowledge graph from a single Text Unit (AD-24), restricted
+     * to the given Entity types.
+     *
+     * <p>The default wraps the unit as a one-document Corpus and delegates to
+     * {@link #extract(Corpus)}, so {@code LlmPort} stays usable as a lambda;
+     * real adapters override this to prompt with {@code entityTypes}. Callers
+     * still normalise the returned types themselves.
+     *
+     * @param unit        the passage to extract from; never null
+     * @param entityTypes the allowed Entity types, in order; never null
+     * @return the entities and relationships found in {@code unit}; never null
+     */
+    default GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+        return extract(new Corpus(unit.corpusId(),
+                List.of(new UploadedDocument(unit.documentName(), unit.text()))));
+    }
 
     default String summarizeCommunity(Collection<Entity> members) {
         if (members == null || members.isEmpty()) {
