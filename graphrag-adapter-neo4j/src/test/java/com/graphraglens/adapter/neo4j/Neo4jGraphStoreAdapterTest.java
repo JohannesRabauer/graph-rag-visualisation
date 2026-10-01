@@ -77,6 +77,9 @@ class Neo4jGraphStoreAdapterTest {
 
         assertEquals(List.of(first, second), List.copyOf(adapter.textUnits(corpusId)));
         assertTrue(adapter.textUnits(otherCorpusId).isEmpty());
+        assertEquals(first, adapter.textUnit(corpusId, first.id()).orElseThrow());
+        assertTrue(adapter.textUnit(corpusId, "missing").isEmpty());
+        assertTrue(adapter.textUnit(otherCorpusId, first.id()).isEmpty());
         assertThrows(IllegalArgumentException.class, () -> adapter.persistTextUnits(" ", List.of(first)));
     }
 

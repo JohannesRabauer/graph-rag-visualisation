@@ -145,13 +145,14 @@ class ExtractEntitiesAndRelationshipsTest {
         List<String> events = new ArrayList<>();
 
         new ExtractEntitiesAndRelationships(llmPort, new PerUnitRecordingGraphStorePort()).run(corpus,
-                progress -> events.add("unit " + progress.index() + "/" + progress.total() + " " + progress.documentName()),
+                progress -> events.add("unit " + progress.index() + "/" + progress.total() + " "
+                        + progress.documentName() + " " + progress.textUnitId() + " " + progress.ordinal()),
                 entity -> events.add("entity " + entity.name() + ":" + entity.type()),
                 relationship -> events.add("relationship " + relationship.sourceType() + "->" + relationship.targetType()));
 
         assertEquals(List.of(
-                "unit 1/2 a.txt", "entity Alice:Person", "entity Bob:Concept", "relationship Person->Concept",
-                "unit 2/2 b.txt", "entity Carol:Person", "entity Dave:Concept", "relationship Person->Concept"),
+                "unit 1/2 a.txt c1::doc-0::tu-0 0", "entity Alice:Person", "entity Bob:Concept", "relationship Person->Concept",
+                "unit 2/2 b.txt c1::doc-1::tu-0 0", "entity Carol:Person", "entity Dave:Concept", "relationship Person->Concept"),
                 events);
     }
 

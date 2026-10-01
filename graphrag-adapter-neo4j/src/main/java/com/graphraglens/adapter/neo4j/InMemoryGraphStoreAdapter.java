@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * An in-memory graph-store implementation used to validate the extraction flow.
@@ -49,6 +50,14 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
             return List.of();
         }
         return new ArrayList<>(readScopedMap(textUnitsByCorpusId, corpusId).values());
+    }
+
+    @Override
+    public Optional<TextUnit> textUnit(String corpusId, String textUnitId) {
+        if (corpusId == null || corpusId.isBlank() || textUnitId == null || textUnitId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(readScopedMap(textUnitsByCorpusId, corpusId).get(textUnitId));
     }
 
     @Override

@@ -11,6 +11,7 @@ import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.RetrievalStep;
 import io.graphrag.core.domain.RetrievalTrace;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.domain.UnreadableDocumentException;
 import io.graphrag.core.domain.UnsupportedFileTypeException;
 import io.graphrag.core.domain.UploadedDocument;
@@ -52,9 +53,11 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -185,6 +188,11 @@ public class CorpusController {
         Collection<Relationship> relationships = graphStorePort.relationships(corpusId);
         Collection<Community> communities = graphStorePort.communities(corpusId);
         Collection<CommunityMembership> memberships = graphStorePort.communityMemberships(corpusId);
+        Map<String, SourceLabel> sourceLabelsById = graphStorePort.textUnits(corpusId).stream()
+                .collect(Collectors.toMap(TextUnit::id,
+                        unit -> new SourceLabel(unit.documentName(), unit.ordinal()),
+                        (first, ignored) -> first,
+                        java.util.LinkedHashMap::new));
 
         Map<String, List<String>> memberEntityIdentitiesByCommunity = memberships.stream()
                 .collect(Collectors.groupingBy(
@@ -192,7 +200,7 @@ public class CorpusController {
                         Collectors.mapping(CommunityMembership::entityIdentity, Collectors.toList())));
 
         List<Map<String, Object>> entityPayload = entities.stream()
-                .map(this::entityEventPayload)
+                .map(entity -> entityEventPayload(entity, sourceLabelsById::get))
                 .toList();
         List<Map<String, Object>> relationshipPayload = relationships.stream()
                 .map(this::relationshipEventPayload)
@@ -207,6 +215,20 @@ public class CorpusController {
                 "entities", entityPayload,
                 "relationships", relationshipPayload,
                 "communities", communityPayload));
+    }
+
+    @GetMapping("/api/corpora/{corpusId}/text-units/{textUnitId}")
+    public ResponseEntity<Map<String, Object>> textUnit(@PathVariable("corpusId") String corpusId,
+                                                        @PathVariable("textUnitId") String textUnitId) {
+        corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        TextUnit textUnit = graphStorePort.textUnit(corpusId, textUnitId)
+                .orElseThrow(() -> new IllegalArgumentException("No text passage was found for id " + textUnitId));
+        return ResponseEntity.ok(Map.of(
+                "id", textUnit.id(),
+                "documentName", textUnit.documentName() == null ? "" : textUnit.documentName(),
+                "ordinal", textUnit.ordinal(),
+                "text", textUnit.text() == null ? "" : textUnit.text()));
     }
 
     private Map<String, Object> corpusSummaryPayload(Neo4jCorpusRegistry.CorpusSummary summary) {
@@ -450,15 +472,20 @@ public class CorpusController {
     private void startKnowledgeGraphConstruction(Corpus corpus, LlmPort llmPortToUse) {
         CompletableFuture.runAsync(() -> {
             try {
+                Map<String, SourceLabel> sourceLabelsById = new java.util.concurrent.ConcurrentHashMap<>();
                 new BuildKnowledgeGraph(llmPortToUse, graphStorePort).run(corpus,
-                        progress -> corpusProgressService.emit(corpus.id(), "text-unit-extracted",
-                                textUnitEventPayload(progress)),
+                        progress -> {
+                            sourceLabelsById.put(progress.textUnitId(),
+                                    new SourceLabel(progress.documentName(), progress.ordinal()));
+                            corpusProgressService.emit(corpus.id(), "text-unit-extracted",
+                                    textUnitEventPayload(progress));
+                        },
                         entity -> corpusProgressService.emit(corpus.id(), "entity-extracted",
-                                entityEventPayload(entity)),
+                                entityEventPayload(entity, sourceLabelsById::get)),
                         relationship -> corpusProgressService.emit(corpus.id(), "relationship-extracted",
                                 relationshipEventPayload(relationship)),
                         (previousIdentity, entity) -> corpusProgressService.emit(corpus.id(), "entity-retyped",
-                                entityRetypedEventPayload(previousIdentity, entity)));
+                                entityRetypedEventPayload(previousIdentity, entity, sourceLabelsById::get)));
                 new DetectCommunities(graphStorePort, llmPortToUse).run(corpus,
                         (community, memberEntityIdentities) -> corpusProgressService.emit(corpus.id(), "community-detected",
                                 communityEventPayload(community, memberEntityIdentities)));
@@ -497,18 +524,42 @@ public class CorpusController {
                 "documentName", progress.documentName() == null ? "" : progress.documentName());
     }
 
-    private Map<String, Object> entityEventPayload(Entity entity) {
+    private Map<String, Object> entityEventPayload(Entity entity, Function<String, SourceLabel> sourceLabelLookup) {
         return Map.of(
                 "identity", entity.normalizedIdentity(),
                 "name", entity.name(),
                 "type", entity.type(),
-                "description", entity.description());
+                "description", entity.description(),
+                "sources", sourcePayloads(entity, sourceLabelLookup));
     }
 
-    private Map<String, Object> entityRetypedEventPayload(String previousIdentity, Entity entity) {
-        Map<String, Object> payload = new java.util.LinkedHashMap<>(entityEventPayload(entity));
+    private Map<String, Object> entityRetypedEventPayload(String previousIdentity, Entity entity,
+                                                          Function<String, SourceLabel> sourceLabelLookup) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>(entityEventPayload(entity, sourceLabelLookup));
         payload.put("previousIdentity", previousIdentity);
         return payload;
+    }
+
+    private List<Map<String, Object>> sourcePayloads(Entity entity, Function<String, SourceLabel> sourceLabelLookup) {
+        if (entity.sourceTextUnitIds().isEmpty()) {
+            return List.of();
+        }
+        return entity.sourceTextUnitIds().stream()
+                .map(textUnitId -> {
+                    SourceLabel sourceLabel = sourceLabelLookup.apply(textUnitId);
+                    if (sourceLabel == null) {
+                        return null;
+                    }
+                    return Map.<String, Object>of(
+                            "textUnitId", textUnitId,
+                            "documentName", sourceLabel.documentName() == null ? "" : sourceLabel.documentName(),
+                            "ordinal", sourceLabel.ordinal());
+                })
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private record SourceLabel(String documentName, int ordinal) {
     }
 
     private Map<String, Object> relationshipEventPayload(Relationship relationship) {

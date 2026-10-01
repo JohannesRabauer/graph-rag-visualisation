@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Real Neo4j-backed implementation of {@link GraphStorePort}, using the
@@ -375,6 +376,25 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 }
                 return result;
             });
+        }
+    }
+
+    @Override
+    public Optional<TextUnit> textUnit(String corpusId, String textUnitId) {
+        if (corpusId == null || corpusId.isBlank() || textUnitId == null || textUnitId.isBlank()) {
+            return Optional.empty();
+        }
+        try (Session session = driver.session()) {
+            return session.executeRead(tx -> tx.run("MATCH (t:TextUnit {corpusId: $corpusId, id: $id}) "
+                            + "RETURN t.id AS id, t.documentName AS documentName, t.ordinal AS ordinal, t.text AS text",
+                    Map.of("corpusId", corpusId, "id", textUnitId)).list().stream()
+                    .findFirst()
+                    .map(record -> new TextUnit(
+                            record.get("id").asString(),
+                            corpusId,
+                            record.get("documentName").asString(),
+                            record.get("ordinal").asInt(),
+                            record.get("text").asString())));
         }
     }
 

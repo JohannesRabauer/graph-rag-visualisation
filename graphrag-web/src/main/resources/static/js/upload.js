@@ -68,6 +68,8 @@
   var entityDetailEyebrow = document.getElementById('entity-detail-eyebrow');
   var entityDetailDescriptionSection = document.getElementById('entity-detail-description-section');
   var entityDetailDescription = document.getElementById('entity-detail-description');
+  var entityDetailSourcesSection = document.getElementById('entity-detail-sources-section');
+  var entityDetailSources = document.getElementById('entity-detail-sources');
   var entityDetailRelationshipsHeading = document.getElementById('entity-detail-relationships-heading');
   var entityDetailTagsSection = document.getElementById('entity-detail-tags-section');
   var selectedCommunityId = null;
@@ -78,6 +80,9 @@
   // re-look-up the Entity's data.
   var selectedEntityType = null;
   var activeRelationships = [];
+  var activeEntityDetails = {};
+  var sourcePassageCache = {};
+  var sourcePassageCacheIdentity = null;
 
   if (!fileInput || !corpusChip || !errorBanner) {
     return;
@@ -499,11 +504,128 @@
     selectedEntityIdentity = null;
     selectedEntityType = null;
     selectedCommunityId = null;
+    sourcePassageCache = {};
+    sourcePassageCacheIdentity = null;
     if (!entityDetailPanel) {
       return;
     }
     entityDetailPanel.classList.remove('is-open');
     entityDetailPanel.setAttribute('aria-hidden', 'true');
+  }
+
+  function resetActiveEntityDetails() {
+    activeEntityDetails = {};
+    sourcePassageCache = {};
+    sourcePassageCacheIdentity = null;
+  }
+
+  function normalizeSources(sources) {
+    return Array.isArray(sources) ? sources.filter(function (source) {
+      return source && source.textUnitId;
+    }).map(function (source) {
+      return {
+        textUnitId: source.textUnitId,
+        documentName: source.documentName || '',
+        ordinal: Number.isFinite(Number(source.ordinal)) ? Number(source.ordinal) : 0
+      };
+    }) : [];
+  }
+
+  function updateActiveEntityDetails(entity) {
+    if (!entity || !entity.identity) {
+      return;
+    }
+    activeEntityDetails[entity.identity] = {
+      description: entity.description || '',
+      sources: normalizeSources(entity.sources)
+    };
+    if (selectedEntityIdentity === entity.identity) {
+      renderEntityDetailDescription(entity.identity);
+      renderEntityDetailSources(entity.identity);
+    }
+  }
+
+  function moveActiveEntityDetails(previousIdentity, entity) {
+    if (previousIdentity && activeEntityDetails[previousIdentity]) {
+      delete activeEntityDetails[previousIdentity];
+    }
+    updateActiveEntityDetails(entity);
+  }
+
+  function renderEntityDetailDescription(identity) {
+    var details = activeEntityDetails[identity] || {};
+    var description = (details.description || '').trim();
+    if (entityDetailDescription) {
+      entityDetailDescription.textContent = description;
+    }
+    if (entityDetailDescriptionSection) {
+      entityDetailDescriptionSection.hidden = !description;
+    }
+  }
+
+  function renderEntityDetailSources(identity) {
+    if (!entityDetailSources || !entityDetailSourcesSection) {
+      return;
+    }
+    var details = activeEntityDetails[identity] || {};
+    var sources = details.sources || [];
+    entityDetailSources.textContent = '';
+    entityDetailSourcesSection.hidden = sources.length === 0 || !identity;
+    if (entityDetailSourcesSection.hidden) {
+      return;
+    }
+    if (sourcePassageCacheIdentity !== identity) {
+      sourcePassageCache = {};
+      sourcePassageCacheIdentity = identity;
+    }
+    sources.forEach(function (source) {
+      var item = document.createElement('li');
+      item.className = 'node-detail-source';
+
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'node-detail-source-toggle';
+      button.setAttribute('aria-expanded', 'false');
+      button.textContent = (source.documentName || 'Unknown document') + ' · passage ' + (source.ordinal + 1);
+
+      var passage = document.createElement('p');
+      passage.className = 'node-detail-source-text';
+      passage.hidden = true;
+
+      button.addEventListener('click', function () {
+        var expanded = button.getAttribute('aria-expanded') === 'true';
+        button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        passage.hidden = expanded;
+        if (expanded) {
+          return;
+        }
+        if (Object.prototype.hasOwnProperty.call(sourcePassageCache, source.textUnitId)) {
+          passage.textContent = sourcePassageCache[source.textUnitId];
+          return;
+        }
+        passage.textContent = 'Loading…';
+        fetch('/api/corpora/' + encodeURIComponent(activeCorpusId) + '/text-units/'
+            + encodeURIComponent(source.textUnitId))
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error('Passage not available');
+            }
+            return response.json();
+          })
+          .then(function (body) {
+            sourcePassageCache[source.textUnitId] = body && body.text ? body.text : '';
+            passage.textContent = sourcePassageCache[source.textUnitId];
+          })
+          .catch(function () {
+            sourcePassageCache[source.textUnitId] = 'Passage not available';
+            passage.textContent = 'Passage not available';
+          });
+      });
+
+      item.appendChild(button);
+      item.appendChild(passage);
+      entityDetailSources.appendChild(item);
+    });
   }
 
   // Builds one line per Relationship involving `identity`, matching on
@@ -519,9 +641,12 @@
       }
       var otherName = isSource ? relationship.target : relationship.source;
       var relationshipType = relationship.type || 'related_to';
-      lines.push(isSource
-          ? '→ ' + relationshipType + ' → ' + otherName
-          : '← ' + relationshipType + ' ← ' + otherName);
+      lines.push({
+        text: isSource
+            ? '→ ' + relationshipType + ' → ' + otherName
+            : '← ' + relationshipType + ' ← ' + otherName,
+        description: relationship.description || ''
+      });
     });
     return lines;
   }
@@ -541,7 +666,10 @@
     }
     lines.forEach(function (line) {
       var item = document.createElement('li');
-      item.textContent = line;
+      item.textContent = line.text;
+      if ((line.description || '').trim()) {
+        item.title = line.description;
+      }
       entityDetailRelationships.appendChild(item);
     });
   }
@@ -593,6 +721,9 @@
     if (entityDetailDescriptionSection) {
       entityDetailDescriptionSection.hidden = !isCommunity;
     }
+    if (entityDetailSourcesSection) {
+      entityDetailSourcesSection.hidden = true;
+    }
     if (entityDetailTagsSection) {
       entityDetailTagsSection.hidden = isCommunity;
     }
@@ -642,6 +773,8 @@
     if (entityDetailType) {
       entityDetailType.textContent = 'Type: ' + (nodeData.type || 'Unknown');
     }
+    renderEntityDetailDescription(nodeData.identity);
+    renderEntityDetailSources(nodeData.identity);
     renderEntityDetailRelationships(nodeData.identity);
     renderEntityDetailTags(nodeData.type);
     entityDetailPanel.classList.add('is-open');
@@ -977,6 +1110,7 @@
     }
     closeEntityDetailPanel();
     activeRelationships = [];
+    resetActiveEntityDetails();
 
     activeCorpusId = null;
     activeCorpusReady = false;
@@ -1112,6 +1246,7 @@
     // longer resolves to anything) once the canvas is rebuilt below.
     closeEntityDetailPanel();
     activeRelationships = [];
+    resetActiveEntityDetails();
 
     // Story 9.1: the offline demo corpus never accepts a new question — the
     // note replaces the composer placeholder for the whole time it's active.
@@ -1435,6 +1570,7 @@
         var payload = JSON.parse(event.data);
         var data = payload && payload.data;
         if (data && window.GraphCanvas) {
+          updateActiveEntityDetails(data);
           window.GraphCanvas.addEntity(data.identity, data.name, data.type);
         }
       } catch (e) {
@@ -1447,6 +1583,7 @@
         var payload = JSON.parse(event.data);
         var data = payload && payload.data;
         if (data && window.GraphCanvas) {
+          moveActiveEntityDetails(data.previousIdentity, data);
           window.GraphCanvas.retypeEntity(data.previousIdentity, data.identity, data.name, data.type);
           activeRelationships.forEach(function (relationship) {
             if (relationship.sourceIdentity === data.previousIdentity) {
@@ -1467,6 +1604,8 @@
             if (entityDetailType) {
               entityDetailType.textContent = 'Type: ' + (data.type || 'Unknown');
             }
+            renderEntityDetailDescription(data.identity);
+            renderEntityDetailSources(data.identity);
             renderEntityDetailRelationships(data.identity);
             renderEntityDetailTags(data.type);
           }
@@ -1488,13 +1627,23 @@
           // events rather than one bulk fetch, so there's nothing else to
           // read a node's relationships from. Overlapping passages (Story
           // 13.1) can re-emit the same Relationship, so keep one per edge.
-          var isDuplicate = activeRelationships.some(function (existing) {
-            return existing.sourceIdentity === data.sourceIdentity
+          var duplicate = null;
+          activeRelationships.some(function (existing) {
+            var matches = existing.sourceIdentity === data.sourceIdentity
                 && existing.targetIdentity === data.targetIdentity
                 && (existing.type || 'related_to') === (data.type || 'related_to');
+            if (matches) {
+              duplicate = existing;
+            }
+            return matches;
           });
-          if (!isDuplicate) {
+          if (duplicate) {
+            duplicate.description = data.description || '';
+          } else {
             activeRelationships.push(data);
+          }
+          if (selectedEntityIdentity === data.sourceIdentity || selectedEntityIdentity === data.targetIdentity) {
+            renderEntityDetailRelationships(selectedEntityIdentity);
           }
         }
       } catch (e) {
@@ -1717,6 +1866,7 @@
     }
     closeEntityDetailPanel();
     activeRelationships = [];
+    resetActiveEntityDetails();
 
     activeCorpusId = corpusMeta.id;
     activeCorpusReady = false;
@@ -1801,6 +1951,7 @@
           }
           if (window.GraphCanvas) {
             (body.entities || []).forEach(function (entity) {
+              updateActiveEntityDetails(entity);
               window.GraphCanvas.addEntity(entity.identity, entity.name, entity.type);
             });
             (body.relationships || []).forEach(function (relationship) {

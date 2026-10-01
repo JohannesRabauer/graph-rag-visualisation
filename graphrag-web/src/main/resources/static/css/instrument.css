@@ -1979,6 +1979,50 @@ body {
   color: var(--ink-400);
 }
 
+.node-detail-sources {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.node-detail-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.node-detail-source-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  text-align: left;
+  cursor: pointer;
+}
+
+.node-detail-source-toggle:hover {
+  text-decoration: underline;
+}
+
+.node-detail-source-text {
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--chrome);
+  color: var(--ink-900);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  white-space: pre-wrap;
+}
+
 .node-detail-tags {
   display: flex;
   flex-wrap: wrap;

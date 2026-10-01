@@ -2,6 +2,7 @@ package com.graphraglens.adapter.neo4j;
 
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryGraphStoreAdapterTest {
 
@@ -55,14 +57,16 @@ class InMemoryGraphStoreAdapterTest {
     @Test
     void storesTextUnitsPerCorpusById() {
         InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
-        io.graphrag.core.domain.TextUnit unit =
-                new io.graphrag.core.domain.TextUnit("corpus-a::doc-0::tu-0", "corpus-a", "a.txt", 0, "Text");
+        TextUnit unit = new TextUnit("corpus-a::doc-0::tu-0", "corpus-a", "a.txt", 0, "Text");
 
         adapter.persistTextUnits("corpus-a", List.of(unit));
         adapter.persistTextUnits("corpus-a", List.of(unit));
 
         assertEquals(List.of(unit), adapter.textUnits("corpus-a"));
         assertEquals(0, adapter.textUnits("corpus-b").size());
+        assertEquals(unit, adapter.textUnit("corpus-a", unit.id()).orElseThrow());
+        assertTrue(adapter.textUnit("corpus-a", "missing").isEmpty());
+        assertTrue(adapter.textUnit("corpus-b", unit.id()).isEmpty());
     }
 
     @Test

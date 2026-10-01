@@ -9,6 +9,7 @@ import io.graphrag.core.domain.TextUnit;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Port for persisting and querying the knowledge graph.
@@ -72,6 +73,15 @@ public interface GraphStorePort {
      */
     default Collection<TextUnit> textUnits(String corpusId) {
         return List.of();
+    }
+
+    default Optional<TextUnit> textUnit(String corpusId, String textUnitId) {
+        if (corpusId == null || corpusId.isBlank() || textUnitId == null || textUnitId.isBlank()) {
+            return Optional.empty();
+        }
+        return textUnits(corpusId).stream()
+                .filter(textUnit -> textUnitId.equals(textUnit.id()))
+                .findFirst();
     }
 
     default Collection<Entity> entities() {

@@ -101,7 +101,8 @@ public class ExtractEntitiesAndRelationships {
             graphStorePort.persist(corpus.id(), mergedExtraction);
 
             if (onTextUnitExtracted != null) {
-                onTextUnitExtracted.accept(new TextUnitProgress(i + 1, total, unit.documentName()));
+                onTextUnitExtracted.accept(new TextUnitProgress(i + 1, total, unit.documentName(),
+                        unit.id(), unit.ordinal()));
             }
             if (onEntityRetyped != null) {
                 for (Map.Entry<String, Entity> retyped : retypedEntities.entrySet()) {

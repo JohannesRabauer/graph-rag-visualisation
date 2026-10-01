@@ -3,6 +3,8 @@ package com.graphraglens.web;
 import com.graphraglens.adapter.neo4j.Neo4jCorpusRegistry;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.GraphExtraction;
+import io.graphrag.core.domain.TextUnit;
+import io.graphrag.core.domain.UploadedDocument;
 import io.graphrag.core.port.GraphStorePort;
 import io.graphrag.core.port.LlmPort;
 import io.graphrag.core.usecase.ConstructVectorIndex;
@@ -369,7 +371,10 @@ class CorpusControllerTest {
         assertThat(eventTypes).contains("entity-extracted", "relationship-extracted", "community-detected");
 
         Map<String, Object> entityPayload = payloads.get(eventTypes.indexOf("entity-extracted"));
-        assertThat(entityPayload).containsKeys("identity", "name", "type", "description");
+        assertThat(entityPayload).containsKeys("identity", "name", "type", "description", "sources");
+        List<Map<String, Object>> sources = (List<Map<String, Object>>) entityPayload.get("sources");
+        assertThat(sources).isNotEmpty();
+        assertThat(sources.getFirst()).containsKeys("textUnitId", "documentName", "ordinal");
 
         Map<String, Object> relationshipPayload = payloads.get(eventTypes.indexOf("relationship-extracted"));
         assertThat(relationshipPayload).containsKeys("sourceIdentity", "source", "targetIdentity", "target", "type",
@@ -967,12 +972,13 @@ class CorpusControllerTest {
                 .andExpect(jsonPath("$.entities").isArray())
                 .andExpect(jsonPath("$.relationships").isArray())
                 .andExpect(jsonPath("$.communities").isArray())
-                .andExpect(jsonPath("$.entities[0]").value(org.hamcrest.Matchers.aMapWithSize(4)))
+                .andExpect(jsonPath("$.entities[0]").value(org.hamcrest.Matchers.aMapWithSize(5)))
                 .andExpect(jsonPath("$.entities[0]", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.hasKey("identity"),
                         org.hamcrest.Matchers.hasKey("name"),
                         org.hamcrest.Matchers.hasKey("type"),
-                        org.hamcrest.Matchers.hasKey("description"))))
+                        org.hamcrest.Matchers.hasKey("description"),
+                        org.hamcrest.Matchers.hasKey("sources"))))
                 .andExpect(jsonPath("$.relationships[0]", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.hasKey("sourceIdentity"),
                         org.hamcrest.Matchers.hasKey("source"),
@@ -1001,6 +1007,41 @@ class CorpusControllerTest {
             List<String> actualMembers = (List<String>) community.get("memberEntityIdentities");
             assertThat(actualMembers).containsExactlyInAnyOrderElementsOf(expectedMembers);
         }
+    }
+
+    @Test
+    void textUnitEndpointReturnsScopedPassageAnd404ForMissingOrOtherCorpusUnit() throws Exception {
+        String responseBody = mockMvc.perform(multipart("/api/corpora/demo"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        TextUnit unit = graphStorePort.textUnits(corpusId).iterator().next();
+        mockMvc.perform(get("/api/corpora/{corpusId}/text-units/{textUnitId}", corpusId, unit.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(unit.id()))
+                .andExpect(jsonPath("$.documentName").value(unit.documentName()))
+                .andExpect(jsonPath("$.ordinal").value(unit.ordinal()))
+                .andExpect(jsonPath("$.text").value(unit.text()));
+
+        mockMvc.perform(get("/api/corpora/{corpusId}/text-units/{textUnitId}", corpusId, "missing-unit"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("No text passage was found for id missing-unit"));
+
+        String otherCorpusId = "other-corpus-" + java.util.UUID.randomUUID();
+        corpusRegistry.put(new Corpus(otherCorpusId, List.of(new UploadedDocument("other.txt", "Other text"))));
+        mockMvc.perform(get("/api/corpora/{corpusId}/text-units/{textUnitId}", otherCorpusId, unit.id()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("No text passage was found for id " + unit.id()));
+
+        mockMvc.perform(get("/api/corpora/{corpusId}/text-units/{textUnitId}", "nonexistent-corpus", unit.id()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("No corpus was found for id nonexistent-corpus"));
     }
 
     @Test
