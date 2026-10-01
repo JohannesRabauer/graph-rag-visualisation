@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3]
+stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
   - _bmad-output/planning-artifacts/prds/prd-graph-rag-visualisation-2026-09-19/prd.md
   - _bmad-output/planning-artifacts/architecture/architecture-graph-rag-visualisation-2026-09-19/ARCHITECTURE-SPINE.md
@@ -39,6 +39,12 @@ FR19 (v1.1): System chunks and embeds the ingested Corpus into a vector index, i
 FR20 (v1.1): User can trigger a Vector Baseline answer for a question already asked via GraphRAG, on demand via a "Compare with Vector Search" action — never automatic.
 FR21 (v1.1): The Vector Baseline's pipeline (chunking, embedding, query embedding, similarity ranking, synthesis) is captured as its own Vector Trace, replayable step-by-step with the same transport controls as the existing Retrieval Trace.
 FR22 (v1.1): Corpus chunk embeddings are visualized as a 2D-projected scatter (settled once at ingestion, stable across questions); a query's embedding is plotted live with its top-k nearest chunks highlighted and scored.
+FR23 (v1.2): The Corpus is split into overlapping Text Units (~1–2k tokens); Entities and Relationships are extracted with one LLM call per Text Unit, against a fixed Entity type list, and ingestion progress reports each Text Unit as it completes.
+FR24 (v1.2): Each Entity and Relationship carries an LLM-written description and the ids of the Text Units it was extracted from; the Entity detail panel shows both.
+FR25 (v1.2): Mentions of the same Entity across Text Units (differing in case, punctuation, whitespace, or extracted type) resolve to one Entity node.
+FR26 (v1.2): Each Community's summary is written from its members' descriptions and internal Relationships, not member names alone.
+FR27 (v1.2): Local, Global, and DRIFT answers are written by the LLM from the retrieved context and cite the Text Units they rely on; every citation was recorded in that answer's Retrieval Trace.
+FR28 (v1.2): Local, Global, and DRIFT Search find their starting Entities/Communities by embedding similarity to the question, with keyword matching as the offline fallback.
 
 ### NonFunctional Requirements
 
@@ -114,6 +120,14 @@ FR19: Epic 8 - Build the vector index
 FR20: Epic 8 - Answer via Vector Baseline, on demand
 FR21: Epic 8 - Capture and replay the Vector Trace
 FR22: Epic 8 - Visualize the embedding space
+FR6 (re-delivered, v1.2): Epic 14 - Real GDS Leiden clustering (v1 shipped connected components)
+FR11 (re-delivered, v1.2): Epic 15 - LLM-generated answers (v1 shipped templated sentences)
+FR23: Epic 13 - Per-passage extraction with live per-passage progress
+FR24: Epic 13 - Descriptions and source passages for Entities/Relationships
+FR25: Epic 13 - Entity resolution across passages
+FR26: Epic 14 - Community summaries from content
+FR27: Epic 15 - Grounded, cited answers
+FR28: Epic 15 - Semantic seed matching
 
 NFR1 (UI tone): Established in Epic 1 (design tokens/shell), enforced across all epics.
 NFR2 (Reliability, bounded): Enforced in Epic 2 (extraction failures) and Epic 3 (generation failures).
@@ -155,6 +169,18 @@ A third query mode: a Community-summary pass spawns targeted Local Search sub-qu
 ### Epic 8: Vector-RAG Comparison Baseline *(v1.1)*
 On demand, from an already-answered question, users can trigger a plain vector-similarity baseline and watch its mechanics step by step — chunking, embedding, query embedding, similarity ranking — in a dedicated Vector Space tab with a 2D embedding scatter, directly comparable to GraphRAG's own trace for the same question.
 **FRs covered:** FR19, FR20, FR21, FR22
+
+### Epic 13: Knowledge Graph Quality — Per-Passage Extraction with Descriptions & Provenance *(v1.2)*
+The graph is extracted passage by passage against a fixed type list, every Entity and Relationship gets a description and its source passages, and duplicates are resolved — so long documents are covered end to end, the graph visibly grows during ingestion, and viewers can check any Entity against the text.
+**FRs covered:** FR23, FR24, FR25 (hardens FR5)
+
+### Epic 14: Real Communities — GDS Leiden & Grounded Summaries *(v1.2)*
+Communities come from GDS Leiden instead of connected components, and their summaries are written from members' descriptions and Relationships — topics instead of "whatever happens to be connected".
+**FRs covered:** FR6 (re-delivered), FR26
+
+### Epic 15: Grounded, Cited Answers *(v1.2)*
+Searches find their starting points by meaning, the LLM writes the answer from the retrieved context, and every answer cites the passages it used — visible in the chat and as their own steps in Replay.
+**FRs covered:** FR11 (re-delivered), FR27, FR28
 
 <!-- Repeat for each epic in epics_list (N = 1, 2, 3...) -->
 
@@ -1024,3 +1050,194 @@ So that I never lose track of past work to a restart and never have to re-ingest
 **And** demo/offline corpora (Story 9.1) appear in the list only for the current session — never reappearing after a restart, since Story 12.4 never persists them
 
 **Design Notes:** Builds on the existing corpus-chip UI pattern from Story 10.4's "start over" flow — this adds *switching to a previous* corpus alongside that story's *replace with a new* one, not a competing UI.
+
+## Epic 13: Knowledge Graph Quality — Per-Passage Extraction with Descriptions & Provenance
+
+Found while analysing how the graph is actually built (2026-10-01): `OpenAiLlmPort.extract` joins the whole Corpus into **one** prompt and gets back bare `{name, type}` Entities and untyped-description Relationships. On a ~9,000-word document (`demo-corpora/history-of-java.txt`) that samples a few dozen Entities, mostly from the start of the text; the graph then arrives all at once; and nothing links an Entity back to the passage it came from. This epic rebuilds extraction the way reference GraphRAG implementations do: passage by passage (Text Units), against a fixed type list, with a description and source passages for every Entity and Relationship, and with duplicates resolved before they hit Neo4j. It is the foundation Epics 14 and 15 build on — every search mode can only be as good as this graph.
+**FRs covered:** FR23, FR24, FR25; hardens FR5 (truncated output). Governed by AD-24, AD-25, AD-26 (plus AD-1, AD-3, AD-10, AD-12, AD-14, AD-20).
+
+### Story 13.1: Extract the Knowledge Graph Passage by Passage
+
+As the presenter,
+I want the Corpus split into Text Units and extracted one Text Unit at a time,
+So that long documents are extracted evenly from start to end and the audience watches the graph grow passage by passage.
+
+**Acceptance Criteria:**
+
+**Given** a Corpus of one or more documents
+**When** Knowledge Graph construction runs
+**Then** a core `TextUnitSplitter` (no framework imports, AD-1) splits each document into overlapping Text Units of ~6,000 characters with ~600 characters of overlap, cutting on paragraph or sentence boundaries where one exists, each with a stable `id`, `corpusId`, `documentName`, `ordinal`, and `text`
+**And** `ExtractEntitiesAndRelationships` calls a new `LlmPort.extract(TextUnit, List<String> entityTypes)` once per Text Unit, sequentially, persisting each unit's Entities and Relationships before starting the next (AD-24, AD-14)
+**And** each Text Unit is persisted as `(:TextUnit {corpusId, id, documentName, ordinal, text})`, MERGE-keyed on `(corpusId, id)` (AD-20)
+**And** after each Text Unit the progress stream emits `text-unit-extracted` with `{index, total, documentName}` before that unit's `entity-extracted`/`relationship-extracted` events, and the workflow status line reads "Extracting passage {index} of {total} — {documentName}"
+**And** the Entity type list is one constant in `graphrag-core` (Person, Organization, Product, Technology, Version, Event, Location, Concept) and is passed to every `extract` call; any other type returned maps to Concept
+**And** the offline stub (`LangChain4jLlmPort`) implements the per-Text-Unit `extract` deterministically, so the Demo Dataset, offline mode, and every existing UI test still pass without network access
+**And** if any Text Unit's extraction fails, ingestion stops, the corpus is marked `FAILED`, and the existing error state shows (FR-5) — no partial "best effort" graph
+**And** a unit test proves an Entity mentioned only in the last Text Unit of a multi-unit document is extracted
+
+**Design Notes:** The old `LlmPort.extract(Corpus)` stays as a default method that loops over Text Units, so external callers keep compiling. Text Units are independent of the Vector Baseline's 500-character `Chunk`s (AD-17) — do not merge the two splitters.
+
+### Story 13.2: Give Every Entity and Relationship a Description and Its Source Passages
+
+As the presenter,
+I want each Entity and Relationship to carry a short description and the ids of the Text Units it came from,
+So that searches and summaries have real content to work with, and answers can point back at the text.
+
+**Acceptance Criteria:**
+
+**Given** per-Text-Unit extraction (Story 13.1)
+**When** the OpenAI adapter extracts a Text Unit
+**Then** its prompt names the fixed Entity type list and asks, per Entity, for `name`, `type`, `description` (one or two sentences), and per Relationship for `source`, `target`, `type`, `description`, using JSON mode
+**And** `Entity` gains `description` and `sourceTextUnitIds`, and `Relationship` gains `description`, `sourceTextUnitIds`, and `weight` (number of source Text Units), with the existing two-/five-argument constructors kept as overloads (AD-25)
+**And** `Neo4jGraphStoreAdapter` stores these as properties of the existing Entity nodes and relationships, plus one `(:Entity)-[:MENTIONED_IN]->(:TextUnit)` per source unit; the in-memory adapter keeps them in memory
+**And** the `entity-extracted` and `relationship-extracted` SSE payloads include `description`
+**And** the adapter sets an explicit max-output-token limit, and a response cut off by that limit (finish reason `length`) or that is not valid JSON fails the ingestion visibly, naming the document and passage number in the server log (FR-5)
+**And** existing corpora persisted before this story still load and display (missing descriptions read as empty, never as an error)
+
+### Story 13.3: Resolve Duplicate Entities Before They Reach Neo4j
+
+As the presenter,
+I want mentions of the same Entity across passages to land on one node,
+So that per-passage extraction doesn't fragment the graph into near-duplicates.
+
+**Acceptance Criteria:**
+
+**Given** a Corpus where the same Entity is extracted from several Text Units, with differences in letter case, surrounding punctuation, whitespace, or extracted type
+**When** each Text Unit's extraction is persisted
+**Then** a core `EntityResolver` (AD-26) maps every extracted Entity onto the Corpus's already-known Entities, comparing names after Unicode normalization, case folding, whitespace collapsing, and stripping surrounding punctuation
+**And** a name match with a different type resolves to the existing Entity; across the Corpus the type with the most mentions wins, ties keep the earlier one
+**And** Relationship endpoints are rewritten to the resolved identities before persistence
+**And** descriptions merge by appending distinct sentences (capped at ~1,000 characters), and source Text Unit ids are unioned; a Relationship extracted again increments its `weight`
+**And** AD-10's `MERGE` on `name::type` stays the persistence key
+**And** unit tests cover: case/punctuation variants, a type conflict, a Relationship whose endpoint is a variant, and description merging
+
+**Design Notes:** Fuzzy or semantic merging ("Java 8" ≡ "Java SE 8") is explicitly out of scope (AD-26) — keep the rules deterministic and explainable on stage.
+
+### Story 13.4: Show Descriptions and Source Passages in the Entity Detail Panel
+
+As a viewer exploring the graph,
+I want an Entity's panel to show what it is and where in the text it came from,
+So that I can check the graph against the source.
+
+**Acceptance Criteria:**
+
+**Given** a Corpus ingested with descriptions and provenance (Stories 13.2–13.3)
+**When** I click an Entity on the canvas
+**Then** the detail panel's existing Description section shows the Entity's description (hidden when empty, as today)
+**And** a new "Source passages" section lists each source Text Unit as `{documentName} · passage {ordinal}`, and expanding one shows its text, fetched from a new `GET /api/corpora/{corpusId}/text-units/{textUnitId}` endpoint (404 → "Passage not available")
+**And** each Relationship row in the panel shows its description as a tooltip
+**And** the help article for the Entity panel (`entity-detail`) mentions descriptions and source passages
+**And** a UI test opens an Entity, expands a source passage, and sees its text
+
+---
+
+## Epic 14: Real Communities — GDS Leiden & Grounded Summaries
+
+`DetectCommunities` has always been a BFS over connected components, although FR-6, AD-4, and Story 12.1's acceptance criteria all say GDS Leiden — and the GDS plugin is already installed in `docker-compose.yml`. Connected components give one giant Community for any well-linked area and a separate Community for every isolated pair, which is exactly the scattering seen on the cryptids corpus. Summaries are then written from member *names* only. This epic delivers the clustering the PRD promised and summaries written from the content Epic 13 now provides.
+**FRs covered:** FR6 (re-delivered), FR26. Governed by AD-27, AD-28 (plus AD-4, AD-6, AD-11, AD-20).
+
+### Story 14.1: Detect Communities with GDS Leiden
+
+As the presenter,
+I want Communities to come from modularity-based Leiden clustering,
+So that they reflect the topics of the Corpus rather than which parts happen to be connected.
+
+**Acceptance Criteria:**
+
+**Given** a Corpus whose Knowledge Graph is persisted in Neo4j
+**When** `DetectCommunities` runs
+**Then** it gets memberships from a new `GraphStorePort.detectCommunities(corpusId)` (AD-27)
+**And** `Neo4jGraphStoreAdapter` implements it by projecting only that corpus's Entities and relationships as an `UNDIRECTED` GDS graph weighted by `weight` (AD-4, AD-25), named with the `corpusId` (AD-20), running `gds.leiden.stream` with a fixed `randomSeed`, and dropping the projection in a `finally` even when the call fails
+**And** Entities with no relationships each become a single-member Community
+**And** the port's default implementation is the existing connected-components algorithm, so the in-memory adapter, offline mode, and existing tests are unchanged
+**And** an integration test against the real Neo4j container (with GDS) shows two densely linked groups joined by a single edge splitting into two Communities, where connected components would give one
+**And** if GDS is unavailable, ingestion fails visibly (FR-5) rather than silently falling back
+
+### Story 14.2: Write Community Summaries from Their Content
+
+As the presenter,
+I want each Community's summary to be written from its members' descriptions and internal Relationships,
+So that Global and DRIFT Search match against meaningful summaries and the legend reads like a table of contents.
+
+**Acceptance Criteria:**
+
+**Given** Communities detected over Entities with descriptions (Epic 13, Story 14.1)
+**When** summaries are generated (still during detection, AD-6)
+**Then** `LlmPort.summarizeCommunity` receives the members with descriptions and the Relationships whose both endpoints are members, with descriptions, capped by highest `weight` first (AD-28)
+**And** it returns a short title (≤6 words) and a two-to-four-sentence summary; `Community` gains `title`, persisted on the `(:Community)` node
+**And** the canvas legend and hull labels show the title (falling back to the current summary-derived label when the title is empty, e.g. older corpora or the offline stub)
+**And** the Entity/Community detail panel shows the full summary
+**And** the offline stub returns a deterministic title and summary so existing tests keep passing
+
+---
+
+## Epic 15: Grounded, Cited Answers
+
+Local, Global, and DRIFT Search currently match the question by keyword overlap (`KeywordMatcher`) against Entity names and Community summaries, and answer with a fixed sentence template ("Across the corpus, the strongest signal is that …"). FR-11 promised a *generated* answer. With Epic 13's descriptions and passages and Epic 14's summaries, the searches can retrieve real context, have the LLM write the answer, and cite the exact passages — which the Retrieval Trace can then show step by step. That is the most convincing thing to show a technical audience: "this answer came from these sentences."
+**FRs covered:** FR11 (re-delivered), FR27, FR28. Governed by AD-29, AD-30 (plus AD-5, AD-13, AD-17, AD-18).
+
+### Story 15.1: Match Questions to Entities and Communities by Meaning
+
+As the presenter,
+I want the searches to find their starting points by semantic similarity,
+So that a question works even when it shares no words with an Entity's name.
+
+**Acceptance Criteria:**
+
+**Given** a Corpus ingested with an embedding model configured
+**When** extraction and detection complete
+**Then** each Entity's `name + description` and each Community's summary is embedded via `EmbeddingPort` and stored as an `embedding` property, with one Neo4j vector index per label (`Entity`, `Community`) spanning all corpora and filtered by `corpusId` (AD-30, AD-17's pattern)
+**And** Local Search takes the top 3 Entities by similarity to the embedded question as seeds, and Global/DRIFT take the top 3 Communities, each recorded as trace steps in that order
+**And** with no embedding model configured (offline/stub), all three modes fall back to `KeywordMatcher` exactly as today, so existing tests are unchanged
+**And** a test shows a question with no word overlap but matching an Entity's description finding that Entity
+
+### Story 15.2: Synthesize Cited Local Search Answers
+
+As the presenter,
+I want Local Search answers written by the LLM from the retrieved neighbourhood, with citations,
+So that the answer is real and the audience can see which passages it used.
+
+**Acceptance Criteria:**
+
+**Given** Local Search seeds (Story 15.1 or keyword fallback)
+**When** a Local Search question runs
+**Then** `AnswerLocalSearch` assembles context — seed Entities with descriptions, their one-hop Relationships with descriptions, and the Text Units those cite (capped, highest `weight` first) — recording each item as a trace step as it is added, including a new `TEXT_UNIT` step kind carrying the Text Unit id and a short excerpt (AD-29, extends AD-18)
+**And** it calls a new `LlmPort.synthesizeAnswer(question, context)`, whose prompt numbers each context item and requires inline `[n]` citations
+**And** the adapter drops any citation not in the given context, and an answer of "not in the context" maps to the existing `noAnswer` shape
+**And** the query response gains an additive `citations` array of `{textUnitId, documentName, excerpt}` for the citations kept (AD-13 otherwise unchanged)
+**And** the chat shows the answer text with its `[n]` markers (rendering of citations is Story 15.4)
+**And** the offline stub keeps its deterministic templated answer and returns no citations
+**And** a test proves every returned citation id appears as a `TEXT_UNIT` step in that answer's trace
+
+### Story 15.3: Synthesize Cited Global and DRIFT Answers
+
+As the presenter,
+I want Global and DRIFT answers written the same way,
+So that all three modes give comparable, grounded answers.
+
+**Acceptance Criteria:**
+
+**Given** Story 15.2's `synthesizeAnswer` and citation handling
+**When** a Global Search question runs
+**Then** the context is the top Community summaries (Story 15.1 or keyword fallback) plus, per Community, its highest-`weight` member Text Units (capped), each recorded as trace steps, and the answer is synthesized and cited as in Story 15.2
+**When** a DRIFT question runs
+**Then** each sub-question branch gathers Local-style context (Story 15.2) under its `SUB_QUESTION_SPAWNED` step, the final synthesis uses the union of branch contexts, and the drift tree's Synthesis node is reached only after all branches, as today
+**And** both modes return `citations` and map "not in the context" to `noAnswer`
+**And** the offline stub keeps today's templated answers for both modes
+
+### Story 15.4: Show Citations in Chat and Source Passages in Replay
+
+As a viewer,
+I want to open an answer's citations and see the cited passages light up during Replay,
+So that I can verify the answer against the source myself.
+
+**Acceptance Criteria:**
+
+**Given** an answer with `citations` (Stories 15.2–15.3)
+**When** it is shown in the chat
+**Then** each `[n]` marker is a small button, and a "Sources" list under the answer shows `{documentName} · {excerpt}` per citation
+**And** activating a marker or source opens the passage text (reusing Story 13.4's text-unit endpoint) in a popover or the detail panel
+**And** during Replay, a `TEXT_UNIT` step's caption reads "Read passage {ordinal} of {documentName}" with the excerpt, and the Entities that cite that passage are highlighted on the canvas
+**And** the `reading-an-answer` and `trace-replay` help articles explain citations and passage steps
+**And** answers without citations (offline mode) render exactly as today
+**And** a UI test asks a question, opens a citation, and steps the Replay onto a passage step

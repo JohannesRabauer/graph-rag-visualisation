@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-19-2026 13:59
-last_updated: '2026-09-30'
+last_updated: '2026-10-01'
 project: graphrag-lens
 project_key: NOKEY
 tracking_system: file-system
@@ -125,3 +125,22 @@ development_status:
   12-6-add-explicit-corpus-activation-and-history-list-endpoints: review
   12-7-build-the-corpus-history-switcher-and-auto-restore-on-load: review
   epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-extract-the-knowledge-graph-passage-by-passage: backlog
+  13-2-give-every-entity-and-relationship-a-description-and-sources: backlog
+  13-3-resolve-duplicate-entities-before-they-reach-neo4j: backlog
+  13-4-show-descriptions-and-source-passages-in-the-detail-panel: backlog
+  epic-13-retrospective: optional
+
+  epic-14: backlog
+  14-1-detect-communities-with-gds-leiden: backlog
+  14-2-write-community-summaries-from-their-content: backlog
+  epic-14-retrospective: optional
+
+  epic-15: backlog
+  15-1-match-questions-to-entities-and-communities-by-meaning: backlog
+  15-2-synthesize-cited-local-search-answers: backlog
+  15-3-synthesize-cited-global-and-drift-answers: backlog
+  15-4-show-citations-in-chat-and-source-passages-in-replay: backlog
+  epic-15-retrospective: optional

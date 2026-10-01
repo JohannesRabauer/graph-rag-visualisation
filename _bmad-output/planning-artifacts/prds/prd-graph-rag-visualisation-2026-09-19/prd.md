@@ -2,7 +2,7 @@
 title: GraphRAG Lens — PRD
 status: final
 created: 2026-09-19
-updated: 2026-09-20
+updated: 2026-10-01
 ---
 
 # PRD: GraphRAG Lens
@@ -65,6 +65,7 @@ Nothing today visualizes GraphRAG's retrieval mechanics this way — existing to
 - **Replay** — the scrubbable, step-by-step visualization of a Retrieval Trace, shown after retrieval completes.
 - **Tag** — a small, user-facing label on an Entity, shown alongside that Entity's connections and details in the Entity detail panel.
 - **DRIFT Search** *(v1.1)* — a third retrieval mode: a Community-summary pass first, which spawns targeted Local Search sub-questions from its results, then re-ranks and synthesizes a final answer.
+- **Text Unit** *(v1.2)* — a passage of the Corpus (roughly 1–2k tokens, overlapping its neighbours) that Entities and Relationships are extracted from, one LLM call each; the unit that answers cite. Distinct from the Vector Baseline's own smaller chunks.
 - **Vector Baseline** *(v1.1)* — a deliberately plain vector-similarity retrieval pipeline (chunk the Corpus → embed → top-k similarity search → synthesize), built to visualize how it differs from GraphRAG, not to be scored against it.
 
 ## 4. Features
@@ -105,6 +106,9 @@ System extracts Entities and Relationships from an ingested Corpus via live LLM 
 #### FR-5: Surface extraction failures visibly
 If an LLM call fails during Knowledge Graph construction, the system displays an explicit, visible error state rather than retrying automatically, silently hiding the failure, or hanging/crashing. Realizes UJ-1 edge case.
 
+**Consequences (testable):** *(added 2026-10-01, v1.2)*
+- A truncated or unparseable extraction response is an extraction failure like any other: it surfaces visibly, naming the document and passage that failed, rather than silently producing a partial graph.
+
 **Out of Scope:** Automatic retry; fallback to cached or canned output (deliberately excluded — see brief's accepted-risk decision).
 
 ### 4.3 Community Detection & Visualization
@@ -116,6 +120,7 @@ System runs community detection (Leiden-style clustering) over the constructed K
 
 **Consequences (testable):**
 - Detected Communities are persisted so they can be used by Global Search (FR-10) and by the community-formation visualization (FR-7).
+- *(Clarified 2026-10-01, v1.2)* "Leiden-style" means modularity-based clustering (Neo4j GDS Leiden), not connected components: a densely linked part of the graph may split into several Communities, and disconnected parts are never forced into one. The shipped v1 used connected components; FR-6 is re-delivered in v1.2 (see §4.10).
 
 #### FR-7: Visualize community formation
 User can toggle whether community formation is visualized on the main screen (e.g., nodes visibly folding into clusters, not just a static rendering of the final grouping). The toggle defaults ON for a fresh Corpus's first run — so this signature step plays automatically rather than depending on the user remembering to enable it — and is freely switchable afterward.
@@ -146,6 +151,9 @@ User can explicitly select Global Search via a UI toggle; system answers the que
 
 #### FR-11: Render the final answer in chat
 The generated answer is displayed in the chat interface once retrieval and generation complete.
+
+**Consequences (testable):** *(clarified 2026-10-01, v1.2)*
+- "Generated" means written by the LLM from the retrieved context (FR-27), not a fixed sentence template filled with the best-matching Entity or Community summary. The offline/demo mode (no API key) may keep its deterministic template.
 
 ### 4.5 Retrieval Trace & Playback
 
@@ -212,6 +220,51 @@ The Vector Baseline's pipeline — chunking, embedding each chunk, embedding the
 #### FR-22: Visualize the embedding space
 Corpus chunk embeddings are projected into 2D and shown as a scatter; this projection is computed once, at ingestion time, and stays stable across questions (never recomputed per query). When a Vector Baseline runs, the query's embedding is plotted live in that same space, and its top-k nearest chunks are highlighted with their similarity scores.
 
+### 4.10 Knowledge Graph Quality & Grounded Answers *(v1.2)*
+
+**Description:** The graph is the product: every search mode can only be as good as the Entities, Relationships, and Communities extraction produced. v1 extracted the whole Corpus in one LLM call (names and types only), clustered by connected components, and answered from keyword overlap with templated sentences. v1.2 builds the graph the way reference GraphRAG implementations do — passage by passage, with descriptions and provenance — and makes answers LLM-written and cited, so the trace can show *which text* an answer came from. Realizes UJ-1 (a richer graph visibly growing during ingestion, and answers a technical audience can verify against the source).
+
+#### FR-23: Extract per passage
+The Corpus is split into overlapping Text Units (passages of roughly 1–2k tokens), and Entities and Relationships are extracted with one LLM call per Text Unit, against a fixed list of Entity types.
+
+**Consequences (testable):**
+- Ingestion progress reports each Text Unit as it completes, and the graph canvas grows passage by passage rather than all at once at the end.
+- Entities found late in a long document (e.g. the last sections of a ~1,000-line text) are extracted as reliably as those near its start.
+- Entity types come from one fixed, documented list (e.g. Person, Organization, Product, Technology, Version, Event, Location, Concept); anything else maps to Concept.
+
+#### FR-24: Describe and source every Entity and Relationship
+Each Entity and Relationship carries a short description written by the LLM and the ids of the Text Units it was extracted from.
+
+**Consequences (testable):**
+- The Entity detail panel (FR-17) shows the Entity's description and lets the user read the source passages it came from.
+- Descriptions from several Text Units for the same Entity are merged into one, not overwritten by the last one.
+
+#### FR-25: Resolve duplicate Entities
+Mentions of the same real-world Entity across Text Units resolve to one Entity node, even when they differ in letter case, punctuation, whitespace, or extracted type.
+
+**Consequences (testable):**
+- The same name extracted with two different types becomes one Entity with the most frequent type.
+- Relationships to any variant point to the resolved Entity.
+
+#### FR-26: Summarize Communities from their content
+Each Community's summary is written from its members' descriptions and the Relationships between them — not from member names alone.
+
+#### FR-27: Generate grounded, cited answers
+Local, Global, and DRIFT Search answers are written by the LLM from the context the search retrieved (Entity and Relationship descriptions, Community summaries, source Text Units), and cite the Text Units they rely on.
+
+**Consequences (testable):**
+- Every cited Text Unit is one the Retrieval Trace (FR-12) recorded as retrieved for that answer — no citation to text the search never touched.
+- The user can open a citation to read the cited passage.
+- The Retrieval Trace records the source passages used as their own replayable steps.
+- If the retrieved context does not support an answer, the system returns the existing "no answer found" state rather than an unsupported answer.
+
+#### FR-28: Match questions by meaning
+Local, Global, and DRIFT Search find their starting Entities and Communities by semantic similarity to the question (embeddings), not only by shared words.
+
+**Consequences (testable):**
+- A question that shares no words with an Entity's name but matches its description (e.g. "who designed the language?" → the language's creator) still finds that Entity.
+- The offline/demo mode (no API key) keeps keyword matching.
+
 ## 5. Cross-Cutting NFRs
 
 - **UI tone:** the interface should read as modern and minimalist, running entirely in the browser with minimal setup friction (per the brief). Full visual/interaction direction is deferred to the `bmad-ux` pass — this is a pointer forward, not a spec.
@@ -259,6 +312,19 @@ Added via a sprint-change proposal after MVP scope (§7.1, FR-1–FR-17) was alr
 - Any scored or benchmarked "GraphRAG vs. vector" verdict — the comparison is illustrative only, consistent with the existing Non-Goal on formal retrieval-quality benchmarking (§6).
 - Automatic (non-demand) Vector Baseline computation on every query.
 - A branching-aware view for anything other than DRIFT's own Replay.
+
+### 7.4 v1.2 Scope *(added 2026-10-01)*
+
+Added after v1.1 shipped, from an analysis of how the graph is actually built: the graph's quality — not the visualization — was the limiting factor for every search mode.
+
+**In scope:** FR-23–FR-28, plus re-delivering FR-6 (real Leiden clustering) and FR-11 (LLM-generated answers) as clarified above.
+
+**Out of scope for v1.2:**
+- Hierarchical (multi-level) Communities — one flat Leiden level only.
+- "Gleaning" (repeated extraction passes over the same Text Unit).
+- Claims/covariates extraction.
+- Incremental re-ingestion of a changed document.
+- Any benchmarked quality score (consistent with the §6 Non-Goal).
 
 ## 8. Success Metrics
 

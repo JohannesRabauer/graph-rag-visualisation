@@ -7,8 +7,8 @@ paradigm: 'Hexagonal Architecture (Ports & Adapters)'
 scope: 'Whole system'
 status: final
 created: 2026-09-19
-updated: 2026-09-28
-binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22]
+updated: 2026-10-01
+binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, FR-23, FR-24, FR-25, FR-26, FR-27, FR-28]
 sources:
   - _bmad-output/planning-artifacts/briefs/brief-graph-rag-visualisation-2026-09-19/brief.md
   - _bmad-output/planning-artifacts/briefs/brief-graph-rag-visualisation-2026-09-19/addendum.md
@@ -200,6 +200,48 @@ graph TD
 - **Prevents:** A corpus whose ingestion was interrupted by an app crash surviving indefinitely in `BUILDING`, which AD-16's query gate would then block forever with no path to retry and no visible failure signal in the history list (CAP-6/CAP-7).
 - **Rule:** An `ApplicationReadyEvent` listener in `graphrag-web`, running immediately after AD-21's connectivity check succeeds and before the app accepts any HTTP traffic, transitions every `CorpusMeta` still in `BUILDING` status to `FAILED`. This is the only place a corpus is ever auto-transitioned to `FAILED` outside of an actual ingestion error. **Reviewer-found gap, closed 2026-09-28:** the literal in-JVM race this AD was written against can't happen (an old process's `CompletableFuture` ingestion work dies with the JVM), but an overlap-window redeploy — two `app` containers briefly live against one `neo4j` — reproduces the same race by a different mechanism, since AD-8 fixes the *service topology* (exactly `app` + `neo4j`) but not container replica count. The sweep is therefore a single conditional Cypher write, not a read-then-write: `MATCH (c:CorpusMeta {corpusId: $id}) WHERE c.status = 'BUILDING' SET c.status = 'FAILED'`, scoped per corpus inside Neo4j's own transaction — never a read into the JVM followed by a separate write — so two overlapping `app` instances each running this sweep converge on the same result instead of racing on a stale in-memory read.
 
+### AD-24 — Extraction runs per Text Unit, against a fixed type list (added 2026-10-01, v1.2)
+
+- **Binds:** `ExtractEntitiesAndRelationships` (and its `BuildKnowledgeGraph` alias); `LlmPort`; `graphrag-adapter-langchain4j`; `GraphStorePort`; AD-12's progress stream; FR-23, FR-5.
+- **Prevents:** The whole Corpus going into one prompt (v1), which samples a few dozen Entities mostly from the start of the text, risks a truncated JSON response, and makes the graph arrive all at once instead of growing visibly.
+- **Rule:** A core-owned `TextUnitSplitter` (no framework dependency, AD-1) splits each document into overlapping `TextUnit`s (`id`, `corpusId`, `documentName`, `ordinal`, `text`; ~6,000 characters, ~600 overlap, cut on paragraph/sentence boundaries where possible). `ExtractEntitiesAndRelationships` calls a new `LlmPort.extract(TextUnit, List<String> entityTypes)` once per Text Unit, sequentially, and persists each Text Unit's result (AD-26 resolution included) before starting the next, so AD-14's committed-reads rule makes the graph grow live. Text Units are persisted as `(:TextUnit {corpusId, id, documentName, ordinal, text})` via `GraphStorePort`, MERGE-keyed on `(corpusId, id)` per AD-20. After each Text Unit the backend emits a `text-unit-extracted` SSE event (`{index, total, documentName}`) on AD-12's stream, ahead of that unit's `entity-extracted`/`relationship-extracted` events. The Entity type list is one constant in `graphrag-core` (Person, Organization, Product, Technology, Version, Event, Location, Concept); any other type the LLM returns maps to Concept. Any failed or unparseable Text Unit fails the whole ingestion visibly (AD-3's no-retry rule; FR-5) — no partial "best effort" graph. The OpenAI adapter sets an explicit max-output-token limit and treats a `length` finish reason as a failure. Text Units are separate from the Vector Baseline's 500-character `Chunk`s (AD-17), which keep their own size because they serve a different, deliberately plain pipeline.
+
+### AD-25 — Entities and Relationships carry a description and their source Text Units (added 2026-10-01, v1.2)
+
+- **Binds:** `Entity`, `Relationship` domain records; `GraphStorePort` + `Neo4jGraphStoreAdapter`; AD-12 event payloads; FR-24.
+- **Prevents:** A graph of bare names, which gives Local Search, Community summaries, and answer synthesis nothing to work with but labels, and leaves answers unable to point back at the text.
+- **Rule:** `Entity` gains `description` and `sourceTextUnitIds`; `Relationship` gains `description`, `sourceTextUnitIds`, and an integer `weight` (number of Text Units it was extracted from). The extraction prompt asks for a one- or two-sentence description per Entity and Relationship. On Neo4j these are properties of the existing nodes/relationships, plus a `(:Entity)-[:MENTIONED_IN]->(:TextUnit)` relationship per source unit. Records keep their existing two-/five-argument constructors as convenience overloads so the v1 call sites and tests compile unchanged.
+
+### AD-26 — Entity resolution happens in core, before the AD-10 MERGE (added 2026-10-01, v1.2)
+
+- **Binds:** New core `EntityResolver`; `ExtractEntitiesAndRelationships`; AD-10; FR-25.
+- **Prevents:** Per-Text-Unit extraction multiplying duplicates ("Java SE 8" vs "java se 8", or one name extracted as both Person and Concept), which would fragment Communities and Local Search seeds.
+- **Rule:** Before persisting a Text Unit's extraction, `EntityResolver` maps each extracted Entity onto the Corpus's already-known Entities: names are compared after Unicode normalization, case folding, whitespace collapsing, and stripping surrounding punctuation; a name match with a different type resolves to the existing Entity (the type with the most mentions wins; ties keep the earlier one). Relationship endpoints are rewritten to the resolved identities. Descriptions merge by appending distinct sentences, capped at ~1,000 characters; source Text Unit ids union. AD-10's `MERGE` on `name::type` stays the persistence key — resolution decides *which* key a mention maps to. Fuzzy/semantic merging (e.g. "Java 8" ≡ "Java SE 8") is out of scope for v1.2.
+
+### AD-27 — Community detection is GDS Leiden in the Neo4j adapter (added 2026-10-01, v1.2)
+
+- **Binds:** `DetectCommunities`; `GraphStorePort` (new `detectCommunities(corpusId)` returning memberships); `Neo4jGraphStoreAdapter`; AD-4, AD-11, AD-20; FR-6.
+- **Prevents:** The v1 BFS over connected components (which turns one dense area into a single giant Community and every isolated pair into its own) being mistaken for the PRD's "Leiden-style clustering".
+- **Rule:** `DetectCommunities` asks `GraphStorePort.detectCommunities(corpusId)` for memberships. `Neo4jGraphStoreAdapter` implements it by projecting only that corpus's Entities and their relationships as an `UNDIRECTED` GDS graph (AD-4), weighted by AD-25's `weight`, running `gds.leiden.stream` (one flat level, fixed `randomSeed` for reproducible demos), and dropping the projection in a `finally`. Projection names include the `corpusId` (AD-20). Entities with no relationships each form a single-member Community. The port's default implementation keeps the existing connected-components algorithm, so the in-memory adapter and offline mode behave as before. Output is still written per AD-11.
+
+### AD-28 — Community summaries are written from member descriptions and internal Relationships (added 2026-10-01, v1.2)
+
+- **Binds:** `LlmPort.summarizeCommunity`; `DetectCommunities`; AD-6; FR-26.
+- **Prevents:** Summaries written from a bare list of names, which is all the v1 prompt saw — the weakest possible input for Global and DRIFT Search, which match against these summaries.
+- **Rule:** `summarizeCommunity` receives the members (with descriptions) and the Relationships whose both endpoints are members (with descriptions), and returns a short title plus a two-to-four-sentence summary. Input is capped (highest-`weight` Relationships first) to keep each call bounded. AD-6 is unchanged: summaries are still generated during detection, never at query time.
+
+### AD-29 — Answers are synthesized by the LLM from recorded context, with citations (added 2026-10-01, v1.2)
+
+- **Binds:** `AnswerLocalSearch`, `AnswerGlobalSearch`, `AnswerDriftSearch`; `LlmPort` (new `synthesizeAnswer`); AD-5, AD-13, AD-18; FR-11, FR-27.
+- **Prevents:** Templated answer sentences presented as "generated"; citations to text the search never retrieved, which would make the Replay dishonest.
+- **Rule:** Each use case first assembles its context — Local: seed Entities, their one-hop Relationships, and the Text Units those cite; Global: the top Community summaries; DRIFT: each branch's local context plus the community pass — recording every item as a trace step as it is added, including a new `TEXT_UNIT` step kind (carries the Text Unit id and a short excerpt; extends AD-18's step set). It then calls `LlmPort.synthesizeAnswer(question, context)`, whose prompt numbers each context item and requires inline `[n]` citations. The adapter drops any citation not in the context it was given. AD-13's success shape gains an additive `citations` array (`{textUnitId, documentName, excerpt}`); `noAnswer`/`error` are unchanged, and the model answering "not in the context" maps to `noAnswer`. The offline stub (`LangChain4jLlmPort`) keeps its deterministic templated answers so tests and offline mode stay network-free.
+
+### AD-30 — Seed matching is by embedding similarity, with keyword matching as the offline fallback (added 2026-10-01, v1.2)
+
+- **Binds:** `EmbeddingPort`; `GraphStorePort`; `Neo4jGraphStoreAdapter`; `AnswerLocalSearch`/`AnswerGlobalSearch`/`AnswerDriftSearch`; AD-17, AD-20; FR-28.
+- **Prevents:** Questions that don't share words with an Entity name or Community summary finding nothing (`KeywordMatcher` is pure token overlap).
+- **Rule:** After extraction, each Entity's `name + description` is embedded and stored as an `embedding` property; after detection, each Community's summary likewise. One Neo4j vector index per label (`Entity`, `Community`), each spanning all corpora and filtered by `corpusId` — the same pattern AD-17 uses for chunks. Use cases embed the question once and take the top-k by similarity (Local: k=3 seed Entities; Global/DRIFT: k=3 Communities). When no embedding model is configured (offline/stub), they fall back to `KeywordMatcher`, so existing tests keep their behaviour.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -305,6 +347,9 @@ erDiagram
 | Live ingestion progress (EXPERIENCE.md State Patterns) | `graphrag-web` SSE endpoints | AD-7, AD-12 |
 | DRIFT Search (FR-18) *(v1.1)* | `AnswerDriftSearch` use case (orchestrates `AnswerLocalSearch` + Community summaries) | AD-1, AD-3, AD-6, AD-13, AD-18 |
 | Vector-RAG Comparison Baseline (FR-19–FR-22) *(v1.1)* | `ConstructVectorIndex`, `AnswerVectorBaseline` use cases; `EmbeddingPort`, `VectorStorePort` | AD-1, AD-17, AD-18 |
+| Per-passage extraction, descriptions, provenance, resolution (FR-23–FR-25) *(v1.2)* | `TextUnitSplitter`, `EntityResolver`, `ExtractEntitiesAndRelationships` (core); `LlmPort` + OpenAI adapter; `Neo4jGraphStoreAdapter` (`TextUnit` nodes, `MENTIONED_IN`) | AD-1, AD-3, AD-10, AD-12, AD-20, AD-24, AD-25, AD-26 |
+| Real communities & grounded summaries (FR-6, FR-26) *(v1.2)* | `DetectCommunities`; `Neo4jGraphStoreAdapter` (GDS Leiden); `LlmPort.summarizeCommunity` | AD-4, AD-6, AD-11, AD-27, AD-28 |
+| Grounded, cited answers & semantic matching (FR-11, FR-27, FR-28) *(v1.2)* | `AnswerLocalSearch`/`AnswerGlobalSearch`/`AnswerDriftSearch`; `LlmPort.synthesizeAnswer`; `EmbeddingPort`; Neo4j vector indexes on `Entity`/`Community` | AD-5, AD-13, AD-17, AD-18, AD-29, AD-30 |
 | Real Neo4j persistence for graph/vector data (`spec-neo4j-corpus-persistence`) | `graphrag-adapter-neo4j`'s real `GraphStorePort`/`VectorStorePort` implementations (replacing the in-memory alias classes) | AD-2, AD-10, AD-11, AD-17, AD-20, AD-21 |
 | Durable corpus registry & history/switcher (`spec-neo4j-corpus-persistence`) | `Neo4jCorpusRegistry` (`graphrag-adapter-neo4j`); `CorpusController`'s new `GET /api/corpora` + `POST .../activate`; frontend switcher (replaces `CorpusStore`) | AD-16, AD-19, AD-20, AD-21, AD-22, AD-23 |
 
