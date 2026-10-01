@@ -259,6 +259,26 @@ class ExtractEntitiesAndRelationshipsTest {
         assertEquals(TextUnitSplitter.split(corpus).getFirst().id(), store.persistedEntities.getFirst().sourceTextUnitIds().getFirst());
     }
 
+    @org.junit.jupiter.api.Test
+    void firstSightingDescriptionIsCappedAndDuplicateRelationshipsInOneUnitPersistOnce() {
+        Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("a.txt", "Ada Lovelace wrote about Engine.")));
+        String overlong = "A".repeat(1_200);
+        Relationship wrote = new Relationship("Ada Lovelace", "Person", "wrote_about", "Engine", "Concept",
+                overlong, List.of(), 1);
+        LlmPort llmPort = unitCorpus -> new GraphExtraction(
+                List.of(new Entity("Ada Lovelace", "Person", overlong, List.of())), List.of(wrote, wrote));
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+        List<Relationship> relationshipCallbacks = new ArrayList<>();
+
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus, null, relationshipCallbacks::add);
+
+        assertEquals(1_000, store.persistedEntities.getFirst().description().length());
+        assertEquals(1, store.persistedRelationships.size());
+        assertEquals(1_000, store.persistedRelationships.getFirst().description().length());
+        assertEquals(1, store.persistedRelationships.getFirst().weight());
+        assertEquals(1, relationshipCallbacks.size());
+    }
+
     private static final class PerUnitRecordingGraphStorePort implements GraphStorePort {
         private final List<TextUnit> persistedUnits = new ArrayList<>();
         private final List<Entity> persistedEntities = new ArrayList<>();

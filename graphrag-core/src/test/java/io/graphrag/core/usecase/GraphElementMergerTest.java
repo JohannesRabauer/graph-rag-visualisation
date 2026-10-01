@@ -44,4 +44,29 @@ class GraphElementMergerTest {
         assertTrue(GraphElementMerger.mergeDescriptions("First sentence.", "Second sentence.".repeat(100))
                 .length() <= 1_000);
     }
+
+    @Test
+    void descriptionMergeAppendsFittingSentencesAndStopsBeforeTheCap() {
+        String existing = "B".repeat(960) + ".";
+        String merged = GraphElementMerger.mergeDescriptions(existing, "Fits here. " + "C".repeat(50) + ". Short.");
+
+        assertEquals(existing + " Fits here.", merged);
+    }
+
+    @Test
+    void descriptionMergeSkipsSentencesThatDifferOnlyInCaseOrWhitespace() {
+        assertEquals("A mathematician. She wrote notes.",
+                GraphElementMerger.mergeDescriptions("A mathematician.", "  a MATHEMATICIAN.   She wrote notes."));
+    }
+
+    @Test
+    void mergingTheSameSourceUnitTwiceKeepsOneIdAndWeightOne() {
+        Relationship sighting = new Relationship("Ada", "Person", "wrote_about", "Engine", "Concept",
+                "Ada wrote about it.", List.of("u0"), 1);
+
+        Relationship merged = GraphElementMerger.merge(sighting, sighting);
+
+        assertEquals(List.of("u0"), merged.sourceTextUnitIds());
+        assertEquals(1, merged.weight());
+    }
 }

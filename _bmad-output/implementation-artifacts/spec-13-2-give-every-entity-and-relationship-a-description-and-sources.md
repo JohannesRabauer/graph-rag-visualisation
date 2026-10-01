@@ -3,14 +3,27 @@ title: 'Story 13.2: Give Every Entity and Relationship a Description and Its Sou
 type: 'feature'
 created: '2026-10-01'
 status: 'done'
-baseline_commit: 'ad96da4c648ebccb1068dde9bf55c342bad097fa'
 baseline_revision: 'ad96da4c648ebccb1068dde9bf55c342bad097fa'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-13-context.md'
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      Neo4j relationship MERGE creates missing endpoint Entity nodes with only name and type, so those endpoints get no description, sourceTextUnitIds or MENTIONED_IN link.
+    evidence: |-
+      Pre-existing persistRelationships behaviour. An LLM relationship whose endpoint is not also listed as an entity creates a bare endpoint node; reads coalesce it to "" and [] without error. Story 13.3 or 13.4 (detail panel) is where it would be noticed.
+    location: >-
+      graphrag-adapter-neo4j/src/main/java/com/graphraglens/adapter/neo4j/Neo4jGraphStoreAdapter.java persistRelationships
+    severity: low
+  - summary: >-
+      Neo4j relationship MERGE matches on raw source, type and target strings, while core keys relationships on lowercased name::type identities.
+    evidence: |-
+      Pre-existing, not changed by this story. Same-name endpoints with different types, or case variants, can collapse into one relationship or split in two. Story 13.3 (entity resolution) is the natural place to fix it.
+    location: >-
+      graphrag-adapter-neo4j/src/main/java/com/graphraglens/adapter/neo4j/Neo4jGraphStoreAdapter.java persistRelationships
+    severity: low
 ---
 
 <intent-contract>
@@ -135,6 +148,61 @@ deferred: []
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-10-01 — Review pass
+- verdicts: 20 findings — high 0, medium 1, low 17, false 2, maybe-false 0
+- findings:
+  - `low` `reject` OpenAiLlmPort/LangChain4jLlmPort `extract(Corpus)` merge per-unit results without stamping sourceTextUnitIds — no production caller (ingestion uses core `run` → `extract(unit, …)`, which core stamps); stamping in adapters would duplicate core's single source of truth.
+  - `low` `reject` `/graph` endpoint exposes `description` but not `sourceTextUnitIds`/`weight` — no consumer in this story; exposing provenance is new public surface owned by Story 13.4.
+  - `low` `patch` OpenAiLlmPort parse used `putIfAbsent`, dropping a duplicate entity's later description within one response — now `merge(…, GraphElementMerger::merge)`.
+  - `low` `patch` Duplicate relationships within one unit were persisted and emitted twice — `run` now collects changed entities/relationships per unit in key-ordered maps; test `firstSightingDescriptionIsCappedAndDuplicateRelationshipsInOneUnitPersistOnce`.
+  - `low` `reject` `Relationship` accepts an explicit weight that disagrees with its ids — weight is always derived in `GraphElementMerger`/stamping on the ingestion path; enforcing it in the record adds a guard for a state no caller produces.
+  - `low` `defer` Neo4j relationship write creates bare endpoint Entity nodes without description/ids/MENTIONED_IN — pre-existing endpoint MERGE behaviour; reads coalesce safely. Deferred.
+  - `low` `defer` Neo4j relationship MERGE uses raw strings, not core's lowercased identity key — pre-existing; deferred to entity resolution (13.3).
+  - `low` `reject` Neo4j tests don't assert relationship provenance links — intent requires MENTIONED_IN for Entities only; relationship ids are stored and round-trip-tested as properties.
+  - `low` `reject` Graph endpoint test now pins exact entity map size 4 without ids/weight — same root cause as the `/graph` exposure row; size 4 reflects the intended additive `description` key.
+  - `low` `patch` Cap test `"Second sentence.".repeat(100)` has no whitespace so never exercises append-until-cap — added `descriptionMergeAppendsFittingSentencesAndStopsBeforeTheCap`.
+  - `low` `reject` Adapter `extract(Corpus)` provenance untested — same root cause as the first row (no production caller).
+  - `medium` `patch` First-sighting description longer than 1,000 chars persisted uncapped (map `merge` stores absent keys as-is) — `stampSourceUnit` now runs every description through `mergeDescriptions("", …)`; covered by the new run test.
+  - `low` `reject` OpenAI `extract(Corpus)` leaves sources empty and weight 1 — duplicate of the first row.
+  - `false` `reject` Entity record equality now includes description/ids, contradicting "equality keys are unchanged" — the intent's parenthetical defines equality keys as the MERGE key (`name::type`), which is unchanged; no production code relies on `Entity.equals` (all dedup is keyed on `normalizedIdentity()`).
+  - `false` `reject` Relationship record equality now includes description/ids/weight — same refutation: dedup is keyed on `relationshipKey`, and no production code compares Relationship records.
+  - `low` `patch` No test for case/whitespace-insensitive sentence de-duplication — added `descriptionMergeSkipsSentencesThatDifferOnlyInCaseOrWhitespace`.
+  - `low` `patch` Cap test does not verify which sentences survive — grouped with the cap-test row; same new test asserts the exact result.
+  - `low` `patch` No test for merging the same source id twice — added `mergingTheSameSourceUnitTwiceKeepsOneIdAndWeightOne`.
+  - `low` `patch` No ingestion-level check that every extraction event carries `description` and stored Entities reference persisted Text Units (AC 1) — added assertions to the Story 13.1 multi-unit `CorpusControllerTest`.
+  - `low` `reject` No end-to-end test of `LENGTH` → corpus `FAILED` — adapter test proves `LENGTH` throws `LlmCallFailedException` (a RuntimeException); the existing 13.1 failure test drives a throwing unit through core's wrapper to `FAILED` with document and passage logged; wiring a fake OpenAI model into the controller adds test infrastructure for an identical path.
+
+## Auto Run Result
+
+**Summary:** Entities and Relationships now carry a `description` and `sourceTextUnitIds` (Relationships also a derived `weight`). Core stamps each Text Unit's id onto its results and merges repeat sightings through the new `GraphElementMerger` (distinct sentences, 1,000-char cap, ordered id union, weight = id count) before persisting and calling back. Neo4j stores the fields plus `MENTIONED_IN` links, with coalescing reads for legacy data. The OpenAI adapter asks for descriptions, caps output at 4,096 tokens and fails on finish reason `LENGTH`. The offline stub uses the source sentence. SSE payloads (and therefore the `/graph` replay, which reuses the same builders) gain `description`.
+
+**Files changed:**
+- `graphrag-core/.../domain/Entity.java`, `Relationship.java` — new canonical constructors with defaults; old overloads kept.
+- `graphrag-core/.../usecase/GraphElementMerger.java` — new merge rule.
+- `graphrag-core/.../usecase/ExtractEntitiesAndRelationships.java` — stamping (with cap), per-run merge, per-unit dedup.
+- `graphrag-adapter-neo4j/.../Neo4jGraphStoreAdapter.java` — new properties, `MENTIONED_IN`, coalescing reads.
+- `graphrag-adapter-langchain4j/.../OpenAiLlmPort.java` — description prompt/parse, token limit, `LENGTH` failure, in-response merge.
+- `graphrag-adapter-langchain4j/.../LangChain4jLlmPort.java` — sentence descriptions.
+- `graphrag-web/.../CorpusController.java` — `description` in entity/relationship payloads.
+- Tests: `GraphElementMergerTest` (new), `ExtractEntitiesAndRelationshipsTest`, `InMemoryGraphStoreAdapterTest`, `Neo4jGraphStoreAdapterTest`, `OpenAiLlmPortTest`, `LangChain4jLlmPortTest`, `CorpusControllerTest`.
+- `sprint-status.yaml` — 13.2 → `review` (by the implementer).
+
+**Review findings:** 20 total. Patched 9 rows in 6 fixes (1 medium: uncapped first sighting; low: OpenAI in-response merge, per-unit relationship dedup, 3 merger tests, ingestion provenance assertions). Deferred 2 (pre-existing Neo4j relationship endpoint/key behaviour). Rejected 9: adapter `extract(Corpus)` provenance ×3 (no production caller), `/graph` provenance exposure ×2 (Story 13.4 surface), explicit-weight guard (unreachable), relationship provenance links in Neo4j tests (not in intent), end-to-end `LENGTH` test (identical generic path already tested), and 2 `false` record-equality claims (dedup is keyed, not `equals`-based).
+
+**Follow-up review recommended:** false — first pass patched 0 high and 1 medium.
+
+**Verification:**
+- Core + langchain4j: green (`GraphElementMergerTest` 6/6, `ExtractEntitiesAndRelationshipsTest` 10/10).
+- Neo4j (`-Dapi.version=1.44`): only the 2 known `Neo4jCorpusRegistryTest` failures; `Neo4jGraphStoreAdapterTest` 13/13.
+- Web full suite: `CorpusControllerTest` failed 1 — the `/graph` test pinned entity maps at 3 keys; updated to 4 including `description`. Re-run 39/39 after review patches. Remaining failures were the known flaky UI set (`CanvasSettingsPopoverUiTest`, `EntityTypeColorToggleUiTest`, `MainScreenDetailPanelUiTest`, order-dependent `CorpusSwitcherUiTest`).
+
+**Process notes:** The step-03 implementer committed `ab4d42c` on its own, marked the spec `done` and moved 13.2 to `review` in `sprint-status.yaml`; the spec frontmatter was restored before review. Review patches were applied directly because the implementer could not be re-engaged.
+
+**Residual risks:**
+- With a real key, ingestion makes one OpenAI call per passage and each response is now longer (descriptions), so demo ingestion is slower.
+- A dense passage could still exceed 4,096 output tokens and fail the whole corpus by design (no retry/gleaning).
+- Repeat SSE events carry cumulative descriptions; the canvas reuses nodes/edges, but no UI test covers this.
 
 ## Design Notes
 

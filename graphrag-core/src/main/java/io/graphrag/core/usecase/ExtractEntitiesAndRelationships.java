@@ -80,18 +80,19 @@ public class ExtractEntitiesAndRelationships {
         for (int i = 0; i < total; i++) {
             TextUnit unit = units.get(i);
             GraphExtraction extraction = extractUnit(unit);
-            List<Entity> changedEntities = new ArrayList<>();
-            List<Relationship> changedRelationships = new ArrayList<>();
+            Map<String, Entity> changedEntities = new LinkedHashMap<>();
+            Map<String, Relationship> changedRelationships = new LinkedHashMap<>();
             for (Entity entity : extraction.entities()) {
-                Entity merged = mergedEntities.merge(entity.normalizedIdentity(), entity, GraphElementMerger::merge);
-                changedEntities.add(merged);
+                String key = entity.normalizedIdentity();
+                changedEntities.put(key, mergedEntities.merge(key, entity, GraphElementMerger::merge));
             }
             for (Relationship relationship : extraction.relationships()) {
-                Relationship merged = mergedRelationships.merge(relationshipKey(relationship), relationship,
-                        GraphElementMerger::merge);
-                changedRelationships.add(merged);
+                String key = relationshipKey(relationship);
+                changedRelationships.put(key,
+                        mergedRelationships.merge(key, relationship, GraphElementMerger::merge));
             }
-            GraphExtraction mergedExtraction = new GraphExtraction(changedEntities, changedRelationships);
+            GraphExtraction mergedExtraction = new GraphExtraction(
+                    new ArrayList<>(changedEntities.values()), new ArrayList<>(changedRelationships.values()));
 
             graphStorePort.persistTextUnits(corpus.id(), List.of(unit));
             graphStorePort.persist(corpus.id(), mergedExtraction);
@@ -153,12 +154,14 @@ public class ExtractEntitiesAndRelationships {
     private static GraphExtraction stampSourceUnit(GraphExtraction extraction, TextUnit unit) {
         String sourceId = unit == null ? "" : unit.id();
         List<Entity> entities = extraction.entities().stream()
-                .map(entity -> new Entity(entity.name(), entity.type(), entity.description(), List.of(sourceId)))
+                .map(entity -> new Entity(entity.name(), entity.type(),
+                        GraphElementMerger.mergeDescriptions("", entity.description()), List.of(sourceId)))
                 .toList();
         List<Relationship> relationships = extraction.relationships().stream()
                 .map(relationship -> new Relationship(
                         relationship.source(), relationship.sourceType(), relationship.type(),
-                        relationship.target(), relationship.targetType(), relationship.description(),
+                        relationship.target(), relationship.targetType(),
+                        GraphElementMerger.mergeDescriptions("", relationship.description()),
                         List.of(sourceId), 1))
                 .toList();
         return new GraphExtraction(entities, relationships);

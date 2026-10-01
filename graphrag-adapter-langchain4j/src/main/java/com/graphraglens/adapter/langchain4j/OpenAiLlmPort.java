@@ -223,7 +223,7 @@ public class OpenAiLlmPort implements LlmPort {
                 }
                 Entity entity = new Entity(name, type == null || type.isBlank() ? "Concept" : type,
                         description, List.of());
-                entitiesByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
+                entitiesByIdentity.merge(entity.normalizedIdentity(), entity, GraphElementMerger::merge);
             }
         }
 

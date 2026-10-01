@@ -445,6 +445,18 @@ class CorpusControllerTest {
         assertThat(graphStorePort.textUnits(corpusId)).hasSize(total);
         assertThat(graphStorePort.entities(corpusId))
                 .anyMatch(entity -> entity.name().equals("Grace Hopper"));
+        // Story 13.2: every extraction event carries a description, and every
+        // stored Entity points back at persisted Text Units.
+        for (int i = 0; i < eventTypes.size(); i++) {
+            if (eventTypes.get(i).equals("entity-extracted") || eventTypes.get(i).equals("relationship-extracted")) {
+                assertThat(payloads.get(i)).containsKey("description");
+            }
+        }
+        java.util.Set<String> textUnitIds = graphStorePort.textUnits(corpusId).stream()
+                .map(io.graphrag.core.domain.TextUnit::id)
+                .collect(java.util.stream.Collectors.toSet());
+        assertThat(graphStorePort.entities(corpusId)).allSatisfy(entity ->
+                assertThat(entity.sourceTextUnitIds()).isNotEmpty().allMatch(textUnitIds::contains));
     }
 
     @Test
@@ -928,17 +940,19 @@ class CorpusControllerTest {
                 .andExpect(jsonPath("$.entities").isArray())
                 .andExpect(jsonPath("$.relationships").isArray())
                 .andExpect(jsonPath("$.communities").isArray())
-                .andExpect(jsonPath("$.entities[0]").value(org.hamcrest.Matchers.aMapWithSize(3)))
+                .andExpect(jsonPath("$.entities[0]").value(org.hamcrest.Matchers.aMapWithSize(4)))
                 .andExpect(jsonPath("$.entities[0]", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.hasKey("identity"),
                         org.hamcrest.Matchers.hasKey("name"),
-                        org.hamcrest.Matchers.hasKey("type"))))
+                        org.hamcrest.Matchers.hasKey("type"),
+                        org.hamcrest.Matchers.hasKey("description"))))
                 .andExpect(jsonPath("$.relationships[0]", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.hasKey("sourceIdentity"),
                         org.hamcrest.Matchers.hasKey("source"),
                         org.hamcrest.Matchers.hasKey("targetIdentity"),
                         org.hamcrest.Matchers.hasKey("target"),
-                        org.hamcrest.Matchers.hasKey("type"))))
+                        org.hamcrest.Matchers.hasKey("type"),
+                        org.hamcrest.Matchers.hasKey("description"))))
                 .andExpect(jsonPath("$.communities[0]", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.hasKey("communityId"),
                         org.hamcrest.Matchers.hasKey("summary"),
