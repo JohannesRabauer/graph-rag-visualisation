@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GraphRAG Lens — watch GraphRAG build a knowledge graph and answer from it</title>
+  <meta name="description" content="GraphRAG Lens is an open-source teaching and demo tool that shows how GraphRAG works: upload documents, watch a knowledge graph grow passage by passage, see communities form, ask in Local, Global and DRIFT mode, replay every retrieval trace and compare against plain vector search.">
+  <meta name="theme-color" content="#FAFAF9">
+  <link rel="canonical" href="https://johannesrabauer.github.io/graph-rag-visualisation/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="GraphRAG Lens — see how GraphRAG works">
+  <meta property="og:description" content="Upload a corpus, watch the knowledge graph grow, ask in three GraphRAG modes, replay every retrieval trace and compare against vector search. Open source, Java, Neo4j.">
+  <meta property="og:url" content="https://johannesrabauer.github.io/graph-rag-visualisation/">
+  <meta property="og:image" content="https://johannesrabauer.github.io/graph-rag-visualisation/assets/knowledge-graph.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-nav">
+  <div class="container">
+    <a class="brand" href="#top" aria-label="GraphRAG Lens, back to top">
+      <span class="brand-mark" aria-hidden="true"></span>
+      GraphRAG Lens
+    </a>
+    <nav aria-label="Sections">
+      <ul class="nav-links">
+        <li><a href="#why">Why GraphRAG</a></li>
+        <li><a href="#build">Building the graph</a></li>
+        <li><a href="#modes">Search modes</a></li>
+        <li><a href="#grounding">Grounding</a></li>
+        <li><a href="#compare">Compare</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#run">Run it</a></li>
+        <li><a href="#library">Library</a></li>
+      </ul>
+    </nav>
+    <a class="btn btn-secondary btn-sm nav-cta" href="https://github.com/JohannesRabauer/graph-rag-visualisation">
+      <svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================================================================ HERO -->
+  <section class="hero grid-paper">
+    <div class="container">
+      <div>
+        <span class="eyebrow eyebrow--accent">Open source · Java 25 · Neo4j · OpenAI</span>
+        <h1>See <span class="accent">how GraphRAG works</span>, not just what it answers.</h1>
+        <p class="lede">GraphRAG Lens turns your documents into a knowledge graph in front of your eyes, lets you question it in three GraphRAG modes, and replays the exact path every answer took through the graph. Built for teaching, demos and for understanding the technique before you bet on it.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#run">Run it with Docker</a>
+          <a class="btn btn-secondary" href="#why">How it works</a>
+          <a class="btn btn-secondary" href="https://github.com/JohannesRabauer/graph-rag-visualisation">View the source</a>
+        </div>
+        <ul class="hero-meta">
+          <li>Local Search</li>
+          <li>Global Search</li>
+          <li>DRIFT Search</li>
+          <li>Retrieval Trace Replay</li>
+        </ul>
+      </div>
+
+      <figure class="hero-figure" aria-label="Animated illustration: a question is answered by walking a path through a knowledge graph, and the answer cites the passages it read">
+        <svg class="hero-svg" viewBox="0 0 560 400" role="img" aria-hidden="true">
+          <defs>
+            <marker id="h-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#8B94A0"/>
+            </marker>
+            <marker id="h-arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#E85D2B"/>
+            </marker>
+          </defs>
+
+          <!-- community hulls -->
+          <rect x="34" y="44" width="238" height="196" rx="26" fill="#FDE7D8" opacity="0.85"/>
+          <text x="52" y="66" class="hull-label" fill="#C77F4F">HOLMES &amp; PROFESSOR MORIARTY</text>
+          <rect x="300" y="60" width="232" height="178" rx="26" fill="#F4E3F7" opacity="0.85"/>
+          <text x="318" y="82" class="hull-label" fill="#9B6BA8">IRENE ADLER &amp; THE KING</text>
+
+          <!-- plain edges -->
+          <line class="edge" x1="118" y1="112" x2="196" y2="150" marker-end="url(#h-arrow)"/>
+          <line class="edge" x1="196" y1="150" x2="128" y2="206" marker-end="url(#h-arrow)"/>
+          <line class="edge" x1="196" y1="150" x2="238" y2="104" marker-end="url(#h-arrow)"/>
+          <line class="edge" x1="372" y1="120" x2="452" y2="112" marker-end="url(#h-arrow)"/>
+          <line class="edge" x1="452" y1="112" x2="486" y2="190" marker-end="url(#h-arrow)"/>
+          <line class="edge" x1="372" y1="120" x2="398" y2="196" marker-end="url(#h-arrow)"/>
+          <line class="edge" x1="238" y1="104" x2="372" y2="120" marker-end="url(#h-arrow)"/>
+
+          <!-- trace path (animated) -->
+          <line class="trace-edge" x1="118" y1="112" x2="196" y2="150" marker-end="url(#h-arrow-active)" style="animation-delay:0s"/>
+          <line class="trace-edge" x1="196" y1="150" x2="128" y2="206" marker-end="url(#h-arrow-active)" style="animation-delay:0.6s"/>
+
+          <!-- nodes -->
+          <circle class="node" cx="118" cy="112" r="13"/>
+          <circle class="trace-node" cx="118" cy="112" r="13" style="animation-delay:0s"/>
+          <circle class="trace-ring" cx="118" cy="112" r="19" style="animation-delay:0s"/>
+          <text class="node-label" x="118" y="142" text-anchor="middle">Sherlock Holmes</text>
+
+          <circle class="node" cx="196" cy="150" r="13"/>
+          <circle class="trace-node" cx="196" cy="150" r="13" style="animation-delay:0.9s"/>
+          <text class="node-label" x="196" y="180" text-anchor="middle">Prof. Moriarty</text>
+
+          <circle class="node" cx="128" cy="206" r="13"/>
+          <circle class="trace-node" cx="128" cy="206" r="13" style="animation-delay:1.5s"/>
+          <text class="node-label" x="128" y="233" text-anchor="middle">Reichenbach Falls</text>
+
+          <circle class="node" cx="238" cy="104" r="13"/>
+          <text class="node-label" x="238" y="88" text-anchor="middle">Dr. Watson</text>
+
+          <circle class="node" cx="372" cy="120" r="13"/>
+          <text class="node-label" x="372" y="150" text-anchor="middle">Irene Adler</text>
+          <circle class="node" cx="452" cy="112" r="13"/>
+          <text class="node-label" x="452" y="96" text-anchor="middle">The King</text>
+          <circle class="node" cx="486" cy="190" r="13"/>
+          <text class="node-label" x="486" y="218" text-anchor="middle">Godfrey Norton</text>
+          <circle class="node" cx="398" cy="196" r="13"/>
+          <text class="node-label" x="398" y="224" text-anchor="middle">Baker Street</text>
+
+          <!-- question bubble -->
+          <rect x="34" y="268" width="230" height="30" rx="8" fill="#14181C"/>
+          <text class="question-text" x="48" y="287">Who did Holmes face at the falls?</text>
+
+          <!-- answer card (animated) -->
+          <g class="answer-card">
+            <rect x="34" y="306" width="498" height="78" rx="10" fill="#FFFFFF" stroke="#E4E7EB"/>
+            <text class="answer-tag" x="48" y="326">● LOCAL SEARCH · ANSWER · 3 STEPS</text>
+            <text class="answer-text" x="48" y="346">Holmes confronted Professor Moriarty at the Reichenbach Falls</text>
+            <rect class="cite" x="372" y="336" width="18" height="13" rx="3"/>
+            <text class="cite-text" x="381" y="346" text-anchor="middle">1</text>
+            <text class="answer-text" x="48" y="364">after Moriarty pursued him across Europe.</text>
+            <rect class="cite" x="276" y="354" width="18" height="13" rx="3"/>
+            <text class="cite-text" x="285" y="364" text-anchor="middle">2</text>
+            <text class="answer-text" x="48" y="379" fill="#8B94A0" style="font-size:9.5px">Sources: [1] The Final Problem.txt · passage 3   [2] The Final Problem.txt · passage 2</text>
+          </g>
+        </svg>
+        <figcaption class="hero-caption">
+          <span>Knowledge graph — replaying trace</span>
+          <span>entity → relationship → entity → cited passages</span>
+        </figcaption>
+      </figure>
+    </div>
+
+    <div class="container">
+      <div class="facts reveal">
+        <div class="fact"><strong>3 search modes</strong><span>Local, Global and DRIFT, each with a visible retrieval trace</span></div>
+        <div class="fact"><strong>Every answer cited</strong><span>Inline <code>[n]</code> markers that can only point at passages the search read</span></div>
+        <div class="fact"><strong>Graph vs. vector</strong><span>A side-by-side comparison with a plain vector-RAG baseline</span></div>
+        <div class="fact"><strong>Works offline</strong><span>Deterministic stand-ins mean the whole pipeline runs without an API key</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ WHY -->
+  <section class="section" id="why">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">The idea</span>
+        <h2>Retrieval you can see</h2>
+        <p class="lede">Retrieval-Augmented Generation gives a language model the right passages before it writes. The question is how you find those passages. GraphRAG's answer is to first turn the corpus into a graph of entities and relationships, cluster that graph into communities, and then retrieve by walking structure instead of only matching similar text.</p>
+      </div>
+
+      <div class="split reveal">
+        <div class="compare-box compare-box--vector">
+          <h3><span class="pill pill--vector">Baseline</span> Vector RAG</h3>
+          <ul>
+            <li>Chop the text into chunks and embed each one.</li>
+            <li>Embed the question and keep the most similar chunks.</li>
+            <li>Great for "where does it say X?" when X is in one place.</li>
+            <li>Struggles with questions that span documents or need the whole corpus: "what are the main themes?"</li>
+            <li>The retrieval is a list of similarity scores. Hard to explain why a chunk was chosen.</li>
+          </ul>
+        </div>
+        <div class="compare-box compare-box--graph">
+          <h3><span class="pill pill--graph">GraphRAG</span> Graph-based RAG</h3>
+          <ul>
+            <li>An LLM reads every passage and extracts entities and the relationships between them.</li>
+            <li>Duplicates are resolved, descriptions merged, and the graph is clustered into communities, each with an LLM-written summary.</li>
+            <li>A question starts at matching entities or communities and walks the graph to the passages they came from.</li>
+            <li>Broad questions are answered from community summaries; precise ones from a neighbourhood.</li>
+            <li>The retrieval is a path through nodes and edges. It can be drawn.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="cards reveal" style="margin-top:24px">
+        <article class="card">
+          <div class="card-icon card-icon--accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="8" r="3"/><circle cx="10" cy="18" r="3"/><path d="M8.7 7.6l6.6 0.1M7.4 8.6l1.6 6.6M12.4 16.6l4.2-6"/></svg></div>
+          <h3>Watch it being built</h3>
+          <p>Most GraphRAG tools hide the index build behind a progress bar. Lens streams every extracted entity, relationship and community to the browser the moment it is persisted, so the graph grows on the canvas passage by passage.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon card-icon--active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h5l2-5 3 10 2-5h4"/></svg></div>
+          <h3>Replay every answer</h3>
+          <p>Each answer carries a Retrieval Trace: the ordered list of entities, relationships, communities and passages it touched. A scrubber replays it step by step on the graph, in the DRIFT tree or in the vector space.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon card-icon--global"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h16M4 19h10"/><circle cx="19" cy="19" r="2"/></svg></div>
+          <h3>Honest about simplifications</h3>
+          <p>Every panel has a <code>?</code> button that explains the canonical GraphRAG idea, what this demo actually does, and where it simplifies. The site you are reading is built from those same explanations.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ BUILD -->
+  <section class="section section--panel" id="build">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow eyebrow--accent">Step 1 · Ingestion</span>
+        <h2>From documents to a knowledge graph, live</h2>
+        <p class="lede">Upload plain text or PDF, or load the built-in Sherlock Holmes demo. Ingestion runs asynchronously and reports every step over a server-sent event stream, so the browser draws the graph while it is still being built.</p>
+      </div>
+
+      <div class="pipeline reveal">
+        <div class="step">
+          <span class="step-num">1</span>
+          <h3>Split into Text Units</h3>
+          <p>Each document is cut into overlapping passages so no fact is lost at a boundary.</p>
+          <span class="step-meta">≈ 6,000 chars · 600 overlap</span>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <h3>Extract, one passage at a time</h3>
+          <p>The LLM returns typed entities with descriptions and the relationships between them.</p>
+          <span class="step-meta">LlmPort.extract(textUnit)</span>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <h3>Resolve and merge</h3>
+          <p>"Holmes" and "Sherlock Holmes" become one node. Descriptions, provenance and weights merge.</p>
+          <span class="step-meta">EntityResolver · GraphElementMerger</span>
+        </div>
+        <div class="step">
+          <span class="step-num">4</span>
+          <h3>Detect communities</h3>
+          <p>Leiden clustering groups tightly linked entities. Groups of three or more get an LLM-written title and summary.</p>
+          <span class="step-meta">GDS Leiden · min. 3 members</span>
+        </div>
+        <div class="step">
+          <span class="step-num">5</span>
+          <h3>Embed and index</h3>
+          <p>Entities and community summaries are embedded for meaning-based matching. The vector baseline is built in parallel.</p>
+          <span class="step-meta">vector indexes · 500-char chunks</span>
+        </div>
+      </div>
+
+      <div class="two-col reverse reveal">
+        <figure class="shot shot--lg">
+          <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — knowledge graph, building</span></div>
+          <img src="assets/ingestion-building.png" alt="GraphRAG Lens during ingestion: the banner reads 'Extracting passage 3 of 3 — The Final Problem.txt' while entities appear on the canvas" width="1280" height="720" loading="lazy">
+          <figcaption>The progress banner names the passage being extracted while nodes appear. Every screenshot on this page was captured by the project's own UI tests against the offline demo.</figcaption>
+        </figure>
+        <div>
+          <h3>Persist after every passage</h3>
+          <p>Extraction, resolution and persistence happen per Text Unit, not at the end. Each write is a corpus-scoped <code>MERGE</code> into Neo4j, and each write fires a progress event: <code>text-unit-extracted</code>, <code>entity-extracted</code>, <code>relationship-extracted</code>, <code>community-detected</code>, then <code>ingestion-complete</code>.</p>
+          <ul class="checklist">
+            <li>Many corpora live side by side. Every node and edge carries a <code>corpusId</code>.</li>
+            <li>A failure in any step marks the corpus <strong>FAILED</strong> and names the step. Nothing is retried silently.</li>
+            <li>Corpora survive restarts and are reconciled on startup. A page that connects late still receives earlier events.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="two-col reveal" style="margin-top:56px">
+        <div>
+          <h3>Click any entity to see where it came from</h3>
+          <p>The detail panel shows an entity's type, its merged description, its relationships, and the source passages it was extracted from. Shaded regions are communities. A one-line legend lists the largest ones; "All communities" lists every community by size.</p>
+          <p>Types colour the nodes, communities colour the regions, and the two palettes are deliberately different so they never blend.</p>
+        </div>
+        <figure class="shot shot--lg">
+          <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — entity detail</span></div>
+          <img src="assets/entity-detail.png" alt="The knowledge graph with the entity Sherlock Holmes selected and its detail panel opening on the right" width="1280" height="720" loading="lazy">
+          <figcaption>Two communities from the demo corpus: "Irene Adler &amp; King" and "Holmes &amp; Professor Moriarty".</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ MODES -->
+  <section class="section" id="modes">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Step 2 · Asking</span>
+        <h2>Three ways to ask the same graph</h2>
+        <p class="lede">All three modes follow one pattern: find starting points, assemble a bounded context, record every item as a trace step, and let the LLM write a cited answer. They differ in where they start.</p>
+      </div>
+
+      <div class="reveal">
+        <div class="mode-tabs" role="tablist" aria-label="Search modes">
+          <button class="mode-tab" role="tab" data-mode="local" id="tab-local" aria-controls="mode-local" aria-selected="true"><i aria-hidden="true"></i>Local<span class="label-long">&nbsp;Search</span></button>
+          <button class="mode-tab" role="tab" data-mode="global" id="tab-global" aria-controls="mode-global" aria-selected="false"><i aria-hidden="true"></i>Global<span class="label-long">&nbsp;Search</span></button>
+          <button class="mode-tab" role="tab" data-mode="drift" id="tab-drift" aria-controls="mode-drift" aria-selected="false"><i aria-hidden="true"></i>DRIFT<span class="label-long">&nbsp;Search</span></button>
+        </div>
+
+        <!-- LOCAL -->
+        <div class="mode-panel is-active" role="tabpanel" id="mode-local" data-mode="local" aria-labelledby="tab-local">
+          <div class="mode-grid">
+            <div>
+              <span class="eyebrow eyebrow--accent">Precise questions</span>
+              <h3>Local Search</h3>
+              <p class="mode-tagline">Start at the entities closest to the question and walk their one-hop neighbourhood into the passages they came from.</p>
+              <p>The question is embedded and the three closest entities (by <em>name: description</em>) become seeds. From there the search takes up to ten relationships touching the seeds, highest weight first, and up to five source passages those entities and relationships were extracted from. The model sees everything numbered and must cite passages inline.</p>
+              <div class="mode-diagram" aria-hidden="true">
+                <svg viewBox="0 0 440 150">
+                  <text class="d-mono" x="12" y="18">QUESTION → SEED ENTITIES → RELATIONSHIPS → PASSAGES</text>
+                  <rect class="d-box" x="12" y="34" width="110" height="28" rx="6"/>
+                  <text class="d-text" x="67" y="52" text-anchor="middle">"Who is Moriarty?"</text>
+                  <line class="d-edge" x1="122" y1="48" x2="150" y2="48" marker-end="url(#m-arrow)"/>
+                  <circle class="d-node" cx="175" cy="48" r="11" fill="#DCE7FD" stroke="#2563EB"/>
+                  <text class="d-text" x="175" y="78" text-anchor="middle">Moriarty</text>
+                  <circle class="d-node" cx="175" cy="112" r="9"/>
+                  <text class="d-text" x="175" y="136" text-anchor="middle">Holmes</text>
+                  <line class="d-edge" x1="186" y1="48" x2="240" y2="48"/>
+                  <line class="d-edge" x1="175" y1="59" x2="175" y2="103"/>
+                  <line class="d-edge" x1="186" y1="52" x2="240" y2="108"/>
+                  <circle class="d-node" cx="250" cy="48" r="9"/>
+                  <text class="d-text" x="250" y="30" text-anchor="middle">Europe</text>
+                  <circle class="d-node" cx="250" cy="112" r="9"/>
+                  <text class="d-text" x="250" y="136" text-anchor="middle">Reichenbach</text>
+                  <rect class="d-box" x="300" y="30" width="128" height="26" rx="5" fill="#E4F5DE" stroke="#6FA363"/>
+                  <text class="d-text" x="364" y="47" text-anchor="middle">passage 2 · Final Problem</text>
+                  <rect class="d-box" x="300" y="62" width="128" height="26" rx="5" fill="#E4F5DE" stroke="#6FA363"/>
+                  <text class="d-text" x="364" y="79" text-anchor="middle">passage 3 · Final Problem</text>
+                  <rect class="d-box" x="300" y="94" width="128" height="26" rx="5" fill="#E4F5DE" stroke="#6FA363"/>
+                  <text class="d-text" x="364" y="111" text-anchor="middle">passage 1 · Empty House</text>
+                  <line class="d-edge" x1="260" y1="48" x2="298" y2="44"/>
+                  <line class="d-edge" x1="260" y1="108" x2="298" y2="106"/>
+                  <line class="d-edge" x1="186" y1="44" x2="298" y2="72"/>
+                </svg>
+              </div>
+              <ul class="trace-shape" aria-label="Shape of a Local Search trace">
+                <li class="k-entity">ENTITY ×3</li><li class="arrow">→</li>
+                <li class="k-rel">RELATIONSHIP ≤10</li><li class="arrow">→</li>
+                <li class="k-tu">TEXT_UNIT ≤5</li><li class="arrow">→</li>
+                <li class="k-syn">SYNTHESIS</li>
+              </ul>
+            </div>
+            <figure class="shot">
+              <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — local search, replaying trace</span></div>
+              <img src="assets/local-replay.png" alt="A Local Search answer to 'Who is Sherlock Holmes?' with its trace being replayed; the matched entity is highlighted on the graph" width="1280" height="720" loading="lazy">
+              <figcaption>Replaying a Local trace. The matched seed entity pulses on the canvas while the scrubber captions each step.</figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <!-- GLOBAL -->
+        <div class="mode-panel" role="tabpanel" id="mode-global" data-mode="global" aria-labelledby="tab-global" hidden>
+          <div class="mode-grid">
+            <div>
+              <span class="eyebrow eyebrow--global">Broad questions</span>
+              <h3>Global Search</h3>
+              <p class="mode-tagline">Read the community summaries, pick the ones that match the question, and answer from them and their most relevant passages.</p>
+              <p>Built for "what is this corpus about?". Canonical GraphRAG maps the question over community reports and reduces partial answers. Lens takes the three communities whose summaries are closest in meaning, records each as a step, follows each with up to two member passages ranked by relationship weight, and writes one answer over all of it. A corpus with no communities yet gives an honest "no answer" with the reason.</p>
+              <div class="mode-diagram" aria-hidden="true">
+                <svg viewBox="0 0 440 150">
+                  <text class="d-mono" x="12" y="18">QUESTION → TOP-3 COMMUNITIES → 2 PASSAGES EACH</text>
+                  <rect class="d-box" x="12" y="34" width="118" height="28" rx="6"/>
+                  <text class="d-text" x="71" y="52" text-anchor="middle">"Main themes?"</text>
+                  <rect x="160" y="30" width="120" height="30" rx="8" fill="#FDE7D8"/>
+                  <text class="d-text" x="220" y="49" text-anchor="middle">Holmes &amp; Moriarty</text>
+                  <rect x="160" y="68" width="120" height="30" rx="8" fill="#F4E3F7"/>
+                  <text class="d-text" x="220" y="87" text-anchor="middle">Adler &amp; the King</text>
+                  <rect x="160" y="106" width="120" height="30" rx="8" fill="#E4F5DE"/>
+                  <text class="d-text" x="220" y="125" text-anchor="middle">Baker Street</text>
+                  <line class="d-edge" x1="130" y1="48" x2="158" y2="45"/>
+                  <line class="d-edge" x1="130" y1="48" x2="158" y2="83"/>
+                  <line class="d-edge" x1="130" y1="48" x2="158" y2="121"/>
+                  <rect class="d-box" x="310" y="28" width="118" height="14" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                  <rect class="d-box" x="310" y="46" width="118" height="14" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                  <rect class="d-box" x="310" y="66" width="118" height="14" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                  <rect class="d-box" x="310" y="84" width="118" height="14" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                  <rect class="d-box" x="310" y="104" width="118" height="14" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                  <rect class="d-box" x="310" y="122" width="118" height="14" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                  <line class="d-edge" x1="280" y1="45" x2="308" y2="40"/>
+                  <line class="d-edge" x1="280" y1="83" x2="308" y2="78"/>
+                  <line class="d-edge" x1="280" y1="121" x2="308" y2="116"/>
+                </svg>
+              </div>
+              <ul class="trace-shape" aria-label="Shape of a Global Search trace">
+                <li class="k-comm">COMMUNITY</li><li class="arrow">→</li>
+                <li class="k-tu">TEXT_UNIT ≤2</li><li class="arrow">→</li>
+                <li class="k-comm">COMMUNITY</li><li class="arrow">→</li>
+                <li class="k-tu">TEXT_UNIT ≤2</li><li class="arrow">→</li>
+                <li class="k-mute">…</li><li class="arrow">→</li>
+                <li class="k-syn">SYNTHESIS</li>
+              </ul>
+            </div>
+            <figure class="shot">
+              <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — global search</span></div>
+              <img src="assets/global-answer.png" alt="A Global Search answer in the chat panel next to the knowledge graph; the mode radio shows Global Search selected" width="1280" height="720" loading="lazy">
+              <figcaption>Global Search in the offline demo. Without a key it scores summaries by keyword overlap and says so when nothing matches, rather than guessing.</figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <!-- DRIFT -->
+        <div class="mode-panel" role="tabpanel" id="mode-drift" data-mode="drift" aria-labelledby="tab-drift" hidden>
+          <div class="mode-grid">
+            <div>
+              <span class="eyebrow eyebrow--drift">Broad first, precise second</span>
+              <h3>DRIFT Search</h3>
+              <p class="mode-tagline">Prime the search with communities, spawn a sub-question for each promising one, gather Local-style context per branch, then synthesize once over the union.</p>
+              <p>DRIFT stands for Dynamic Reasoning and Inference with Flexible Traversal. Lens picks up to three candidate communities, derives a sub-question for each, and under every <code>SUB_QUESTION_SPAWNED</code> step collects the same bounded context a Local Search would: seed entities, relationships and passages. One model call then writes the answer from the community summaries plus everything the branches found, de-duplicated. The DRIFT tree draws the branches next to the graph.</p>
+              <div class="mode-diagram" aria-hidden="true">
+                <svg viewBox="0 0 440 150">
+                  <text class="d-mono" x="12" y="18">COMMUNITY PASS → SUB-QUESTIONS → LOCAL CONTEXT → SYNTHESIS</text>
+                  <rect class="d-box" x="12" y="60" width="92" height="28" rx="6" fill="#FBDCE7" stroke="#C0225F"/>
+                  <text class="d-text" x="58" y="78" text-anchor="middle">1 · Communities</text>
+                  <rect class="d-box" x="140" y="30" width="118" height="24" rx="6"/>
+                  <text class="d-text" x="199" y="46" text-anchor="middle">sub-question 1</text>
+                  <rect class="d-box" x="140" y="62" width="118" height="24" rx="6"/>
+                  <text class="d-text" x="199" y="78" text-anchor="middle">sub-question 2</text>
+                  <rect class="d-box" x="140" y="94" width="118" height="24" rx="6"/>
+                  <text class="d-text" x="199" y="110" text-anchor="middle">sub-question 3</text>
+                  <line class="d-edge" x1="104" y1="74" x2="138" y2="42"/>
+                  <line class="d-edge" x1="104" y1="74" x2="138" y2="74"/>
+                  <line class="d-edge" x1="104" y1="74" x2="138" y2="106"/>
+                  <g>
+                    <circle class="d-node" cx="290" cy="42" r="6"/><circle class="d-node" cx="306" cy="42" r="6"/><rect class="d-box" x="318" y="36" width="26" height="12" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                    <circle class="d-node" cx="290" cy="74" r="6"/><circle class="d-node" cx="306" cy="74" r="6"/><rect class="d-box" x="318" y="68" width="26" height="12" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                    <circle class="d-node" cx="290" cy="106" r="6"/><circle class="d-node" cx="306" cy="106" r="6"/><rect class="d-box" x="318" y="100" width="26" height="12" rx="3" fill="#E4F5DE" stroke="#6FA363"/>
+                  </g>
+                  <line class="d-edge" x1="258" y1="42" x2="282" y2="42"/>
+                  <line class="d-edge" x1="258" y1="74" x2="282" y2="74"/>
+                  <line class="d-edge" x1="258" y1="106" x2="282" y2="106"/>
+                  <rect x="372" y="60" width="56" height="28" rx="6" fill="#14181C"/>
+                  <text class="d-text" x="400" y="78" text-anchor="middle" fill="#fff">Synthesis</text>
+                  <line class="d-edge" x1="346" y1="42" x2="370" y2="68"/>
+                  <line class="d-edge" x1="346" y1="74" x2="370" y2="74"/>
+                  <line class="d-edge" x1="346" y1="106" x2="370" y2="80"/>
+                </svg>
+              </div>
+              <ul class="trace-shape" aria-label="Shape of a DRIFT Search trace">
+                <li class="k-comm">COMMUNITY ≤3</li><li class="arrow">→</li>
+                <li class="k-sub">SUB_QUESTION_SPAWNED</li><li class="arrow">→</li>
+                <li class="k-entity">ENTITY</li><li class="k-rel">RELATIONSHIP</li><li class="k-tu">TEXT_UNIT</li><li class="arrow">→</li>
+                <li class="k-mute">… per branch</li><li class="arrow">→</li>
+                <li class="k-syn">SYNTHESIS</li>
+              </ul>
+            </div>
+            <figure class="shot">
+              <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — drift search tree, replaying</span></div>
+              <img src="assets/drift-tree.png" alt="A DRIFT Search replay: the scrubber is on step 2 of 7, the drift tree on the right shows the community pass, a spawned sub-question and the synthesis step" width="1280" height="720" loading="lazy">
+              <figcaption>The DRIFT tree opens beside the canvas and lights up the phase the scrubber is on: community pass, sub-question branches, synthesis.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ GROUNDING -->
+  <section class="section section--panel" id="grounding">
+    <div class="container">
+      <div class="two-col reveal">
+        <div>
+          <span class="eyebrow eyebrow--active">Step 3 · Trusting the answer</span>
+          <h2 style="font-size:clamp(28px,4vw,40px);font-weight:800;margin-bottom:14px">Every answer shows its work</h2>
+          <p class="lede">An answer is only trustworthy if you can see where it came from. In Lens a citation is a guarantee, not a decoration: it can only point at a passage the search actually read, and that passage is a step of the same trace you can replay.</p>
+          <div class="answer-mock" aria-label="Example of an answer with citations">
+            <span class="q">Who did Holmes face at the falls?</span>
+            <span class="tag pill pill--graph">● Local Search · answer</span>
+            <p>Holmes confronted Professor Moriarty at the Reichenbach Falls<span class="marker">1</span>, after Moriarty had pursued him across Europe<span class="marker">2</span>.</p>
+            <ul class="sources">
+              <li><b>[1]</b> The Final Problem.txt · passage 3 · "…the two men grappled at the edge of the falls…"</li>
+              <li><b>[2]</b> The Final Problem.txt · passage 2 · "…his network extended across Europe…"</li>
+            </ul>
+            <div class="replay">▶ Replay this answer's Retrieval Trace — 9 steps &nbsp;·&nbsp; ↻ Compare with Vector Search</div>
+          </div>
+        </div>
+        <ol class="rules">
+          <li><strong>Context items are numbered in assembly order.</strong><span>The use case lists every entity, relationship, community summary and passage as <code>[1]..[n]</code>, exactly as the model will see them.</span></li>
+          <li><strong>Only "Source passage" items may be cited.</strong><span>Entities, relationships and summaries are background facts. The prompt allows citations of passages alone.</span></li>
+          <li><strong>Stray markers are dropped, the rest renumbered.</strong><span>The citation resolver removes any marker that is not a passage of this context and renumbers the survivors from 1 by first appearance. <code>[i]</code> in the text always means <code>citations[i-1]</code>.</span></li>
+          <li><strong>Every cited passage is a trace step.</strong><span>Replay highlights the passage together with every entity that was extracted from it, so you see which part of the graph supports it.</span></li>
+          <li><strong>"Not in context" stays "no answer".</strong><span>If the model says the context does not contain the answer, the result is a plain no-answer with the reason. It never becomes an invented answer, and failed model calls surface as errors rather than templates.</span></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ COMPARE -->
+  <section class="section" id="compare">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Step 4 · GraphRAG vs. vector search</span>
+        <h2>Same question, two mechanisms, side by side</h2>
+        <p class="lede">Under every GraphRAG answer sits a Compare button. It answers the question again, fresh, twice: once in the answer's GraphRAG mode and once with plain vector similarity over 500-character chunks, with no graph at all. The Compare tab lays both out with their sources, key figures and a short verdict.</p>
+      </div>
+
+      <div class="two-col reverse reveal">
+        <figure class="shot shot--lg">
+          <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — compare &amp; vector space tabs</span></div>
+          <img src="assets/compare.png" alt="The Vector Space and Compare tabs opened after a comparison; the vector answer lists the retrieved text passages" width="1280" height="720" loading="lazy">
+          <figcaption>After a comparison the Vector Space tab shows the 2-D embedding map of the baseline's chunks and the Compare tab opens with both answers.</figcaption>
+        </figure>
+        <div>
+          <h3>What the comparison shows</h3>
+          <p>GraphRAG on the left, Vector Search on the right, each with its <code>[n]</code> markers and Sources list. Under each answer, every passage that side retrieved, cited or not. A source retrieved by both sides is badged "also used by the other side".</p>
+          <div class="figures">
+            <div class="figure"><b>Context items</b>entities, relationships, communities and passages vs. chunks</div>
+            <div class="figure"><b>Distinct documents</b>how widely each side read across the corpus</div>
+            <div class="figure"><b>Citations</b>how many sources the written answer actually used</div>
+            <div class="figure"><b>Latency</b>wall-clock time per side, measured fresh</div>
+          </div>
+          <p style="margin-top:18px">The verdict is one or two sentences naming the concrete difference and its reason. With an OpenAI key the model writes it from both answers and the measured figures. Without one, a fixed rule over the figures reports which side retrieved more and how many passages overlap, without judging correctness.</p>
+          <p>"Replay GraphRAG" and "Replay Vector" start the usual trace replay on the Knowledge Graph and Vector Space tabs, so the two retrieval paths can be watched one after the other.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ GLOSSARY -->
+  <section class="section section--tight section--panel" id="glossary">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Vocabulary</span>
+        <h2>The seven words you need</h2>
+      </div>
+      <div class="glossary reveal">
+        <dl class="term"><dt><span class="dot" style="background:#4B5563"></span>Entity</dt><dd>A named thing the extractor found: a person, place, organisation or concept, with a type and a merged description.</dd></dl>
+        <dl class="term"><dt><span class="dot" style="background:#E85D2B"></span>Relationship</dt><dd>A typed, weighted link between two entities, with a description and the passages it was extracted from.</dd></dl>
+        <dl class="term"><dt><span class="dot" style="background:#6FA363"></span>Text Unit</dt><dd>One overlapping passage of a document. The unit of extraction and the only thing an answer may cite.</dd></dl>
+        <dl class="term"><dt><span class="dot" style="background:#0E7C86"></span>Community</dt><dd>A cluster of at least three tightly linked entities, with an LLM-written title and summary. Global and DRIFT Search start here.</dd></dl>
+        <dl class="term"><dt><span class="dot" style="background:#6D6FC9"></span>Chunk</dt><dd>A 500-character slice used only by the vector baseline, embedded and ranked by cosine similarity.</dd></dl>
+        <dl class="term"><dt><span class="dot" style="background:#C0225F"></span>Retrieval Trace</dt><dd>The ordered list of steps an answer took: entities, relationships, communities, passages, sub-questions, synthesis.</dd></dl>
+        <dl class="term"><dt><span class="dot" style="background:#2563EB"></span>Citation</dt><dd>A resolved <code>[n]</code> marker: the passage id, its document and an excerpt. Always a step of the same trace.</dd></dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ ARCHITECTURE -->
+  <section class="section" id="architecture">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Under the hood</span>
+        <h2>A framework-free core behind a hexagonal boundary</h2>
+        <p class="lede">All GraphRAG logic sits in one library, <code>graphrag-core</code>, that imports neither Spring, nor the Neo4j driver, nor LangChain4j. Everything it needs from the outside world goes through five ports. Adapters implement the ports; the core never sees them.</p>
+      </div>
+
+      <div class="arch reveal" role="img" aria-label="Architecture diagram: the browser talks to the Spring Boot web module, which calls use cases in graphrag-core. The core depends only on five ports: DocumentParserPort, LlmPort, EmbeddingPort, GraphStorePort and VectorStorePort. Three adapters implement them: parsing (text and PDF), LangChain4j (OpenAI and offline stubs) and Neo4j (graph, GDS Leiden, vector indexes).">
+        <svg viewBox="0 0 1000 520">
+          <defs>
+            <marker id="a-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8B94A0"/></marker>
+            <marker id="a-arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563EB"/></marker>
+          </defs>
+
+          <!-- Browser -->
+          <rect class="a-box" x="20" y="30" width="200" height="130" rx="12"/>
+          <text class="a-title" x="36" y="54">BROWSER</text>
+          <text class="a-label" x="36" y="80">Plain JavaScript modules</text>
+          <text class="a-sub" x="36" y="100">upload.js · graph-canvas.js (Cytoscape)</text>
+          <text class="a-sub" x="36" y="116">replay.js · drift-tree.js · vector-space.js</text>
+          <text class="a-sub" x="36" y="132">help.js · no build step, no npm</text>
+          <text class="a-mono" x="36" y="150">fetch /api/… · EventSource /progress</text>
+
+          <!-- Web -->
+          <rect class="a-web" x="260" y="30" width="220" height="130" rx="12"/>
+          <text class="a-title" x="276" y="54" fill="#E85D2B">GRAPHRAG-WEB · SPRING BOOT</text>
+          <text class="a-label" x="276" y="80">CorpusController (REST)</text>
+          <text class="a-sub" x="276" y="100">CorpusProgressService (SSE)</text>
+          <text class="a-sub" x="276" y="116">RetrievalTraceStore (in memory)</text>
+          <text class="a-sub" x="276" y="132">DemoDatasetService</text>
+          <text class="a-mono" x="276" y="150">ParserConfig wires ports → adapters</text>
+          <line class="a-line" x1="220" y1="95" x2="258" y2="95" marker-end="url(#a-arrow)"/>
+
+          <!-- Core hexagon -->
+          <polygon class="a-core" points="590,30 950,30 980,95 950,160 590,160 560,95"/>
+          <text class="a-title" x="600" y="54" fill="#2563EB">GRAPHRAG-CORE · FRAMEWORK-FREE</text>
+          <text class="a-label" x="600" y="78">Use cases</text>
+          <text class="a-sub" x="600" y="96">IngestCorpus · ExtractEntitiesAndRelationships · DetectCommunities</text>
+          <text class="a-sub" x="600" y="112">EmbedGraphElements · ConstructVectorIndex · AnswerLocalSearch</text>
+          <text class="a-sub" x="600" y="128">AnswerGlobalSearch · AnswerDriftSearch · AnswerVectorBaseline · Compare</text>
+          <text class="a-mono" x="600" y="148">domain records · TextUnitSplitter · EntityResolver · CitationResolver</text>
+          <line class="a-line" x1="480" y1="95" x2="558" y2="95" marker-end="url(#a-arrow)"/>
+          <text class="a-mono" x="490" y="86">calls</text>
+
+          <!-- Ports row -->
+          <text class="a-title" x="20" y="222">PORTS · dev.rabauer.graphrag.core.port</text>
+          <g>
+            <rect class="a-port" x="20" y="236" width="176" height="64" rx="10"/>
+            <text class="a-label" x="32" y="260">DocumentParserPort</text>
+            <text class="a-sub" x="32" y="278">supports(filename)</text>
+            <text class="a-sub" x="32" y="292">extract(filename, bytes)</text>
+
+            <rect class="a-port" x="216" y="236" width="176" height="64" rx="10"/>
+            <text class="a-label" x="228" y="260">LlmPort</text>
+            <text class="a-sub" x="228" y="278">extract · summarizeCommunity</text>
+            <text class="a-sub" x="228" y="292">synthesizeAnswer · compare</text>
+
+            <rect class="a-port" x="412" y="236" width="176" height="64" rx="10"/>
+            <text class="a-label" x="424" y="260">EmbeddingPort</text>
+            <text class="a-sub" x="424" y="278">embed(text)</text>
+            <text class="a-sub" x="424" y="292">isSemantic()</text>
+
+            <rect class="a-port" x="608" y="236" width="176" height="64" rx="10"/>
+            <text class="a-label" x="620" y="260">GraphStorePort</text>
+            <text class="a-sub" x="620" y="278">persist · detectCommunities</text>
+            <text class="a-sub" x="620" y="292">similarEntities · corpus-scoped</text>
+
+            <rect class="a-port" x="804" y="236" width="176" height="64" rx="10"/>
+            <text class="a-label" x="816" y="260">VectorStorePort</text>
+            <text class="a-sub" x="816" y="278">persistChunks · chunks</text>
+            <text class="a-sub" x="816" y="292">projectionModel</text>
+          </g>
+          <!-- core depends on ports -->
+          <path class="a-dash" d="M700 160 L700 200 L108 200 L108 234" marker-end="url(#a-arrow-blue)"/>
+          <path class="a-dash" d="M700 200 L304 200 L304 234" marker-end="url(#a-arrow-blue)"/>
+          <path class="a-dash" d="M700 200 L500 200 L500 234" marker-end="url(#a-arrow-blue)"/>
+          <path class="a-dash" d="M700 200 L696 234" marker-end="url(#a-arrow-blue)"/>
+          <path class="a-dash" d="M700 200 L892 200 L892 234" marker-end="url(#a-arrow-blue)"/>
+          <text class="a-mono" x="710" y="190" fill="#2563EB">depends only on</text>
+
+          <!-- Adapters -->
+          <text class="a-title" x="20" y="352">ADAPTERS · implement the ports</text>
+          <rect class="a-adapter" x="20" y="366" width="176" height="70" rx="10"/>
+          <text class="a-label" x="32" y="390">graphrag-adapter-parsing</text>
+          <text class="a-sub" x="32" y="408">PlainText · PDF (PDFBox)</text>
+
+          <rect class="a-adapter" x="216" y="366" width="372" height="70" rx="10"/>
+          <text class="a-label" x="228" y="390">graphrag-adapter-langchain4j</text>
+          <text class="a-sub" x="228" y="408">OpenAI chat + embeddings via LangChain4j, JSON-mode prompts, no retries</text>
+          <text class="a-sub" x="228" y="424">Deterministic offline stand-ins for both ports</text>
+
+          <rect class="a-adapter" x="608" y="366" width="372" height="70" rx="10"/>
+          <text class="a-label" x="620" y="390">graphrag-adapter-neo4j</text>
+          <text class="a-sub" x="620" y="408">Corpus-scoped MERGE · GDS Leiden communities · vector indexes</text>
+          <text class="a-sub" x="620" y="424">Durable corpus registry · in-memory variants for tests</text>
+
+          <line class="a-line" x1="108" y1="300" x2="108" y2="364" marker-end="url(#a-arrow)"/>
+          <line class="a-line" x1="304" y1="300" x2="304" y2="364" marker-end="url(#a-arrow)"/>
+          <line class="a-line" x1="500" y1="300" x2="500" y2="364" marker-end="url(#a-arrow)"/>
+          <line class="a-line" x1="696" y1="300" x2="696" y2="364" marker-end="url(#a-arrow)"/>
+          <line class="a-line" x1="892" y1="300" x2="892" y2="364" marker-end="url(#a-arrow)"/>
+
+          <!-- External systems -->
+          <rect class="a-ext" x="216" y="466" width="372" height="40" rx="10"/>
+          <text class="a-label" x="402" y="491" text-anchor="middle">OpenAI API · chat + embeddings (optional)</text>
+          <rect class="a-ext" x="608" y="466" width="372" height="40" rx="10"/>
+          <text class="a-label" x="794" y="491" text-anchor="middle">Neo4j 2026.x + Graph Data Science</text>
+          <line class="a-line" x1="402" y1="436" x2="402" y2="464" marker-end="url(#a-arrow)"/>
+          <line class="a-line" x1="794" y1="436" x2="794" y2="464" marker-end="url(#a-arrow)"/>
+        </svg>
+      </div>
+
+      <div class="design-rules reveal">
+        <div class="design-rule">
+          <strong>Only the abstract methods are required</strong>
+          <p>Each port has a small set of abstract methods. Everything else is a <code>default</code> with a sensible fallback, so a minimal adapter works and a richer one overrides what it does natively. Community detection defaults to connected components; the Neo4j adapter swaps in GDS Leiden.</p>
+        </div>
+        <div class="design-rule">
+          <strong>Every read and write is scoped to a corpus</strong>
+          <p>Many corpora share one store. Every node and relationship carries a <code>corpusId</code>, every <code>MERGE</code> is keyed by it, and vector index searches are filtered by it.</p>
+        </div>
+        <div class="design-rule">
+          <strong>Failures are visible, never silent</strong>
+          <p>LLM and embedding errors propagate and nothing is retried automatically. The app turns them into a FAILED corpus status or an error response, never into a quietly degraded answer.</p>
+        </div>
+        <div class="design-rule">
+          <strong>Capabilities are explicit</strong>
+          <p><code>synthesizesAnswers()</code> and <code>isSemantic()</code> tell the use cases whether a real model is behind a port. When there is none, they fall back to deterministic behaviour instead of pretending.</p>
+        </div>
+      </div>
+
+      <div class="reveal" style="margin-top:40px">
+        <h3 style="font-size:22px;font-weight:800;margin-bottom:14px">Live or offline: the same pipeline, two sets of adapters</h3>
+        <p style="color:var(--ink-600);max-width:720px">Without an <code>OPENAI_API_KEY</code> the app runs fully offline with deterministic stand-ins for the model and the embeddings. That is why the project's CI and every test run with the key unset, and why the screenshots on this page are from the offline demo.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Stage</th><th>With an OpenAI key</th><th>Offline (no key, or the Offline Demo)</th></tr></thead>
+            <tbody>
+              <tr><td>Extraction</td><td>LLM per passage, typed entities with descriptions</td><td>Regex and sentence-based stub</td></tr>
+              <tr><td>Communities</td><td>GDS Leiden, LLM-written title and summary</td><td>GDS Leiden (or connected components in memory), templated summary</td></tr>
+              <tr><td>Seed matching</td><td>Embedding similarity, top 3</td><td>Keyword matcher with fuzzy overlap</td></tr>
+              <tr><td>Answers</td><td>LLM-written with <code>[n]</code> citations</td><td>Deterministic templates, no citations</td></tr>
+              <tr><td>Vector baseline</td><td>LLM-written with chunk citations</td><td>Joined chunk texts</td></tr>
+              <tr><td>Compare verdict</td><td>LLM verdict, at most two sentences</td><td>Rule-based summary of the key figures</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ RUN -->
+  <section class="section section--dark" id="run">
+    <div class="container">
+      <div class="quickstart">
+        <div class="reveal">
+          <span class="eyebrow">Quick start</span>
+          <h2 style="font-size:clamp(28px,4vw,40px);font-weight:800;margin-bottom:14px">Running in one command</h2>
+          <p class="lede">One <code style="background:#1F262D;color:#E6EAEE">docker compose up</code> builds the app image, starts Neo4j with the Graph Data Science plugin next to it, and serves the app on port 8080. There is nothing else to install.</p>
+          <ol>
+            <li>Install Docker (Desktop or Engine with the Compose plugin).</li>
+            <li>Clone the repository and set your OpenAI key, or leave it out to run the Offline Demo only.</li>
+            <li>Open <code style="background:#1F262D;color:#E6EAEE">http://localhost:8080</code>, upload a <code style="background:#1F262D;color:#E6EAEE">.txt</code> or <code style="background:#1F262D;color:#E6EAEE">.pdf</code>, or load the Sherlock Holmes demo.</li>
+            <li>Watch the graph build, pick a mode, ask a question, replay the trace, press Compare.</li>
+          </ol>
+          <p style="margin-top:22px;color:#AEB6BF;font-size:14px">Neo4j's data is bind-mounted to <code style="background:#1F262D;color:#E6EAEE">./neo4j-data/</code> next to the compose file, so corpora survive restarts. Retrieval Traces live only in the app's memory and are cleared on restart; re-run a query to capture a fresh one.</p>
+        </div>
+        <div class="reveal">
+          <div class="codeblock" data-copy="git clone https://github.com/JohannesRabauer/graph-rag-visualisation.git
+cd graph-rag-visualisation
+OPENAI_API_KEY=sk-... docker compose up"><pre><span class="c"># clone and start the whole stack</span>
+<span class="k">git clone</span> https://github.com/JohannesRabauer/graph-rag-visualisation.git
+<span class="k">cd</span> graph-rag-visualisation
+<span class="s">OPENAI_API_KEY</span>=sk-... <span class="k">docker compose up</span></pre></div>
+          <div class="codeblock" data-copy="env -u OPENAI_API_KEY mvn -B install"><pre><span class="c"># build and test from source the way CI does (JDK 25, Maven 3.9+, Docker)</span>
+<span class="k">env -u</span> OPENAI_API_KEY <span class="k">mvn -B install</span></pre></div>
+          <p style="margin-top:16px;color:#AEB6BF;font-size:14px">Tests run with the key unset on purpose: with a key the Spring and Playwright UI tests would call the real model and stop being deterministic. The Neo4j tests use Testcontainers and download the GDS plugin.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ LIBRARY -->
+  <section class="section" id="library">
+    <div class="container">
+      <div class="two-col reveal">
+        <div>
+          <span class="eyebrow eyebrow--accent">For developers</span>
+          <h2 style="font-size:clamp(28px,4vw,40px);font-weight:800;margin-bottom:14px">Use the core in your own application</h2>
+          <p class="lede">The web app is one way of plugging in <code>graphrag-core</code>. The library itself is plain Java with no framework dependencies, versioned and released independently as <code>dev.rabauer.graphrag:graphrag-core</code>. Bring your own parser, model, embedding and store by implementing five small interfaces.</p>
+          <ul class="checklist">
+            <li>A Maven Enforcer rule fails the build if Spring, the Neo4j driver or LangChain4j leak into the core.</li>
+            <li>Implementing a port means implementing its abstract methods only. Defaults cover the rest.</li>
+            <li>Every use case returns its full Retrieval Trace, so your own UI can replay it.</li>
+            <li>Behaviour changes are recorded in the core's changelog, which follows Keep a Changelog and semantic versioning.</li>
+          </ul>
+          <div class="hero-actions" style="margin-top:26px">
+            <a class="btn btn-primary" href="https://github.com/JohannesRabauer/graph-rag-visualisation/tree/main/graphrag-core">Read the core's README</a>
+            <a class="btn btn-secondary" href="https://github.com/JohannesRabauer/graph-rag-visualisation/blob/main/graphrag-core/CHANGELOG.md">Changelog</a>
+          </div>
+        </div>
+        <div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Use case</th><th>What it does</th></tr></thead>
+              <tbody>
+                <tr><td>IngestCorpus</td><td>Validates uploads and builds a corpus from parsed documents.</td></tr>
+                <tr><td>ExtractEntitiesAndRelationships</td><td>Splits into Text Units, extracts per passage, resolves duplicates, persists as it goes.</td></tr>
+                <tr><td>DetectCommunities</td><td>Clusters the graph, keeps groups of three or more, asks the model for a title and summary.</td></tr>
+                <tr><td>EmbedGraphElements</td><td>Embeds entities and community summaries for meaning-based seed matching.</td></tr>
+                <tr><td>ConstructVectorIndex</td><td>Builds the baseline: chunks, embeddings and a fitted 2-D projection.</td></tr>
+                <tr><td>AnswerLocalSearch</td><td>Seeds on entities and walks their one-hop neighbourhood into cited passages.</td></tr>
+                <tr><td>AnswerGlobalSearch</td><td>Answers from the top community summaries and their most relevant passages.</td></tr>
+                <tr><td>AnswerDriftSearch</td><td>Communities, sub-questions, Local-style context per branch, one synthesis.</td></tr>
+                <tr><td>AnswerVectorBaseline</td><td>Top-5 chunks by cosine similarity, synthesized and cited the same way.</td></tr>
+                <tr><td>CompareAnswers</td><td>Runs a GraphRAG mode and the baseline fresh, measures both, produces a verdict.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ CTA -->
+  <section class="section section--tight section--panel grid-paper">
+    <div class="container">
+      <div class="section-head center reveal" style="margin-bottom:0">
+        <span class="eyebrow">Ready when you are</span>
+        <h2>Stop reading about GraphRAG. Watch it.</h2>
+        <p class="lede">Clone the repository, start the stack, load the demo, and see your first knowledge graph build in minutes.</p>
+        <div class="hero-actions" style="justify-content:center;margin-top:8px">
+          <a class="btn btn-primary" href="https://github.com/JohannesRabauer/graph-rag-visualisation">Open on GitHub</a>
+          <a class="btn btn-secondary" href="#run">Quick start</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div>© <span id="year">2026</span> Johannes Rabauer · GraphRAG Lens is open source under the Apache 2.0 license.</div>
+    <ul>
+      <li><a href="https://github.com/JohannesRabauer/graph-rag-visualisation">Repository</a></li>
+      <li><a href="https://github.com/JohannesRabauer/graph-rag-visualisation/blob/main/README.md">README</a></li>
+      <li><a href="https://github.com/JohannesRabauer/graph-rag-visualisation/issues">Issues</a></li>
+      <li><a href="https://github.com/JohannesRabauer/graph-rag-visualisation/blob/main/LICENSE">License</a></li>
+    </ul>
+  </div>
+</footer>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="m-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8B94A0"/></marker>
+  </defs>
+</svg>
+
+<script src="site.js" defer></script>
+</body>
+</html>

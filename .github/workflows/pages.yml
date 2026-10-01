@@ -1,0 +1,68 @@
+name: Website
+
+# Builds and publishes the project website (the static site under docs/)
+# to GitHub Pages. The site has no build step: HTML, CSS and JS are
+# committed as served. The job only validates the files and uploads them.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push supersedes a queued one but never
+# cancels a deployment that is already running.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Validate the site
+        run: |
+          set -euo pipefail
+          test -f docs/index.html
+          test -f docs/.nojekyll
+          # Every local asset the page references must exist in docs/.
+          missing=0
+          for ref in $(grep -oE '(src|href)="[^"#:]+"' docs/index.html | sed -E 's/^(src|href)="//; s/"$//' | sort -u); do
+            if [ ! -e "docs/$ref" ]; then
+              echo "::error file=docs/index.html::missing referenced file: $ref"
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+          # Well-formedness check of the HTML (tidy exits 2 on errors, 1 on warnings).
+          sudo apt-get install -y -qq tidy >/dev/null
+          tidy -q -e --drop-empty-elements no docs/index.html || test $? -eq 1
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the site as a Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
