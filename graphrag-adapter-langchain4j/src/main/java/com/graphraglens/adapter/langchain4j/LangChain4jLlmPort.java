@@ -85,7 +85,7 @@ public class LangChain4jLlmPort implements LlmPort {
         for (String sentence : sentences) {
             List<String> names = extractNames(sentence);
             for (String name : names) {
-                Entity entity = new Entity(name, inferType(name));
+                Entity entity = new Entity(name, inferType(name), sentenceDescription(sentence), List.of());
                 entitiesByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
             }
 
@@ -125,23 +125,28 @@ public class LangChain4jLlmPort implements LlmPort {
         String lowered = sentence.toLowerCase(Locale.ROOT);
         String source = names.getFirst();
         String target = names.getLast();
+        String description = sentenceDescription(sentence);
 
         if (lowered.contains(" met ")) {
-            return new Relationship(source, inferType(source), "met", target, inferType(target));
+            return new Relationship(source, inferType(source), "met", target, inferType(target), description, List.of(), 1);
         }
         if (lowered.contains(" visited ")) {
-            return new Relationship(source, inferType(source), "visited", target, inferType(target));
+            return new Relationship(source, inferType(source), "visited", target, inferType(target), description, List.of(), 1);
         }
         if (lowered.contains(" helped ")) {
-            return new Relationship(source, inferType(source), "helped", target, inferType(target));
+            return new Relationship(source, inferType(source), "helped", target, inferType(target), description, List.of(), 1);
         }
         if (lowered.contains(" chased ")) {
-            return new Relationship(source, inferType(source), "chased", target, inferType(target));
+            return new Relationship(source, inferType(source), "chased", target, inferType(target), description, List.of(), 1);
         }
         if (lowered.contains(" told ")) {
-            return new Relationship(source, inferType(source), "told", target, inferType(target));
+            return new Relationship(source, inferType(source), "told", target, inferType(target), description, List.of(), 1);
         }
-        return new Relationship(source, inferType(source), "related_to", target, inferType(target));
+        return new Relationship(source, inferType(source), "related_to", target, inferType(target), description, List.of(), 1);
+    }
+
+    private String sentenceDescription(String sentence) {
+        return sentence == null ? "" : sentence.trim();
     }
 
     private String inferType(String name) {

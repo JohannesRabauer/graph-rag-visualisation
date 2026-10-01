@@ -131,22 +131,29 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (entities == null || entities.isEmpty()) {
             return;
         }
+        List<Map<String, Object>> rows = entities.stream()
+                .filter(Objects::nonNull)
+                .map(entity -> Map.<String, Object>of(
+                        "normalizedIdentity", entity.normalizedIdentity(),
+                        "name", entity.name(),
+                        "type", entity.type(),
+                        "description", entity.description(),
+                        "sourceTextUnitIds", entity.sourceTextUnitIds()))
+                .toList();
+        if (rows.isEmpty()) {
+            return;
+        }
         try (Session session = driver.session()) {
-            session.executeWrite(tx -> {
-                for (Entity entity : entities) {
-                    if (entity == null) {
-                        continue;
-                    }
-                    tx.run("MERGE (e:Entity {corpusId: $corpusId, normalizedIdentity: $normalizedIdentity}) "
-                                    + "SET e.name = $name, e.type = $type",
-                            Map.of(
-                                    "corpusId", corpusId,
-                                    "normalizedIdentity", entity.normalizedIdentity(),
-                                    "name", entity.name(),
-                                    "type", entity.type()));
-                }
-                return null;
-            });
+            session.executeWrite(tx -> tx.run(
+                    "UNWIND $rows AS row "
+                            + "MERGE (e:Entity {corpusId: $corpusId, normalizedIdentity: row.normalizedIdentity}) "
+                            + "SET e.name = row.name, e.type = row.type, "
+                            + "e.description = row.description, e.sourceTextUnitIds = row.sourceTextUnitIds "
+                            + "WITH e, row "
+                            + "UNWIND row.sourceTextUnitIds AS sourceTextUnitId "
+                            + "MATCH (t:TextUnit {corpusId: $corpusId, id: sourceTextUnitId}) "
+                            + "MERGE (e)-[:MENTIONED_IN {corpusId: $corpusId}]->(t)",
+                    Map.of("corpusId", corpusId, "rows", rows)).consume());
         }
     }
 
@@ -156,33 +163,36 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (relationships == null || relationships.isEmpty()) {
             return;
         }
+        List<Map<String, Object>> rows = relationships.stream()
+                .filter(Objects::nonNull)
+                .map(relationship -> Map.<String, Object>of(
+                        "sourceIdentity", Entity.identityOf(relationship.source(), relationship.sourceType()),
+                        "targetIdentity", Entity.identityOf(relationship.target(), relationship.targetType()),
+                        "source", relationship.source(),
+                        "sourceType", relationship.sourceType(),
+                        "type", relationship.type(),
+                        "target", relationship.target(),
+                        "targetType", relationship.targetType(),
+                        "description", relationship.description(),
+                        "sourceTextUnitIds", relationship.sourceTextUnitIds(),
+                        "weight", relationship.weight()))
+                .toList();
+        if (rows.isEmpty()) {
+            return;
+        }
         try (Session session = driver.session()) {
-            session.executeWrite(tx -> {
-                for (Relationship relationship : relationships) {
-                    if (relationship == null) {
-                        continue;
-                    }
-                    String sourceIdentity = Entity.identityOf(relationship.source(), relationship.sourceType());
-                    String targetIdentity = Entity.identityOf(relationship.target(), relationship.targetType());
-                    tx.run("MERGE (s:Entity {corpusId: $corpusId, normalizedIdentity: $sourceIdentity}) "
-                                    + "ON CREATE SET s.name = $source, s.type = $sourceType "
-                                    + "MERGE (t:Entity {corpusId: $corpusId, normalizedIdentity: $targetIdentity}) "
-                                    + "ON CREATE SET t.name = $target, t.type = $targetType "
-                                    + "MERGE (s)-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId, "
-                                    + "source: $source, type: $type, target: $target}]->(t) "
-                                    + "SET r.sourceType = $sourceType, r.targetType = $targetType",
-                            Map.of(
-                                    "corpusId", corpusId,
-                                    "sourceIdentity", sourceIdentity,
-                                    "targetIdentity", targetIdentity,
-                                    "source", relationship.source(),
-                                    "sourceType", relationship.sourceType(),
-                                    "type", relationship.type(),
-                                    "target", relationship.target(),
-                                    "targetType", relationship.targetType()));
-                }
-                return null;
-            });
+            session.executeWrite(tx -> tx.run(
+                    "UNWIND $rows AS row "
+                            + "MERGE (s:Entity {corpusId: $corpusId, normalizedIdentity: row.sourceIdentity}) "
+                            + "ON CREATE SET s.name = row.source, s.type = row.sourceType "
+                            + "MERGE (t:Entity {corpusId: $corpusId, normalizedIdentity: row.targetIdentity}) "
+                            + "ON CREATE SET t.name = row.target, t.type = row.targetType "
+                            + "MERGE (s)-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId, "
+                            + "source: row.source, type: row.type, target: row.target}]->(t) "
+                            + "SET r.sourceType = row.sourceType, r.targetType = row.targetType, "
+                            + "r.description = row.description, r.sourceTextUnitIds = row.sourceTextUnitIds, "
+                            + "r.weight = row.weight",
+                    Map.of("corpusId", corpusId, "rows", rows)).consume());
         }
     }
 
@@ -274,8 +284,11 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
             return session.executeRead(tx -> {
                 List<Entity> result = new ArrayList<>();
                 for (Record record : tx.run("MATCH (e:Entity {corpusId: $corpusId}) RETURN e.name AS name, "
-                        + "e.type AS type", Map.of("corpusId", corpusId)).list()) {
-                    result.add(new Entity(record.get("name").asString(), record.get("type").asString()));
+                        + "e.type AS type, coalesce(e.description, '') AS description, "
+                        + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds", Map.of("corpusId", corpusId)).list()) {
+                    result.add(new Entity(record.get("name").asString(), record.get("type").asString(),
+                            record.get("description").asString(),
+                            record.get("sourceTextUnitIds").asList(value -> value.asString())));
                 }
                 return result;
             });
@@ -293,14 +306,20 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 for (Record record : tx.run(
                         "MATCH ()-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->() "
                                 + "RETURN r.source AS source, r.sourceType AS sourceType, r.type AS type, "
-                                + "r.target AS target, r.targetType AS targetType",
+                                + "r.target AS target, r.targetType AS targetType, "
+                                + "coalesce(r.description, '') AS description, "
+                                + "coalesce(r.sourceTextUnitIds, []) AS sourceTextUnitIds, "
+                                + "coalesce(r.weight, 1) AS weight",
                         Map.of("corpusId", corpusId)).list()) {
                     result.add(new Relationship(
                             record.get("source").asString(),
                             record.get("sourceType").asString(),
                             record.get("type").asString(),
                             record.get("target").asString(),
-                            record.get("targetType").asString()));
+                            record.get("targetType").asString(),
+                            record.get("description").asString(),
+                            record.get("sourceTextUnitIds").asList(value -> value.asString()),
+                            record.get("weight").asInt()));
                 }
                 return result;
             });

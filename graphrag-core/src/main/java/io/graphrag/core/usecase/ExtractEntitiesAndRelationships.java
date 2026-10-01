@@ -43,10 +43,10 @@ public class ExtractEntitiesAndRelationships {
         for (TextUnit unit : TextUnitSplitter.split(corpus)) {
             GraphExtraction extraction = extractUnit(unit);
             for (Entity entity : extraction.entities()) {
-                entities.putIfAbsent(entity.normalizedIdentity(), entity);
+                entities.merge(entity.normalizedIdentity(), entity, GraphElementMerger::merge);
             }
             for (Relationship relationship : extraction.relationships()) {
-                relationships.putIfAbsent(relationshipKey(relationship), relationship);
+                relationships.merge(relationshipKey(relationship), relationship, GraphElementMerger::merge);
             }
         }
         return new GraphExtraction(new ArrayList<>(entities.values()), new ArrayList<>(relationships.values()));
@@ -75,23 +75,37 @@ public class ExtractEntitiesAndRelationships {
                     Consumer<Entity> onEntityPersisted, Consumer<Relationship> onRelationshipPersisted) {
         List<TextUnit> units = TextUnitSplitter.split(corpus);
         int total = units.size();
+        Map<String, Entity> mergedEntities = new LinkedHashMap<>();
+        Map<String, Relationship> mergedRelationships = new LinkedHashMap<>();
         for (int i = 0; i < total; i++) {
             TextUnit unit = units.get(i);
             GraphExtraction extraction = extractUnit(unit);
+            List<Entity> changedEntities = new ArrayList<>();
+            List<Relationship> changedRelationships = new ArrayList<>();
+            for (Entity entity : extraction.entities()) {
+                Entity merged = mergedEntities.merge(entity.normalizedIdentity(), entity, GraphElementMerger::merge);
+                changedEntities.add(merged);
+            }
+            for (Relationship relationship : extraction.relationships()) {
+                Relationship merged = mergedRelationships.merge(relationshipKey(relationship), relationship,
+                        GraphElementMerger::merge);
+                changedRelationships.add(merged);
+            }
+            GraphExtraction mergedExtraction = new GraphExtraction(changedEntities, changedRelationships);
 
             graphStorePort.persistTextUnits(corpus.id(), List.of(unit));
-            graphStorePort.persist(corpus.id(), extraction);
+            graphStorePort.persist(corpus.id(), mergedExtraction);
 
             if (onTextUnitExtracted != null) {
                 onTextUnitExtracted.accept(new TextUnitProgress(i + 1, total, unit.documentName()));
             }
             if (onEntityPersisted != null) {
-                for (Entity entity : extraction.entities()) {
+                for (Entity entity : mergedExtraction.entities()) {
                     onEntityPersisted.accept(entity);
                 }
             }
             if (onRelationshipPersisted != null) {
-                for (Relationship relationship : extraction.relationships()) {
+                for (Relationship relationship : mergedExtraction.relationships()) {
                     onRelationshipPersisted.accept(relationship);
                 }
             }
@@ -106,7 +120,7 @@ public class ExtractEntitiesAndRelationships {
             throw new IllegalStateException("Knowledge graph extraction failed for document '"
                     + unit.documentName() + "', passage " + (unit.ordinal() + 1) + ": " + e.getMessage(), e);
         }
-        return normalizeTypes(raw);
+        return stampSourceUnit(normalizeTypes(raw), unit);
     }
 
     private static GraphExtraction normalizeTypes(GraphExtraction extraction) {
@@ -118,8 +132,9 @@ public class ExtractEntitiesAndRelationships {
             if (entity == null) {
                 continue;
             }
-            Entity normalized = new Entity(entity.name(), EntityTypes.normalize(entity.type()));
-            entities.putIfAbsent(normalized.normalizedIdentity(), normalized);
+            Entity normalized = new Entity(entity.name(), EntityTypes.normalize(entity.type()),
+                    entity.description(), entity.sourceTextUnitIds());
+            entities.merge(normalized.normalizedIdentity(), normalized, GraphElementMerger::merge);
         }
         List<Relationship> relationships = new ArrayList<>();
         for (Relationship relationship : extraction.relationships()) {
@@ -129,9 +144,24 @@ public class ExtractEntitiesAndRelationships {
             relationships.add(new Relationship(
                     relationship.source(), EntityTypes.normalize(relationship.sourceType()),
                     relationship.type(),
-                    relationship.target(), EntityTypes.normalize(relationship.targetType())));
+                    relationship.target(), EntityTypes.normalize(relationship.targetType()),
+                    relationship.description(), relationship.sourceTextUnitIds(), relationship.weight()));
         }
         return new GraphExtraction(new ArrayList<>(entities.values()), relationships);
+    }
+
+    private static GraphExtraction stampSourceUnit(GraphExtraction extraction, TextUnit unit) {
+        String sourceId = unit == null ? "" : unit.id();
+        List<Entity> entities = extraction.entities().stream()
+                .map(entity -> new Entity(entity.name(), entity.type(), entity.description(), List.of(sourceId)))
+                .toList();
+        List<Relationship> relationships = extraction.relationships().stream()
+                .map(relationship -> new Relationship(
+                        relationship.source(), relationship.sourceType(), relationship.type(),
+                        relationship.target(), relationship.targetType(), relationship.description(),
+                        List.of(sourceId), 1))
+                .toList();
+        return new GraphExtraction(entities, relationships);
     }
 
     private static String relationshipKey(Relationship relationship) {

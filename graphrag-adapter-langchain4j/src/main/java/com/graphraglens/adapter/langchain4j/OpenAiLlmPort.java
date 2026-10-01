@@ -9,15 +9,21 @@ import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.LlmPort;
 import io.graphrag.core.usecase.EntityTypes;
+import io.graphrag.core.usecase.GraphElementMerger;
 import io.graphrag.core.usecase.TextUnitSplitter;
+import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.output.FinishReason;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -36,6 +42,7 @@ import java.util.Map;
 public class OpenAiLlmPort implements LlmPort {
 
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
+    static final int MAX_EXTRACTION_OUTPUT_TOKENS = 4096;
 
     private final ChatModel jsonChatModel;
     private final ChatModel textChatModel;
@@ -58,6 +65,7 @@ public class OpenAiLlmPort implements LlmPort {
                 .modelName(model)
                 .temperature(0.0)
                 .timeout(Duration.ofSeconds(60))
+                .maxTokens(MAX_EXTRACTION_OUTPUT_TOKENS)
                 .maxRetries(0)
                 .responseFormat("json_object")
                 .build();
@@ -68,6 +76,11 @@ public class OpenAiLlmPort implements LlmPort {
                 .timeout(Duration.ofSeconds(60))
                 .maxRetries(0)
                 .build();
+    }
+
+    OpenAiLlmPort(ChatModel jsonChatModel, ChatModel textChatModel) {
+        this.jsonChatModel = jsonChatModel;
+        this.textChatModel = textChatModel;
     }
 
     /**
@@ -88,13 +101,10 @@ public class OpenAiLlmPort implements LlmPort {
         for (TextUnit unit : TextUnitSplitter.split(corpus)) {
             GraphExtraction extraction = extract(unit, EntityTypes.ALL);
             for (Entity entity : extraction.entities()) {
-                entitiesByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
+                entitiesByIdentity.merge(entity.normalizedIdentity(), entity, GraphElementMerger::merge);
             }
             for (Relationship relationship : extraction.relationships()) {
-                String key = Entity.identityOf(relationship.source(), relationship.sourceType())
-                        + "::" + relationship.type()
-                        + "::" + Entity.identityOf(relationship.target(), relationship.targetType());
-                relationshipsByKey.putIfAbsent(key, relationship);
+                relationshipsByKey.merge(relationshipKey(relationship), relationship, GraphElementMerger::merge);
             }
         }
         return new GraphExtraction(new ArrayList<>(entitiesByIdentity.values()),
@@ -112,14 +122,22 @@ public class OpenAiLlmPort implements LlmPort {
             return new GraphExtraction(List.of(), List.of());
         }
 
-        String response;
+        ChatResponse response;
         try {
-            response = jsonChatModel.chat(extractionPrompt(unit, entityTypes));
+            response = jsonChatModel.chat(ChatRequest.builder()
+                    .messages(UserMessage.from(extractionPrompt(unit, entityTypes)))
+                    .maxOutputTokens(MAX_EXTRACTION_OUTPUT_TOKENS)
+                    .build());
         } catch (RuntimeException e) {
             throw new LlmCallFailedException("OpenAI extraction call failed", e);
         }
+        if (response != null && response.finishReason() == FinishReason.LENGTH) {
+            throw new LlmCallFailedException("OpenAI extraction response hit the output-token limit ("
+                    + MAX_EXTRACTION_OUTPUT_TOKENS + ")", null);
+        }
 
-        return parseExtraction(response);
+        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
+        return parseExtraction(text);
     }
 
     /**
@@ -138,8 +156,8 @@ public class OpenAiLlmPort implements LlmPort {
 
                 Respond with strict JSON only (no markdown, no commentary) using exactly this shape:
                 {
-                  "entities": [ { "name": "string", "type": "string" } ],
-                  "relationships": [ { "source": "string", "sourceType": "string", "type": "string", "target": "string", "targetType": "string" } ]
+                  "entities": [ { "name": "string", "type": "string", "description": "one or two sentences" } ],
+                  "relationships": [ { "source": "string", "sourceType": "string", "type": "string", "target": "string", "targetType": "string", "description": "one or two sentences" } ]
                 }
 
                 Passage (from %s, passage %d):
@@ -199,10 +217,12 @@ public class OpenAiLlmPort implements LlmPort {
             for (JsonNode node : entityNodes) {
                 String name = node.path("name").asText(null);
                 String type = node.path("type").asText(null);
+                String description = node.path("description").asText("");
                 if (name == null || name.isBlank()) {
                     continue;
                 }
-                Entity entity = new Entity(name, type == null || type.isBlank() ? "Concept" : type);
+                Entity entity = new Entity(name, type == null || type.isBlank() ? "Concept" : type,
+                        description, List.of());
                 entitiesByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
             }
         }
@@ -219,11 +239,19 @@ public class OpenAiLlmPort implements LlmPort {
                 String sourceType = node.path("sourceType").asText("Concept");
                 String targetType = node.path("targetType").asText("Concept");
                 String type = node.path("type").asText("related_to");
-                relationships.add(new Relationship(source, sourceType, type, target, targetType));
+                String description = node.path("description").asText("");
+                relationships.add(new Relationship(source, sourceType, type, target, targetType,
+                        description, List.of(), 1));
             }
         }
 
         return new GraphExtraction(new ArrayList<>(entitiesByIdentity.values()), relationships);
+    }
+
+    private static String relationshipKey(Relationship relationship) {
+        return Entity.identityOf(relationship.source(), relationship.sourceType())
+                + "::" + relationship.type().toLowerCase(Locale.ROOT)
+                + "::" + Entity.identityOf(relationship.target(), relationship.targetType());
     }
 
     private String stripMarkdownFences(String text) {

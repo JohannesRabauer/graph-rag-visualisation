@@ -499,7 +499,8 @@ public class CorpusController {
         return Map.of(
                 "identity", entity.normalizedIdentity(),
                 "name", entity.name(),
-                "type", entity.type());
+                "type", entity.type(),
+                "description", entity.description());
     }
 
     private Map<String, Object> relationshipEventPayload(Relationship relationship) {
@@ -508,7 +509,8 @@ public class CorpusController {
                 "source", relationship.source(),
                 "targetIdentity", Entity.identityOf(relationship.target(), relationship.targetType()),
                 "target", relationship.target(),
-                "type", relationship.type());
+                "type", relationship.type(),
+                "description", relationship.description());
     }
 
     private Map<String, Object> communityEventPayload(Community community, List<String> memberEntityIdentities) {

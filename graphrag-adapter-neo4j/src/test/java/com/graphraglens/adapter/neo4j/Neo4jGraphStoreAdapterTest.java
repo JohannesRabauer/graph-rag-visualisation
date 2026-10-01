@@ -18,6 +18,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -88,6 +89,65 @@ class Neo4jGraphStoreAdapterTest {
         adapter.persistEntities(corpusId, List.of(new Entity("Apple", "Org")));
 
         assertEquals(1, adapter.entities(corpusId).size());
+    }
+
+    @Test
+    void roundTripsEntityAndRelationshipDescriptionSourceIdsWeightAndMentionLinks() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-provenance-" + System.nanoTime();
+        TextUnit first = new TextUnit(corpusId + "::doc-0::tu-0", corpusId, "engine.txt", 0, "Ada wrote notes.");
+        TextUnit second = new TextUnit(corpusId + "::doc-0::tu-1", corpusId, "engine.txt", 1, "Ada wrote more notes.");
+        Entity entity = new Entity("Ada Lovelace", "Person", "A mathematician.", List.of(first.id(), second.id()));
+        Relationship relationship = new Relationship("Ada Lovelace", "Person", "wrote_about", "Engine", "Concept",
+                "Ada wrote about the Engine.", List.of(first.id(), second.id()), 2);
+
+        adapter.persistTextUnits(corpusId, List.of(first, second));
+        adapter.persistEntities(corpusId, List.of(entity));
+        adapter.persistRelationships(corpusId, List.of(relationship));
+
+        assertEquals(entity, adapter.entities(corpusId).getFirst());
+        assertEquals(relationship, adapter.relationships(corpusId).getFirst());
+        try (var session = driver.session()) {
+            Long mentionCount = session.executeRead(tx -> tx.run(
+                    "MATCH (:Entity {corpusId: $corpusId, normalizedIdentity: $identity})"
+                            + "-[:MENTIONED_IN {corpusId: $corpusId}]->(:TextUnit {corpusId: $corpusId}) "
+                            + "RETURN count(*) AS count",
+                    Map.of("corpusId", corpusId, "identity", entity.normalizedIdentity()))
+                    .single().get("count").asLong());
+            assertEquals(2L, mentionCount);
+        }
+    }
+
+    @Test
+    void legacyEntityAndRelationshipPropertiesCoalesceOnRead() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-legacy-" + System.nanoTime();
+        try (var session = driver.session()) {
+            session.executeWrite(tx -> {
+                tx.run("CREATE (e:Entity {corpusId: $corpusId, normalizedIdentity: $identity, "
+                                + "name: 'Ada Lovelace', type: 'Person'})",
+                        Map.of("corpusId", corpusId, "identity", Entity.identityOf("Ada Lovelace", "Person")));
+                tx.run("CREATE (s:Entity {corpusId: $corpusId, normalizedIdentity: $sId, name: 'Ada Lovelace', type: 'Person'}) "
+                                + "CREATE (t:Entity {corpusId: $corpusId, normalizedIdentity: $tId, name: 'Engine', type: 'Concept'}) "
+                                + "CREATE (s)-[:RELATIONSHIP {corpusId: $corpusId, source: 'Ada Lovelace', "
+                                + "sourceType: 'Person', type: 'wrote_about', target: 'Engine', targetType: 'Concept'}]->(t)",
+                        Map.of("corpusId", corpusId,
+                                "sId", Entity.identityOf("Ada Lovelace", "Person") + "-rel",
+                                "tId", Entity.identityOf("Engine", "Concept")));
+                return null;
+            });
+        }
+
+        Entity readEntity = adapter.entities(corpusId).stream()
+                .filter(entity -> entity.normalizedIdentity().equals(Entity.identityOf("Ada Lovelace", "Person")))
+                .findFirst().orElseThrow();
+        Relationship readRelationship = adapter.relationships(corpusId).getFirst();
+
+        assertEquals("", readEntity.description());
+        assertEquals(List.of(), readEntity.sourceTextUnitIds());
+        assertEquals("", readRelationship.description());
+        assertEquals(List.of(), readRelationship.sourceTextUnitIds());
+        assertEquals(1, readRelationship.weight());
     }
 
     @Test

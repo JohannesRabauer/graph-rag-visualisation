@@ -35,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
@@ -55,10 +56,11 @@ class CorpusControllerTest {
     // Was 5_000L before Story 12.3: graphStorePort()/vectorStorePort() are now
     // real Neo4j-backed adapters (a Cypher round-trip per persisted
     // entity/relationship/community, over the shared Testcontainers Neo4j)
-    // rather than in-memory maps, so the pipeline genuinely takes longer end
-    // to end. Widened rather than tightened elsewhere, to keep this an
-    // honest wait for real I/O instead of masking a regression.
-    private static final long PIPELINE_TIMEOUT_MS = 15_000L;
+    // rather than in-memory maps. Story 13.2 also persists provenance
+    // properties and MENTIONED_IN links, so the pipeline genuinely takes
+    // longer end to end. Widened rather than tightened elsewhere, to keep
+    // this an honest wait for real I/O instead of masking a regression.
+    private static final long PIPELINE_TIMEOUT_MS = 30_000L;
 
     @DynamicPropertySource
     static void neo4jProperties(DynamicPropertyRegistry registry) {
@@ -209,9 +211,24 @@ class CorpusControllerTest {
         String corpusId = JsonPath.read(responseBody, "$.corpusId");
         assertThat(corpusRegistry.isOffline(corpusId)).isTrue();
 
-        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
-                .emit(eq(corpusId), eq("ingestion-complete"), any());
+        waitForProgressEvent(corpusId, "ingestion-complete");
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.READY);
+    }
+
+    private void waitForProgressEvent(String corpusId, String eventType) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + PIPELINE_TIMEOUT_MS;
+        while (System.currentTimeMillis() < deadline) {
+            boolean seen = mockingDetails(corpusProgressService).getInvocations().stream()
+                    .anyMatch(invocation -> invocation.getMethod().getName().equals("emit")
+                            && invocation.getArguments().length >= 2
+                            && corpusId.equals(invocation.getArgument(0))
+                            && eventType.equals(invocation.getArgument(1)));
+            if (seen) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        verify(corpusProgressService).emit(eq(corpusId), eq(eventType), any());
     }
 
     @Test
@@ -352,10 +369,11 @@ class CorpusControllerTest {
         assertThat(eventTypes).contains("entity-extracted", "relationship-extracted", "community-detected");
 
         Map<String, Object> entityPayload = payloads.get(eventTypes.indexOf("entity-extracted"));
-        assertThat(entityPayload).containsKeys("identity", "name", "type");
+        assertThat(entityPayload).containsKeys("identity", "name", "type", "description");
 
         Map<String, Object> relationshipPayload = payloads.get(eventTypes.indexOf("relationship-extracted"));
-        assertThat(relationshipPayload).containsKeys("sourceIdentity", "source", "targetIdentity", "target", "type");
+        assertThat(relationshipPayload).containsKeys("sourceIdentity", "source", "targetIdentity", "target", "type",
+                "description");
 
         Map<String, Object> communityPayload = payloads.get(eventTypes.indexOf("community-detected"));
         assertThat(communityPayload).containsKeys("communityId", "summary", "memberEntityIdentities");

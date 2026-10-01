@@ -33,9 +33,13 @@ class LangChain4jLlmPortTest {
 
         var extraction = port.extract(unit, EntityTypes.ALL);
 
-        assertTrue(extraction.entities().contains(new Entity("Sherlock Holmes", "Person")));
-        assertTrue(extraction.entities().contains(new Entity("Mary Morstan", "Person")));
+        assertTrue(extraction.entities().stream()
+                .anyMatch(entity -> entity.name().equals("Sherlock Holmes") && entity.type().equals("Person")));
+        assertTrue(extraction.entities().stream()
+                .anyMatch(entity -> entity.name().equals("Mary Morstan") && entity.type().equals("Person")));
         assertTrue(extraction.relationships().stream().anyMatch(r -> r.type().equals("helped")));
+        assertTrue(extraction.entities().stream().allMatch(entity -> !entity.description().isBlank()));
+        assertTrue(extraction.relationships().stream().allMatch(relationship -> !relationship.description().isBlank()));
         assertEquals(extraction, port.extract(unit, EntityTypes.ALL), "the offline stub must stay deterministic");
         assertTrue(port.extract(new TextUnit("c1::doc-0::tu-2", "c1", "x.txt", 2, "  "), EntityTypes.ALL)
                 .entities().isEmpty());

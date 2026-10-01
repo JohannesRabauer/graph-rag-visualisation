@@ -97,7 +97,8 @@ class ExtractEntitiesAndRelationshipsTest {
         new ExtractEntitiesAndRelationships(llmPort, store).run(corpus);
 
         assertEquals(units.size(), store.persistedUnits.size());
-        assertTrue(store.persistedEntities.contains(new Entity("Ada Lovelace", "Person")));
+        assertTrue(store.persistedEntities.stream()
+                .anyMatch(entity -> entity.name().equals("Ada Lovelace") && entity.type().equals("Person")));
     }
 
     @org.junit.jupiter.api.Test
@@ -183,7 +184,8 @@ class ExtractEntitiesAndRelationshipsTest {
         assertTrue(failure.getMessage().contains("passage 2"), failure.getMessage());
         assertEquals(List.of(0, 1), calledOrdinals);
         assertEquals(1, store.persistedUnits.size());
-        assertEquals(List.of(new Entity("Unit 0", "Concept")), store.persistedEntities);
+        assertEquals("Unit 0", store.persistedEntities.getFirst().name());
+        assertEquals("Concept", store.persistedEntities.getFirst().type());
         assertFalse(calledOrdinals.contains(2));
     }
 
@@ -198,15 +200,69 @@ class ExtractEntitiesAndRelationshipsTest {
 
         GraphExtraction merged = new ExtractEntitiesAndRelationships(llmPort, store).extract(corpus);
 
-        assertEquals(List.of(new Entity("Shared", "Person"), new Entity("one", "Concept"), new Entity("two", "Concept")),
-                merged.entities());
+        assertEquals(List.of("Shared", "one", "two"), merged.entities().stream().map(Entity::name).toList());
+        assertEquals(2, merged.entities().getFirst().sourceTextUnitIds().size());
         assertEquals(1, merged.relationships().size());
+        assertEquals(2, merged.relationships().getFirst().weight());
         assertEquals(0, store.persistCalls);
+    }
+
+    @org.junit.jupiter.api.Test
+    void runStampsUnitIdsAndMergesRepeatedEntitiesAndRelationshipsBeforePersistingAndCallback() {
+        Corpus corpus = new Corpus("c1", List.of(
+                new UploadedDocument("a.txt", "Ada Lovelace wrote about Engine."),
+                new UploadedDocument("b.txt", "Ada Lovelace wrote about Engine.")));
+        List<TextUnit> units = TextUnitSplitter.split(corpus);
+        LlmPort llmPort = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus ignored) {
+                throw new AssertionError("unused");
+            }
+
+            @Override
+            public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+                return new GraphExtraction(
+                        List.of(new Entity("Ada Lovelace", "person",
+                                unit.documentName().equals("a.txt") ? "A mathematician." : "She wrote notes.",
+                                List.of("llm-supplied-id"))),
+                        List.of(new Relationship("Ada Lovelace", "person", "wrote_about", "Engine", "concept",
+                                "Ada wrote about Engine.", List.of("llm-supplied-id"), 99)));
+            }
+        };
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+        List<Entity> entityCallbacks = new ArrayList<>();
+        List<Relationship> relationshipCallbacks = new ArrayList<>();
+
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus, progress -> {
+        }, entityCallbacks::add, relationshipCallbacks::add);
+
+        Entity persistedAda = store.persistedEntities.getLast();
+        Relationship persistedRelationship = store.persistedRelationships.getLast();
+        assertEquals("Person", persistedAda.type());
+        assertEquals("A mathematician. She wrote notes.", persistedAda.description());
+        assertEquals(units.stream().map(TextUnit::id).toList(), persistedAda.sourceTextUnitIds());
+        assertEquals(persistedAda, entityCallbacks.getLast());
+        assertEquals(units.stream().map(TextUnit::id).toList(), persistedRelationship.sourceTextUnitIds());
+        assertEquals(2, persistedRelationship.weight());
+        assertEquals(persistedRelationship, relationshipCallbacks.getLast());
+    }
+
+    @org.junit.jupiter.api.Test
+    void missingDescriptionsDefaultToBlankWhenStamped() {
+        Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("a.txt", "Ada Lovelace.")));
+        LlmPort llmPort = unitCorpus -> new GraphExtraction(List.of(new Entity("Ada Lovelace", "Person")), List.of());
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus);
+
+        assertEquals("", store.persistedEntities.getFirst().description());
+        assertEquals(TextUnitSplitter.split(corpus).getFirst().id(), store.persistedEntities.getFirst().sourceTextUnitIds().getFirst());
     }
 
     private static final class PerUnitRecordingGraphStorePort implements GraphStorePort {
         private final List<TextUnit> persistedUnits = new ArrayList<>();
         private final List<Entity> persistedEntities = new ArrayList<>();
+        private final List<Relationship> persistedRelationships = new ArrayList<>();
         private int persistCalls;
 
         @Override
@@ -216,13 +272,14 @@ class ExtractEntitiesAndRelationshipsTest {
 
         @Override
         public void persistRelationships(java.util.Collection<Relationship> relationships) {
-            // not asserted
+            persistedRelationships.addAll(relationships);
         }
 
         @Override
         public void persist(String corpusId, GraphExtraction extraction) {
             persistCalls++;
             persistedEntities.addAll(extraction.entities());
+            persistedRelationships.addAll(extraction.relationships());
         }
 
         @Override
