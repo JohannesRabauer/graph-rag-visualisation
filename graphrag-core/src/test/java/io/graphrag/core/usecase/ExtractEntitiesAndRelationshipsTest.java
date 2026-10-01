@@ -338,7 +338,8 @@ class ExtractEntitiesAndRelationshipsTest {
             String name = unit.documents().getFirst().filename();
             String type = name.equals("a.txt") ? "Animal" : "Organization";
             return new GraphExtraction(List.of(new Entity("Jaguar", type)),
-                    List.of(new Relationship("Jaguar", type, "appears_in", "Market", "Concept")));
+                    List.of(new Relationship("Jaguar", type, "appears_in", "Market", "Concept"),
+                            new Relationship("Market", "Concept", "features", "Jaguar", type)));
         };
         PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
         List<String> events = new ArrayList<>();
@@ -352,10 +353,48 @@ class ExtractEntitiesAndRelationshipsTest {
 
         assertEquals(List.of("jaguar::concept->jaguar::organization"), store.retyped);
         assertEquals("Organization", store.persistedEntities.getLast().type());
-        assertEquals("Organization", store.persistedRelationships.getLast().sourceType());
+        Relationship outgoing = store.persistedRelationships.stream()
+                .filter(relationship -> relationship.type().equals("appears_in")).reduce((a, b) -> b).orElseThrow();
+        Relationship incoming = store.persistedRelationships.stream()
+                .filter(relationship -> relationship.type().equals("features")).reduce((a, b) -> b).orElseThrow();
+        assertEquals("Organization", outgoing.sourceType());
+        assertEquals("Organization", incoming.targetType());
+        assertEquals(3, outgoing.weight());
+        assertEquals(3, outgoing.sourceTextUnitIds().size());
         assertTrue(events.contains("retyped persisted=3 jaguar::concept->jaguar::organization"));
         assertTrue(events.indexOf("retyped persisted=3 jaguar::concept->jaguar::organization")
                 < events.lastIndexOf("entity jaguar::organization"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void typeFlipWithinUnitDoesNotPersistOrEmitStalePreviousIdentity() {
+        Corpus corpus = new Corpus("c1", List.of(
+                new UploadedDocument("a.txt", "Jaguar animal."),
+                new UploadedDocument("b.txt", "Jaguar org. jaguar. org.")));
+        LlmPort llmPort = unit -> unit.documents().getFirst().filename().equals("a.txt")
+                ? new GraphExtraction(List.of(new Entity("Jaguar", "Animal")), List.of())
+                : new GraphExtraction(List.of(new Entity("Jaguar", "Organization"),
+                        new Entity("jaguar.", "Organization")), List.of());
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+        List<Integer> persistedSizeAfterUnit = new ArrayList<>();
+        List<String> entityEvents = new ArrayList<>();
+
+        new ExtractEntitiesAndRelationships(llmPort, store).run(corpus,
+                ignored -> {
+                    persistedSizeAfterUnit.add(store.persistedEntities.size());
+                    entityEvents.add("unit");
+                },
+                entity -> entityEvents.add(entity.normalizedIdentity()),
+                relationship -> { },
+                (previous, entity) -> { });
+
+        assertEquals(List.of("jaguar::concept->jaguar::organization"), store.retyped);
+        List<String> secondUnitPersisted = store.persistedEntities
+                .subList(persistedSizeAfterUnit.getFirst(), store.persistedEntities.size()).stream()
+                .map(Entity::normalizedIdentity).toList();
+        assertEquals(List.of("jaguar::organization"), secondUnitPersisted);
+        List<String> secondUnitEmitted = entityEvents.subList(entityEvents.lastIndexOf("unit") + 1, entityEvents.size());
+        assertEquals(List.of("jaguar::organization"), secondUnitEmitted);
     }
 
     @org.junit.jupiter.api.Test

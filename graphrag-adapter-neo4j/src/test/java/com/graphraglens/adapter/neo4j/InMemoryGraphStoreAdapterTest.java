@@ -70,14 +70,19 @@ class InMemoryGraphStoreAdapterTest {
         InMemoryGraphStoreAdapter adapter = new InMemoryGraphStoreAdapter();
         adapter.persistEntities("corpus-a", List.of(new Entity("Jaguar", "Animal")));
         adapter.persistRelationships("corpus-a", List.of(
-                new Relationship("Jaguar", "Animal", "appears_in", "Market", "Concept")));
+                new Relationship("Jaguar", "Animal", "appears_in", "Market", "Concept"),
+                new Relationship("Market", "Concept", "features", "Jaguar", "Animal")));
 
         adapter.retypeEntity("corpus-a", Entity.identityOf("Jaguar", "Animal"),
                 new Entity("Jaguar", "Organization", "A company.", List.of("u1")));
 
         assertEquals(List.of(new Entity("Jaguar", "Organization", "A company.", List.of("u1"))),
                 adapter.entities("corpus-a"));
-        assertEquals("Organization", adapter.relationships("corpus-a").getFirst().sourceType());
+        assertEquals(2, adapter.relationships("corpus-a").size());
+        assertEquals("Organization", adapter.relationships("corpus-a").stream()
+                .filter(relationship -> relationship.type().equals("appears_in")).findFirst().orElseThrow().sourceType());
+        assertEquals("Organization", adapter.relationships("corpus-a").stream()
+                .filter(relationship -> relationship.type().equals("features")).findFirst().orElseThrow().targetType());
         assertEquals("jaguar::organization", adapter.entities().getFirst().normalizedIdentity());
     }
 

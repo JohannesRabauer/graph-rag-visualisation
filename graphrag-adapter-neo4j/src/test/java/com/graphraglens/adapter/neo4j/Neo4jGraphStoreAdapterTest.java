@@ -124,16 +124,21 @@ class Neo4jGraphStoreAdapterTest {
         String corpusId = "corpus-retype-" + System.nanoTime();
         Entity oldJaguar = new Entity("Jaguar", "Animal");
         Relationship relationship = new Relationship("Jaguar", "Animal", "appears_in", "Market", "Concept");
+        Relationship incoming = new Relationship("Market", "Concept", "features", "Jaguar", "Animal");
         Entity newJaguar = new Entity("Jaguar", "Organization", "A company.", List.of("u1"));
 
         adapter.persistEntities(corpusId, List.of(oldJaguar));
-        adapter.persistRelationships(corpusId, List.of(relationship));
+        adapter.persistRelationships(corpusId, List.of(relationship, incoming));
         adapter.retypeEntity(corpusId, oldJaguar.normalizedIdentity(), newJaguar);
 
         assertEquals(newJaguar, adapter.entities(corpusId).stream()
                 .filter(entity -> entity.normalizedIdentity().equals(newJaguar.normalizedIdentity()))
                 .findFirst().orElseThrow());
-        assertEquals("Organization", adapter.relationships(corpusId).getFirst().sourceType());
+        assertEquals(2, adapter.relationships(corpusId).size());
+        assertEquals("Organization", adapter.relationships(corpusId).stream()
+                .filter(r -> r.type().equals("appears_in")).findFirst().orElseThrow().sourceType());
+        assertEquals("Organization", adapter.relationships(corpusId).stream()
+                .filter(r -> r.type().equals("features")).findFirst().orElseThrow().targetType());
         try (var session = driver.session()) {
             Long oldCount = session.executeRead(tx -> tx.run(
                     "MATCH (e:Entity {corpusId: $corpusId, normalizedIdentity: $identity}) RETURN count(e) AS count",

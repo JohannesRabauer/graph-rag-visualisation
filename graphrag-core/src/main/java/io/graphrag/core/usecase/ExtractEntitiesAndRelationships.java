@@ -22,7 +22,7 @@ import java.util.function.Consumer;
  * at a time (AD-24): the corpus is split by {@link TextUnitSplitter}, each
  * unit is extracted against {@link EntityTypes#ALL}, its types are
  * normalised, and the unit plus its extraction are persisted before the next
- * unit starts (AD-14). Any unit failure stops the whole pass â€” no retries,
+ * unit starts (AD-14). Any unit failure stops the whole pass — no retries,
  * no partial "best effort" continuation.
  */
 public class ExtractEntitiesAndRelationships {
@@ -130,6 +130,9 @@ public class ExtractEntitiesAndRelationships {
             EntityResolver.ResolvedEntity resolved = resolver.resolve(entity);
             Optional<String> previousIdentity = resolved.previousIdentity();
             if (previousIdentity.isPresent()) {
+                if (changedEntities != null) {
+                    changedEntities.remove(previousIdentity.get());
+                }
                 Entity previous = mergedEntities.remove(previousIdentity.get());
                 if (previous != null) {
                     Entity rekeyedPrevious = new Entity(resolved.entity().name(), resolved.entity().type(),

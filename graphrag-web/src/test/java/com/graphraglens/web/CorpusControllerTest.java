@@ -400,7 +400,10 @@ class CorpusControllerTest {
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("entity-retyped"),
                 org.mockito.ArgumentMatchers.argThat(payload ->
                         "jaguar::concept".equals(payload.get("previousIdentity"))
-                                && "jaguar::organization".equals(payload.get("identity"))));
+                                && "jaguar::organization".equals(payload.get("identity"))
+                                && "Jaguar".equals(payload.get("name"))
+                                && "Organization".equals(payload.get("type"))
+                                && payload.containsKey("description")));
     }
 
     /**

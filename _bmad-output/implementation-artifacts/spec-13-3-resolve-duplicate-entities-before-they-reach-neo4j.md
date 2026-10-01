@@ -4,7 +4,6 @@ type: 'feature'
 created: '2026-10-01'
 status: 'done'
 baseline_revision: 'cc15483ec31bd768e76e5548e8d7d7ba59bd2d8d'
-baseline_commit: 'cc15483ec31bd768e76e5548e8d7d7ba59bd2d8d'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -85,7 +84,24 @@ deferred: []
 
 ## Review Triage Log
 
-- No review subagents were run because this session is itself a sub-agent and higher-priority instructions prohibit nested delegation unless explicitly requested. Direct implementation verification passed except known flaky/registry failures listed in Verification.
+### 2026-10-01 — Review pass
+- verdicts: 15 findings — high 0, medium 1, low 9, false 5, maybe-false 0
+- findings:
+  - `[low]` `reject` Endpoint-only spelling (e.g. `openai,`) stays canonical if a relationship names it before any Entity mention — spec-conformant (canonical = first-seen spelling); entities are resolved before relationships within a unit, so only cross-unit endpoint-first ordering hits it; fix needs a new name-upgrade branch.
+  - `[medium]` `patch` Stale `previousIdentity` left in `changedEntities` when a same-key variant earlier in the unit is followed by a flip — persist then re-created the old node and emitted it — `accumulateResolved` now removes `previousIdentity` from `changedEntities`; test `typeFlipWithinUnitDoesNotPersistOrEmitStalePreviousIdentity`.
+  - `[low]` `reject` In-memory `retypeEntity` mutates the unscoped global map across corpora — the global map is already last-writer-wins across corpora on persist (pre-existing semantics, not read by corpus-scoped flows); a guard adds complexity.
+  - `[false]` `reject` In-memory relationship rewrite collapses keys — keys are raw `source::type::target`; canonical names never change on retype, so rewritten keys equal the original keys and cannot collide.
+  - `[false]` `reject` Neo4j retype may collide with an existing node at the new identity — the resolver yields one identity per name key per run and retype runs before the unit's persist; identities with equal lower-cased canonical names share a key.
+  - `[false]` `reject` Neo4j retype leaves parallel equivalent edges — relationship MERGE is keyed on raw names, unchanged by retype; all edges of the flipped entity already share one identity, so none become equivalent.
+  - `[low]` `reject` Spec matrix says `ANIMAL`/`jaguar::animal` but `EntityTypes.normalize` maps it to `Concept` — behaviour (flip and previous identity) is correct with the normalised type; the fix would edit this build's spec.
+  - `[low]` `patch` Adapter retype tests only covered the source side — added incoming `Market -> Jaguar` relationships to the in-memory and Neo4j retype tests, asserting both relationships remain and `targetType` becomes Organization.
+  - `[false]` `reject` Canvas `retypeEntity` drops edge data/classes — `addRelationship` creates edges with exactly `id/source/target/label`; the only edge classes are transient trace highlights applied after ingestion.
+  - `[low]` `reject` UI test does not assert exactly one node/edge — old node absence is asserted via `entityNodeFillColor`; counting edges needs new test-support API surface.
+  - `[low]` `reject` (edge-case) Scoped retype removes another corpus's global entry — same root as the global-map row above; same reason.
+  - `[false]` `reject` (edge-case claim) Matrix says `jaguar::animal` — same as the `ANIMAL` row; claim wording only, behaviour verified with `jaguar::concept`.
+  - `[low]` `patch` (verification-gap) `entity-retyped` payload fields `name`/`type`/`description` unverified server-side — `CorpusControllerTest` matcher now requires them.
+  - `[low]` `patch` (verification-gap) Target-side retype unverified — same root as the adapter row; also added an incoming relationship to the core flip test asserting `targetType` Organization.
+  - `[low]` `reject` (intent-alignment) Tests exercise sliced surfaces rather than end-to-end ingestion — `CorpusControllerTest` drives the real pipeline into the in-memory store; adapter + core + UI tests compose the chain; no named defect.
 
 ## Design Notes
 
@@ -97,3 +113,24 @@ Why re-key instead of deferring persistence: AD-14 requires each unit persisted 
 - `mvn -q -pl graphrag-core -am test` -- expected: all core tests green (read `target\surefire-reports\*.txt`).
 - `mvn -q -pl graphrag-adapter-neo4j -am test "-Dapi.version=1.44" "-Dmaven.test.failure.ignore=true"` -- expected: green except known `Neo4jCorpusRegistryTest` ×2.
 - `mvn -q -pl graphrag-web -am test "-Dapi.version=1.44" "-Dmaven.test.failure.ignore=true"` -- expected: `CorpusControllerTest` and the new UI test green; only known flaky UI tests (`CanvasSettingsPopoverUiTest`, `EntityTypeColorToggleUiTest`, `MainScreenDetailPanelUiTest`, `DriftTreeReplayUiTest`, `EntitySearchUiTest`, `CorpusSwitcherUiTest`) may fail.
+
+## Auto Run Result
+
+**Summary:** Added a deterministic per-run `EntityResolver` (AD-26) that resolves entity name variants (NFKC, punctuation strip, whitespace collapse, case fold) and relationship endpoints to a canonical first-seen name and majority type. When the majority type flips mid-run, the store re-keys the existing node (`GraphStorePort.retypeEntity`, implemented in Neo4j and in-memory), affected relationships are re-persisted, and the browser receives an `entity-retyped` SSE event so the canvas migrates the node and its edges.
+
+**Files changed:**
+- `graphrag-core/.../usecase/EntityResolver.java`: new resolver (name key, type tally, endpoint resolution).
+- `graphrag-core/.../usecase/ExtractEntitiesAndRelationships.java`: resolution in `run`/`extract`, flip handling, new `run` overload with the retype callback.
+- `graphrag-core/.../port/GraphStorePort.java`: `retypeEntity` default no-op.
+- `Neo4jGraphStoreAdapter.java` / `InMemoryGraphStoreAdapter.java`: `retypeEntity` implementations.
+- `CorpusController.java`: emits `entity-retyped` with `previousIdentity`.
+- `graph-canvas.js` / `upload.js`: `GraphCanvas.retypeEntity` node/edge migration; detail-panel state follows the retype.
+- Tests: core extraction tests (matrix rows, in-unit flip), adapter retype tests (source and target sides), `CorpusControllerTest` retype event, `PassageProgressStatusUiTest` retype UI test.
+
+**Review:** 15 findings. 4 patched (1 medium, 3 low); 0 deferred; 11 rejected (5 false, 6 low/observational; reasons in the Review Triage Log).
+
+**Follow-up review recommended:** false (patched: high 0, medium 1, low 3).
+
+**Verification:** core 15/15 `ExtractEntitiesAndRelationshipsTest` and the full core suite green; Neo4j module green except the known `Neo4jCorpusRegistryTest` ×2; `CorpusControllerTest` 40/40, `PassageProgressStatusUiTest` 3/3; the pre-patch full web run failed only the known flaky UI tests.
+
+**Residual risks:** canonical name stays the first-seen spelling even when it came from a relationship endpoint (e.g. `openai,`); the unscoped in-memory global map is not corpus-safe on retype (pre-existing last-writer-wins semantics); type flips add one extra Neo4j write per flip.
