@@ -40,6 +40,15 @@
   var tabVectorSpace = document.getElementById('tab-vector-space');
   var vectorSpacePanel = document.getElementById('vector-space-panel');
   var vectorSpaceAnswer = document.getElementById('vector-space-answer');
+  var tabCompare = document.getElementById('tab-compare');
+  var comparePanel = document.getElementById('compare-panel');
+  var compareQuestion = document.getElementById('compare-question');
+  var compareGrid = document.getElementById('compare-grid');
+  var compareOverlap = document.getElementById('compare-overlap');
+  var compareVerdictLabel = document.getElementById('compare-verdict-label');
+  var compareVerdictText = document.getElementById('compare-verdict-text');
+  var compareReplayRow = document.getElementById('compare-replay-row');
+  var compareRunAgain = document.getElementById('compare-run-again');
   var activeProgressSource = null;
   var activeCorpusId = null;
   var activeCorpusReady = false;
@@ -139,10 +148,92 @@
     });
   }
 
-  // Story 8-3: Compare CTA — delegated click handler.
-  // Works for every .compare-cta button upload.js appends later, without
-  // either needing to know about the other's timing (same pattern as
-  // replay.js's delegated .replay-cta handler).
+  // Compare CTA: one POST /compare runs the graph answer's mode and the
+  // Vector Search baseline fresh, side by side. Nothing is appended to the
+  // chat; the result lives in the Compare tab, and the button becomes a link
+  // back to it. Delegated, so it works for every .compare-cta upload.js
+  // appends later (same pattern as replay.js's delegated .replay-cta handler).
+  var COMPARE_CTA_LABEL = '↻ Compare with Vector Search';
+  var COMPARE_READY_LABEL = 'Comparison ready — open Compare';
+
+  // Only the newest comparison request may render; older responses are dropped.
+  var compareRequestSeq = 0;
+  // What the Compare view currently shows, so "Run again" can repeat it.
+  var shownComparison = null;
+
+  function markCompareCtaReady(cta) {
+    if (!cta) {
+      return;
+    }
+    cta.classList.add('compare-cta--ready');
+    cta.textContent = COMPARE_READY_LABEL;
+    cta.title = 'Opens the Compare tab with this answer’s comparison.';
+    cta.setAttribute('aria-label', COMPARE_READY_LABEL);
+  }
+
+  // Runs POST /compare for `request` ({question, mode, corpusId, answerMsg,
+  // cta}) and, if it is still the newest request and its corpus is still the
+  // active one, renders it and opens the Compare tab.
+  function runComparison(request, busyButton, idleLabel) {
+    var thisRequest = ++compareRequestSeq;
+    if (busyButton) {
+      busyButton.disabled = true;
+      busyButton.setAttribute('aria-busy', 'true');
+      busyButton.textContent = 'Comparing…';
+    }
+    var settledLabel = idleLabel;
+
+    fetch('/api/corpora/' + encodeURIComponent(request.corpusId) + '/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: request.question, mode: request.mode })
+    })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { ok: response.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        if (thisRequest !== compareRequestSeq || request.corpusId !== activeCorpusId) {
+          return;
+        }
+        if (!result.ok || !result.body || !result.body.graph || !result.body.vector) {
+          showErrorBanner(result.body && result.body.error ? result.body.error
+              : 'The comparison could not be run. Please try again.');
+          return;
+        }
+        if (request.answerMsg) {
+          request.answerMsg.graphragComparison = { body: result.body, request: request };
+        }
+        if (busyButton === request.cta) {
+          settledLabel = null;
+        }
+        markCompareCtaReady(request.cta);
+        var vector = result.body.vector;
+        revealVectorSpaceTab(vector.noAnswer ? (vector.reason || '') : (vector.answer || ''), false);
+        renderCompareView(result.body, request);
+        openCompareTab();
+      })
+      .catch(function () {
+        if (thisRequest === compareRequestSeq) {
+          showErrorBanner('The comparison could not be run. Please try again.');
+        }
+      })
+      .finally(function () {
+        if (!busyButton) {
+          return;
+        }
+        busyButton.disabled = false;
+        busyButton.removeAttribute('aria-busy');
+        if (settledLabel !== null) {
+          // A ready CTA keeps its link label even when a later run failed.
+          busyButton.textContent = busyButton.classList.contains('compare-cta--ready')
+              ? COMPARE_READY_LABEL : settledLabel;
+        }
+      });
+  }
+
+  // Compare CTA, delegated so it works for every .compare-cta appended later.
   document.addEventListener('click', function (event) {
     var cta = event.target && event.target.closest ? event.target.closest('.compare-cta') : null;
     if (!cta) {
@@ -152,145 +243,284 @@
     if (!answerMsg) {
       return;
     }
+    if (answerMsg.graphragComparison) {
+      renderCompareView(answerMsg.graphragComparison.body, answerMsg.graphragComparison.request);
+      openCompareTab();
+      return;
+    }
     var question = answerMsg.dataset.question;
     var corpusId = answerMsg.dataset.corpusId;
     if (!question || !corpusId) {
       return;
     }
-
-    cta.disabled = true;
-    cta.setAttribute('aria-busy', 'true');
-    cta.textContent = 'Comparing\u2026';
-
-    fetch('/api/corpora/' + corpusId + '/query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: question, mode: 'VECTOR' })
-    })
-      .then(function (response) {
-        return response.json().then(function (body) {
-          return { ok: response.ok, body: body };
-        });
-      })
-      .then(function (result) {
-        if (result.ok) {
-          var answerText = result.body.answer || result.body.reason || 'No answer was returned.';
-          appendAnswer(answerText, result.body.mode || 'VECTOR',
-              result.body.traceId, result.body.traceStepCount, null, result.body.queryProjection);
-          revealVectorSpaceTab(answerText);
-          renderComparePanel(answerMsg, answerText, result.body.traceId);
-        } else {
-          showErrorBanner(errorMessage(result.body));
-        }
-      })
-      .catch(function () {
-        showErrorBanner('The vector comparison could not be run. Please try again.');
-      })
-      .finally(function () {
-        cta.disabled = false;
-        cta.removeAttribute('aria-busy');
-        cta.textContent = '\u21BB Compare with Vector Search';
-      });
+    runComparison({
+      question: question,
+      mode: answerMsg.dataset.mode || 'LOCAL',
+      corpusId: corpusId,
+      answerMsg: answerMsg,
+      cta: cta
+    }, cta, COMPARE_CTA_LABEL);
   });
 
-  function fetchTraceSteps(traceId) {
-    if (!traceId) {
-      return Promise.resolve([]);
+  if (compareRunAgain) {
+    compareRunAgain.addEventListener('click', function () {
+      if (shownComparison) {
+        runComparison(shownComparison, compareRunAgain, 'Run again');
+      }
+    });
+  }
+
+  // Reveals the Compare tab and switches to it: every successful comparison
+  // and every click on a "Comparison ready" link opens it.
+  function openCompareTab() {
+    if (tabCompare) {
+      tabCompare.removeAttribute('hidden');
     }
-    return fetch('/api/traces/' + traceId)
-      .then(function (response) { return response.ok ? response.json() : { steps: [] }; })
-      .then(function (body) { return (body && body.steps) || []; })
-      .catch(function () { return []; });
+    switchCanvasTab('compare');
   }
 
-  function countKinds(steps) {
-    var counts = {};
-    steps.forEach(function (s) { counts[s.kind] = (counts[s.kind] || 0) + 1; });
-    return counts;
-  }
-
-  function plural(n, word) {
-    return n + ' ' + word + (n === 1 ? '' : 's');
-  }
-
-  function graphTouchSummary(steps) {
-    var c = countKinds(steps);
-    var parts = [];
-    if (c.COMMUNITY) { parts.push(plural(c.COMMUNITY, 'community')); }
-    if (c.SUB_QUESTION_SPAWNED) { parts.push(plural(c.SUB_QUESTION_SPAWNED, 'sub-question')); }
-    if (c.ENTITY) { parts.push(plural(c.ENTITY, 'entity')); }
-    if (c.RELATIONSHIP) { parts.push(plural(c.RELATIONSHIP, 'relationship hop')); }
-    return parts.length ? 'Touched ' + parts.join(', ') + '.' : 'Touched nothing in the graph.';
-  }
-
-  function vectorTouchSummary(steps) {
-    var chunks = steps.filter(function (s) { return s.kind === 'VECTOR_CHUNK'; });
-    if (!chunks.length) {
-      return 'No matching chunks.';
+  function compareModeLabel(mode) {
+    if (mode === 'GLOBAL') {
+      return 'Global';
     }
-    return 'Ranked every chunk by similarity and kept the top ' + chunks.length
-        + ' (best ' + (chunks[0].label || '').replace('score=', 'score ') + ').';
+    if (mode === 'DRIFT') {
+      return 'DRIFT';
+    }
+    return 'Local';
   }
 
-  function comparePanelColumn(className, title, answerText, touch) {
-    var col = document.createElement('div');
-    col.className = 'compare-col ' + className;
+  function plural(n, word, pluralWord) {
+    return n + ' ' + (n === 1 ? word : (pluralWord || word + 's'));
+  }
+
+  function keyFigure(value, label) {
+    var item = document.createElement('li');
+    item.className = 'compare-figure';
+    var number = document.createElement('span');
+    number.className = 'compare-figure-value';
+    number.textContent = value;
+    var caption = document.createElement('span');
+    caption.className = 'compare-figure-label';
+    caption.textContent = label;
+    item.appendChild(number);
+    item.appendChild(caption);
+    return item;
+  }
+
+  // One column of the Compare view: the side's answer (with `[n]` markers
+  // and a Sources list when cited), an "also used by the other side" badge on
+  // overlapping sources, and its key figures. Text goes in via textContent.
+  // "Retrieved passages": every passage the side retrieved, cited or not,
+  // each opening its full text in the column's own panel.
+  function retrievedPassages(side, corpusId, passageKind, emptyText) {
+    var section = document.createElement('div');
+    section.className = 'compare-retrieved';
     var heading = document.createElement('p');
+    heading.className = 'answer-sources-heading';
+    heading.textContent = 'Retrieved passages';
+    section.appendChild(heading);
+    var retrieved = Array.isArray(side.retrieved) ? side.retrieved : [];
+    if (!retrieved.length) {
+      var empty = document.createElement('p');
+      empty.className = 'compare-retrieved-empty';
+      empty.textContent = emptyText;
+      section.appendChild(empty);
+      return section;
+    }
+    var list = document.createElement('ul');
+    list.className = 'answer-sources-list compare-retrieved-list';
+    var panel = document.createElement('div');
+    panel.className = 'answer-passage compare-retrieved-passage';
+    panel.id = 'answer-passage-' + (++answerPassageSeq);
+    panel.hidden = true;
+    var panelTitle = document.createElement('p');
+    panelTitle.className = 'answer-passage-title';
+    var panelText = document.createElement('p');
+    panelText.className = 'answer-passage-text';
+    panelText.setAttribute('aria-live', 'polite');
+    panel.appendChild(panelTitle);
+    panel.appendChild(panelText);
+    var openIndex = null;
+    var rows = [];
+
+    retrieved.forEach(function (passage, index) {
+      var id = passageKind === 'chunk' ? passage.chunkId : passage.textUnitId;
+      if (!passage || !id) {
+        return;
+      }
+      var shared = passageKind === 'chunk' ? passage.sharedWithGraph : passage.sharedWithVector;
+      var label = (index + 1) + '. ' + (passage.documentName || 'Unknown document')
+          + (passage.excerpt ? ' · ' + passage.excerpt : '');
+      var item = document.createElement('li');
+      item.className = 'answer-source compare-retrieved-item';
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'answer-source-toggle compare-retrieved-toggle';
+      row.setAttribute('aria-expanded', 'false');
+      row.setAttribute('aria-controls', panel.id);
+      row.textContent = label;
+      row.addEventListener('click', function () {
+        if (openIndex === index) {
+          openIndex = null;
+          panel.hidden = true;
+        } else {
+          openIndex = index;
+          panelTitle.textContent = (index + 1) + '. ' + (passage.documentName || 'Unknown document');
+          panel.hidden = false;
+          fillPassageText(panelText, corpusId, id, passageKind,
+              passageKind === 'chunk' && passage.excerpt ? passage.excerpt : null);
+        }
+        rows.forEach(function (other, otherIndex) {
+          other.setAttribute('aria-expanded', String(openIndex === otherIndex));
+        });
+      });
+      rows[index] = row;
+      item.appendChild(row);
+      if (shared) {
+        item.classList.add('answer-source--shared');
+        var badge = document.createElement('span');
+        badge.className = 'compare-shared-badge';
+        badge.textContent = 'also used by the other side';
+        item.appendChild(badge);
+      }
+      list.appendChild(item);
+    });
+    section.appendChild(list);
+    section.appendChild(panel);
+    return section;
+  }
+
+  function compareColumn(className, title, side, sharedFlags, corpusId, passageKind) {
+    var column = document.createElement('section');
+    column.className = 'compare-col ' + className;
+    column.setAttribute('aria-label', title);
+
+    var heading = document.createElement('h3');
     heading.className = 'compare-col-title';
     heading.textContent = title;
-    var body = document.createElement('p');
-    body.className = 'compare-col-answer';
-    body.textContent = answerText;
-    var meta = document.createElement('p');
-    meta.className = 'compare-col-touch';
-    meta.textContent = touch;
-    col.appendChild(heading);
-    col.appendChild(body);
-    col.appendChild(meta);
-    return col;
+    column.appendChild(heading);
+
+    var content = document.createElement('p');
+    content.className = 'compare-col-answer';
+    var citations = side.citations || [];
+    if (side.noAnswer) {
+      content.classList.add('compare-col-answer--none');
+      content.textContent = side.reason || 'No answer was returned.';
+      column.appendChild(content);
+    } else if (!side.answer || !hasCitations(citations)) {
+      content.textContent = side.answer || 'No answer was returned.';
+      column.appendChild(content);
+    } else {
+      var parts = buildCitationSources(column, content, side.answer, citations, corpusId,
+          { kind: passageKind, shared: sharedFlags });
+      column.appendChild(content);
+      column.appendChild(parts.sources);
+      column.appendChild(parts.panel);
+    }
+
+    column.appendChild(retrievedPassages(side, corpusId, passageKind, passageKind === 'chunk'
+        ? 'No passages retrieved.'
+        : 'No source passages read (offline keyword matching).'));
+
+    var stats = side.stats || {};
+    var figures = document.createElement('ul');
+    figures.className = 'compare-figures';
+    figures.setAttribute('aria-label', title + ' key figures');
+    figures.appendChild(keyFigure(String(stats.contextItems || 0),
+        (stats.contextItems === 1 ? 'context item' : 'context items')));
+    figures.appendChild(keyFigure(String(stats.distinctDocuments || 0),
+        (stats.distinctDocuments === 1 ? 'document' : 'documents')));
+    figures.appendChild(keyFigure(String(citations.length), citations.length === 1 ? 'citation' : 'citations'));
+    figures.appendChild(keyFigure((stats.latencyMs || 0) + ' ms', 'latency'));
+    column.appendChild(figures);
+    return column;
   }
 
-  // Side-by-side result of "Compare with Vector Search", inserted right under
-  // the graph answer so the two mechanisms can be read against each other.
-  function renderComparePanel(answerMsg, vectorAnswerText, vectorTraceId) {
-    var replay = answerMsg.querySelector('.replay-cta');
-    var graphTraceId = replay ? replay.dataset.traceId : null;
-    var graphAnswerEl = answerMsg.querySelector(':scope > span');
-    var graphAnswerText = graphAnswerEl ? graphAnswerEl.textContent : '';
-    var modeLabel = answerTagLabel(answerMsg.dataset.mode).replace(' · Answer', '');
+  function compareReplayButton(label, side, corpusId, projection) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'replay-cta compare-replay';
+    button.dataset.traceId = side.traceId || '';
+    button.dataset.stepCount = String(side.traceStepCount || 0);
+    button.dataset.corpusId = corpusId || '';
+    if (projection) {
+      button.dataset.queryProjection = JSON.stringify(projection);
+    }
+    button.disabled = !side.traceId;
+    button.textContent = label + ' — ' + plural(side.traceStepCount || 0, 'step');
+    return button;
+  }
 
-    Promise.all([fetchTraceSteps(graphTraceId), fetchTraceSteps(vectorTraceId)])
-      .then(function (traces) {
-        var existing = answerMsg.querySelector('.compare-panel');
-        if (existing) {
-          existing.remove();
-        }
-        var panel = document.createElement('div');
-        panel.className = 'compare-panel';
-        var columns = document.createElement('div');
-        columns.className = 'compare-columns';
-        columns.appendChild(comparePanelColumn('compare-col--graph', modeLabel + ' · via the graph',
-            graphAnswerText, graphTouchSummary(traces[0])));
-        columns.appendChild(comparePanelColumn('compare-col--vector', 'Vector Search · no graph',
-            vectorAnswerText, vectorTouchSummary(traces[1])));
-        panel.appendChild(columns);
+  // Fills the Compare tab from one POST /compare response for `request`.
+  function renderCompareView(comparison, request) {
+    if (!comparePanel || !comparison) {
+      return;
+    }
+    shownComparison = request || null;
+    var corpusId = request ? request.corpusId : activeCorpusId;
+    var graph = comparison.graph || {};
+    // A vector citation names its chunk as `chunkId`; the citation renderer
+    // reads `textUnitId`, so map it over (passages then load as chunks).
+    var vector = Object.assign({}, comparison.vector || {});
+    vector.citations = (vector.citations || []).map(function (citation) {
+      return citation ? {
+        textUnitId: citation.chunkId || '',
+        documentName: citation.documentName || '',
+        excerpt: citation.excerpt || ''
+      } : null;
+    });
+    var overlap = comparison.overlap || {};
+    var graphShared = (overlap.graph || []).map(function (entry) { return !!(entry && entry.sharedWithVector); });
+    var vectorShared = (overlap.vector || []).map(function (entry) { return !!(entry && entry.sharedWithGraph); });
+    var graphTitle = 'GraphRAG · ' + compareModeLabel(graph.mode);
 
-        var takeaway = document.createElement('p');
-        takeaway.className = 'compare-takeaway';
-        takeaway.textContent = 'Graph modes follow connections between entities and communities; vector search '
-            + 'only ranks text by similarity. Replay either answer to watch its mechanism.';
-        panel.appendChild(takeaway);
+    if (compareQuestion) {
+      compareQuestion.textContent = comparison.question || '';
+    }
+    if (compareGrid) {
+      compareGrid.textContent = '';
+      compareGrid.appendChild(compareColumn('compare-col--graph', graphTitle, graph, graphShared, corpusId,
+          'text-unit'));
+      compareGrid.appendChild(compareColumn('compare-col--vector', 'Vector Search', vector, vectorShared, corpusId,
+          'chunk'));
+    }
+    if (compareOverlap) {
+      var shared = overlap.sharedPassages || 0;
+      var total = overlap.vectorPassages || 0;
+      compareOverlap.textContent = total
+          ? shared + ' of the ' + plural(total, 'passage') + ' Vector Search retrieved '
+              + (shared === 1 ? 'was' : 'were') + ' also read by GraphRAG.'
+          : 'Vector Search retrieved no passages.';
+    }
+    var verdict = comparison.verdict || {};
+    if (compareVerdictLabel) {
+      compareVerdictLabel.textContent = verdict.source === 'llm' ? 'LLM verdict' : 'Rule-based summary';
+      compareVerdictLabel.dataset.source = verdict.source === 'llm' ? 'llm' : 'rule';
+    }
+    if (compareVerdictText) {
+      compareVerdictText.textContent = verdict.text || '';
+    }
+    if (compareReplayRow) {
+      compareReplayRow.textContent = '';
+      compareReplayRow.appendChild(compareReplayButton('Replay GraphRAG', graph, corpusId, null));
+      compareReplayRow.appendChild(compareReplayButton('Replay Vector', vector, corpusId,
+          Array.isArray(vector.queryProjection) ? vector.queryProjection : null));
+    }
+  }
 
-        var showVector = document.createElement('button');
-        showVector.type = 'button';
-        showVector.className = 'compare-show-vector';
-        showVector.textContent = 'Show chunks in Vector Space →';
-        showVector.addEventListener('click', function () { switchCanvasTab('vector-space'); });
-        panel.appendChild(showVector);
-
-        answerMsg.appendChild(panel);
-        if (chatThread) {
-          chatThread.scrollTop = chatThread.scrollHeight;
+  function resetCompareView() {
+    shownComparison = null;
+    compareRequestSeq++;
+    if (tabCompare) {
+      tabCompare.setAttribute('hidden', '');
+    }
+    if (comparePanel) {
+      comparePanel.hidden = true;
+    }
+    [compareQuestion, compareGrid, compareOverlap, compareVerdictLabel, compareVerdictText, compareReplayRow]
+      .forEach(function (el) {
+        if (el) {
+          el.textContent = '';
         }
       });
   }
@@ -390,7 +620,9 @@
   });
 
   // Story 8-3: reveal the Vector Space tab and update the answer panel.
-  function revealVectorSpaceTab(answerText) {
+  // `autoSwitch === false` (a comparison, which opens the Compare tab
+  // instead) never switches to it.
+  function revealVectorSpaceTab(answerText, autoSwitch) {
     var wasHidden = !!(tabVectorSpace && tabVectorSpace.hidden);
     if (tabVectorSpace) {
       tabVectorSpace.removeAttribute('hidden');
@@ -407,22 +639,23 @@
     // helpful nudge so the user sees their first comparison land, without
     // yanking them away from the Knowledge Graph tab on every subsequent
     // comparison (e.g. one that resolves after the user switched back).
-    if (wasHidden) {
+    if (wasHidden && autoSwitch !== false) {
       switchCanvasTab('vector-space');
     }
   }
 
-  // Story 8-3: tab switching.
+  // Story 8-3: tab switching between 'knowledge-graph', 'vector-space' and
+  // 'compare'. The Knowledge Graph surface is hidden on both other tabs.
   function switchCanvasTab(which) {
-    var showVector = (which === 'vector-space');
-    if (tabKnowledgeGraph) {
-      tabKnowledgeGraph.setAttribute('aria-selected', showVector ? 'false' : 'true');
-      tabKnowledgeGraph.tabIndex = showVector ? -1 : 0;
-    }
-    if (tabVectorSpace) {
-      tabVectorSpace.setAttribute('aria-selected', showVector ? 'true' : 'false');
-      tabVectorSpace.tabIndex = showVector ? 0 : -1;
-    }
+    var target = which === 'vector-space' || which === 'compare' ? which : 'knowledge-graph';
+    var showGraph = target === 'knowledge-graph';
+    [[tabKnowledgeGraph, 'knowledge-graph'], [tabVectorSpace, 'vector-space'], [tabCompare, 'compare']]
+      .forEach(function (pair) {
+        if (pair[0]) {
+          pair[0].setAttribute('aria-selected', pair[1] === target ? 'true' : 'false');
+          pair[0].tabIndex = pair[1] === target ? 0 : -1;
+        }
+      });
     // graph-canvas, drift-pane, replay-scrubber, entity-detail-panel —
     // all part of the Knowledge Graph tab surface.
     var kgEls = [
@@ -436,10 +669,10 @@
       document.getElementById('entity-detail-panel'),
       document.getElementById('entity-search')
     ];
-    if (showVector) {
+    if (!showGraph) {
       // The settings button hides below (part of kgEls) — always close its
-      // popover too, so it never lingers open-but-invisible behind the
-      // Vector Space tab and reappears already-open when switching back.
+      // popover too, so it never lingers open-but-invisible behind another
+      // tab and reappears already-open when switching back.
       closeCanvasSettingsPopover();
     }
     kgEls.forEach(function (el) {
@@ -448,7 +681,7 @@
       }
       // Only toggle elements that are already visible (not ones that are
       // hidden for their own reasons, e.g. canvas-idle or workflow-status).
-      if (showVector) {
+      if (!showGraph) {
         if (!el.hidden) {
           el.dataset.hiddenByTabSwitch = '1';
           el.hidden = true;
@@ -461,43 +694,60 @@
       }
     });
     if (vectorSpacePanel) {
-      vectorSpacePanel.hidden = !showVector;
+      vectorSpacePanel.hidden = target !== 'vector-space';
+    }
+    if (comparePanel) {
+      comparePanel.hidden = target !== 'compare';
     }
   }
 
-  if (tabKnowledgeGraph) {
-    tabKnowledgeGraph.addEventListener('click', function () {
-      switchCanvasTab('knowledge-graph');
-    });
-    tabKnowledgeGraph.addEventListener('keydown', function (event) {
-      if (event.key === 'ArrowRight' && tabVectorSpace && !tabVectorSpace.hidden) {
-        event.preventDefault();
-        tabVectorSpace.focus();
-        switchCanvasTab('vector-space');
-      } else if (event.key === 'End' && tabVectorSpace && !tabVectorSpace.hidden) {
-        event.preventDefault();
-        tabVectorSpace.focus();
-        switchCanvasTab('vector-space');
-      }
-    });
+  // The visible tabs in order, each with the view it switches to.
+  function visibleCanvasTabs() {
+    return [[tabKnowledgeGraph, 'knowledge-graph'], [tabVectorSpace, 'vector-space'], [tabCompare, 'compare']]
+      .filter(function (pair) { return pair[0] && !pair[0].hidden; });
   }
 
-  if (tabVectorSpace) {
-    tabVectorSpace.addEventListener('click', function () {
-      switchCanvasTab('vector-space');
-    });
-    tabVectorSpace.addEventListener('keydown', function (event) {
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        tabKnowledgeGraph.focus();
-        switchCanvasTab('knowledge-graph');
-      } else if (event.key === 'Home') {
-        event.preventDefault();
-        tabKnowledgeGraph.focus();
-        switchCanvasTab('knowledge-graph');
+  // ARIA tabs pattern: Arrow keys move to the previous/next visible tab
+  // (wrapping), Home/End to the first/last; focus follows and activates.
+  function onCanvasTabKeydown(event) {
+    var tabs = visibleCanvasTabs();
+    var index = -1;
+    tabs.forEach(function (pair, i) {
+      if (pair[0] === event.currentTarget) {
+        index = i;
       }
     });
+    if (index < 0 || tabs.length < 2) {
+      return;
+    }
+    var next;
+    if (event.key === 'ArrowRight') {
+      next = (index + 1) % tabs.length;
+    } else if (event.key === 'ArrowLeft') {
+      next = (index - 1 + tabs.length) % tabs.length;
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    tabs[next][0].focus();
+    switchCanvasTab(tabs[next][1]);
   }
+
+  [[tabKnowledgeGraph, 'knowledge-graph'], [tabVectorSpace, 'vector-space'], [tabCompare, 'compare']]
+    .forEach(function (pair) {
+      if (!pair[0]) {
+        return;
+      }
+      pair[0].addEventListener('click', function () {
+        switchCanvasTab(pair[1]);
+      });
+      pair[0].addEventListener('keydown', onCanvasTabKeydown);
+    });
+
 
   // Story 8-3: expose tab switching so other modules (replay.js) can bring
   // the Knowledge Graph tab back into view when they open — the Knowledge
@@ -525,34 +775,43 @@
     passageCache = {};
   }
 
-  function passageEntry(corpusId, textUnitId) {
+  // Vector chunks share the passage cache under a "chunk:" key, so a chunk
+  // id can never collide with a text unit id.
+  function passageKey(textUnitId, kind) {
+    return kind === 'chunk' ? 'chunk:' + textUnitId : textUnitId;
+  }
+
+  function passageEntry(corpusId, textUnitId, kind) {
     var byCorpus = passageCache[corpusId];
-    return byCorpus && Object.prototype.hasOwnProperty.call(byCorpus, textUnitId) ? byCorpus[textUnitId] : null;
+    var key = passageKey(textUnitId, kind);
+    return byCorpus && Object.prototype.hasOwnProperty.call(byCorpus, key) ? byCorpus[key] : null;
   }
 
   // The passage for `textUnitId` in `corpusId`, if it has already been
   // fetched: `{documentName, ordinal, text}`, else null.
-  function cachedPassage(corpusId, textUnitId) {
-    var entry = passageEntry(corpusId, textUnitId);
+  function cachedPassage(corpusId, textUnitId, kind) {
+    var entry = passageEntry(corpusId, textUnitId, kind);
     return entry && entry.passage ? entry.passage : null;
   }
 
-  // Fetches one passage from Story 13.4's text-unit endpoint, once per
+  // Fetches one passage from Story 13.4's text-unit endpoint (or, for
+  // `kind === 'chunk'`, one vector chunk from the chunk endpoint), once per
   // corpus and id. Resolves to `{documentName, ordinal, text}`; rejects when
   // the passage is not available (a failed fetch is not cached, so a later
   // open retries it).
-  function loadPassage(corpusId, textUnitId) {
+  function loadPassage(corpusId, textUnitId, kind) {
     if (!corpusId || !textUnitId) {
       return Promise.reject(new Error('Passage not available'));
     }
-    var existing = passageEntry(corpusId, textUnitId);
+    var existing = passageEntry(corpusId, textUnitId, kind);
     if (existing) {
       return existing.promise;
     }
+    var key = passageKey(textUnitId, kind);
     var byCorpus = passageCache[corpusId] || (passageCache[corpusId] = {});
     var entry = {};
-    entry.promise = fetch('/api/corpora/' + encodeURIComponent(corpusId) + '/text-units/'
-        + encodeURIComponent(textUnitId))
+    entry.promise = fetch('/api/corpora/' + encodeURIComponent(corpusId)
+        + (kind === 'chunk' ? '/chunks/' : '/text-units/') + encodeURIComponent(textUnitId))
       .then(function (response) {
         if (!response.ok) {
           throw new Error('Passage not available');
@@ -571,12 +830,12 @@
         return entry.passage;
       })
       .catch(function (error) {
-        if (passageCache[corpusId] === byCorpus && byCorpus[textUnitId] === entry) {
-          delete byCorpus[textUnitId];
+        if (passageCache[corpusId] === byCorpus && byCorpus[key] === entry) {
+          delete byCorpus[key];
         }
         throw error;
       });
-    byCorpus[textUnitId] = entry;
+    byCorpus[key] = entry;
     return entry.promise;
   }
 
@@ -684,16 +943,17 @@
   }
 
   // Writes a passage's full text into `element` (textContent only), from the
-  // shared cache when it is there, else "Loading…" until the fetch settles.
-  function fillPassageText(element, corpusId, textUnitId) {
+  // shared cache when it is there, else `placeholder` (default "Loading…")
+  // until the fetch settles. `kind === 'chunk'` reads a vector chunk.
+  function fillPassageText(element, corpusId, textUnitId, kind, placeholder) {
     element.dataset.textUnitId = textUnitId;
-    var cached = cachedPassage(corpusId, textUnitId);
+    var cached = cachedPassage(corpusId, textUnitId, kind);
     if (cached) {
       element.textContent = cached.text;
       return;
     }
-    element.textContent = 'Loading…';
-    loadPassage(corpusId, textUnitId)
+    element.textContent = placeholder || 'Loading…';
+    loadPassage(corpusId, textUnitId, kind)
       .then(function (passage) {
         if (element.dataset.textUnitId === textUnitId) {
           element.textContent = passage.text;
@@ -1317,6 +1577,7 @@
     if (vectorSpaceAnswer) {
       vectorSpaceAnswer.textContent = '';
     }
+    resetCompareView();
 
     if (corpusChip) {
       corpusChip.hidden = true;
@@ -1645,8 +1906,13 @@
   // The "Sources" list under a cited answer plus its one inline passage
   // panel. Activating a marker or a row toggles that citation's full passage
   // in the panel (fetched once per text unit through the shared cache).
-  function buildCitationSources(message, content, answerText, citations, corpusId) {
+  // `options.kind === 'chunk'` reads vector chunks (shown from the citation's
+  // excerpt until the full chunk arrives); `options.shared[i]` badges source
+  // `i + 1` as also used by the other side of a comparison.
+  function buildCitationSources(message, content, answerText, citations, corpusId, options) {
     var openNumber = null;
+    var kind = options && options.kind === 'chunk' ? 'chunk' : 'text-unit';
+    var shared = options && Array.isArray(options.shared) ? options.shared : [];
 
     var sources = document.createElement('div');
     sources.className = 'answer-sources';
@@ -1689,7 +1955,8 @@
       var citation = citations[n - 1];
       panelTitle.textContent = n + '. ' + (citation.documentName || 'Unknown document');
       panel.hidden = false;
-      fillPassageText(panelText, corpusId, citation.textUnitId);
+      fillPassageText(panelText, corpusId, citation.textUnitId, kind,
+          kind === 'chunk' && citation.excerpt ? citation.excerpt : null);
       syncExpanded();
     }
 
@@ -1712,6 +1979,13 @@
           + (citation.excerpt ? ' · ' + citation.excerpt : '');
       row.addEventListener('click', function () { openCitation(n); });
       item.appendChild(row);
+      if (shared[index]) {
+        item.classList.add('answer-source--shared');
+        var badge = document.createElement('span');
+        badge.className = 'compare-shared-badge';
+        badge.textContent = 'also used by the other side';
+        item.appendChild(badge);
+      }
       list.appendChild(item);
     });
 
@@ -1782,12 +2056,13 @@
       var compareCta = document.createElement('button');
       compareCta.type = 'button';
       compareCta.className = 'compare-cta';
-      var compareCtaExplanation = 'Re-runs this question through a plain vector-similarity search ' +
-          '(no knowledge graph) for comparison, and opens the Vector Space tab showing ' +
-          'that answer and where the corpus\'s chunks sit in embedding space.';
+      var compareCtaExplanation = 'Re-runs this question through this mode and a plain vector-similarity ' +
+          'search (no knowledge graph), and opens the Compare tab with both cited answers side by side, ' +
+          'their sources, key figures and a short verdict. The Vector Space tab shows where the ' +
+          'corpus\'s chunks sit in embedding space.';
       compareCta.title = compareCtaExplanation;
       compareCta.setAttribute('aria-label', compareCtaExplanation);
-      compareCta.textContent = '\u21BB Compare with Vector Search';
+      compareCta.textContent = COMPARE_CTA_LABEL;
       var compareRow = document.createElement('div');
       compareRow.className = 'compare-row';
       compareRow.appendChild(compareCta);
@@ -2223,6 +2498,7 @@
     if (vectorSpaceAnswer) {
       vectorSpaceAnswer.textContent = '';
     }
+    resetCompareView();
 
     revealCorpusCanvasSurface();
 

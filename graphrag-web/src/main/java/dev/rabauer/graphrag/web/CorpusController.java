@@ -6,7 +6,10 @@ import dev.rabauer.graphrag.adapter.langchain4j.OpenAiLlmPort;
 import dev.rabauer.graphrag.adapter.neo4j.Neo4jCorpusRegistry;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityMembership;
+import dev.rabauer.graphrag.core.domain.Chunk;
 import dev.rabauer.graphrag.core.domain.Citation;
+import dev.rabauer.graphrag.core.domain.ComparisonStats;
+import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.EmbeddedChunk;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -27,6 +30,7 @@ import dev.rabauer.graphrag.core.usecase.AnswerGlobalSearch;
 import dev.rabauer.graphrag.core.usecase.AnswerLocalSearch;
 import dev.rabauer.graphrag.core.usecase.AnswerDriftSearch;
 import dev.rabauer.graphrag.core.usecase.BuildKnowledgeGraph;
+import dev.rabauer.graphrag.core.usecase.CompareAnswers;
 import dev.rabauer.graphrag.core.usecase.ConstructVectorIndex;
 import dev.rabauer.graphrag.core.usecase.DetectCommunities;
 import dev.rabauer.graphrag.core.usecase.EmbedGraphElements;
@@ -267,6 +271,30 @@ public class CorpusController {
                 "text", textUnit.text() == null ? "" : textUnit.text()));
     }
 
+    /**
+     * One vector-index chunk's full text, for the Compare view's vector
+     * citations. {@code documentName} is {@code ""} for chunks of corpora
+     * indexed before chunks knew their document.
+     */
+    @GetMapping("/api/corpora/{corpusId}/chunks/{chunkId}")
+    public ResponseEntity<Map<String, Object>> chunk(@PathVariable("corpusId") String corpusId,
+                                                     @PathVariable("chunkId") String chunkId) {
+        corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        Collection<EmbeddedChunk> chunks = vectorStorePort.chunks(corpusId);
+        Chunk chunk = (chunks == null ? List.<EmbeddedChunk>of() : chunks).stream()
+                .filter(embedded -> embedded != null && embedded.chunk() != null
+                        && chunkId.equals(embedded.chunk().id()))
+                .map(EmbeddedChunk::chunk)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No vector chunk was found for id " + chunkId));
+        return ResponseEntity.ok(Map.of(
+                "id", chunk.id(),
+                "documentName", chunk.documentName(),
+                "ordinal", chunk.ordinal(),
+                "text", chunk.text() == null ? "" : chunk.text()));
+    }
+
     private Map<String, Object> corpusSummaryPayload(Neo4jCorpusRegistry.CorpusSummary summary) {
         return Map.of(
                 "id", summary.corpusId(),
@@ -354,15 +382,9 @@ public class CorpusController {
 
         Corpus corpus = corpusStore.get(corpusId)
                 .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
-        if (corpusStore.isOffline(corpus.id())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", OFFLINE_QUERY_BLOCKED_MESSAGE));
-        }
-        Neo4jCorpusRegistry.CorpusWorkflowStatus workflowStatus = corpusStore.status(corpus.id());
-        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.BUILDING) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_BUILDING_MESSAGE));
-        }
-        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_FAILED_MESSAGE));
+        ResponseEntity<Map<String, Object>> blocked = queryBlocked(corpus);
+        if (blocked != null) {
+            return blocked;
         }
 
         if ("GLOBAL".equalsIgnoreCase(mode)) {
@@ -376,6 +398,148 @@ public class CorpusController {
         }
 
         return localSearchResponse(question, corpus.id());
+    }
+
+    /**
+     * The 409 a query on {@code corpus} gets while it is the offline demo,
+     * still building or failed; null when it may be queried.
+     */
+    private ResponseEntity<Map<String, Object>> queryBlocked(Corpus corpus) {
+        if (corpusStore.isOffline(corpus.id())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", OFFLINE_QUERY_BLOCKED_MESSAGE));
+        }
+        Neo4jCorpusRegistry.CorpusWorkflowStatus workflowStatus = corpusStore.status(corpus.id());
+        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.BUILDING) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_BUILDING_MESSAGE));
+        }
+        if (workflowStatus == Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_FAILED_MESSAGE));
+        }
+        return null;
+    }
+
+    /**
+     * Answers {@code question} fresh with a GraphRAG mode ({@code LOCAL},
+     * {@code GLOBAL} or {@code DRIFT}, default {@code LOCAL}) and with the
+     * Vector Search baseline, and returns both side by side with each side's
+     * key figures, the passages both retrieved and a short verdict (see
+     * {@link CompareAnswers}). Validation and the offline/building/failed
+     * 409s are those of {@link #query}; an LLM failure of either answer is
+     * the usual 502, while a failed verdict call falls back to the rule text.
+     */
+    @PostMapping("/api/corpora/{corpusId}/compare")
+    public ResponseEntity<Map<String, Object>> compare(
+            @PathVariable("corpusId") String corpusId,
+            @org.springframework.web.bind.annotation.RequestBody(required = false) Map<String, String> request) {
+
+        String question = Optional.ofNullable(request).map(body -> body.get("question")).orElse("").trim();
+        String modeName = Optional.ofNullable(request).map(body -> body.get("mode")).orElse("LOCAL");
+
+        if (question.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Please enter a question first."));
+        }
+        Optional<CompareAnswers.Mode> mode = CompareAnswers.Mode.parse(modeName);
+        if (mode.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Search mode must be LOCAL, GLOBAL, or DRIFT for a comparison."));
+        }
+
+        Corpus corpus = corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        ResponseEntity<Map<String, Object>> blocked = queryBlocked(corpus);
+        if (blocked != null) {
+            return blocked;
+        }
+
+        CompareAnswers.Comparison comparison = new CompareAnswers(graphStorePort, embeddingPort, llmPort,
+                vectorStorePort, answerVectorBaseline).compare(question, corpus.id(), mode.get());
+        return ResponseEntity.ok(comparisonPayload(comparison));
+    }
+
+    private Map<String, Object> comparisonPayload(CompareAnswers.Comparison comparison) {
+        CompareAnswers.GraphSide graph = comparison.graph();
+        Map<String, Object> graphPayload = new java.util.LinkedHashMap<>();
+        graphPayload.put("mode", graph.mode().name());
+        graphPayload.put("noAnswer", graph.noAnswer());
+        if (graph.noAnswer()) {
+            graphPayload.put("reason", graph.reason() == null ? "" : graph.reason());
+        } else {
+            graphPayload.put("answer", graph.answer() == null ? "" : graph.answer());
+        }
+        graphPayload.put("citations", graph.citations().stream().map(CorpusController::citationPayload).toList());
+        graphPayload.put("traceId", captureTrace(graph.steps()));
+        graphPayload.put("traceStepCount", graph.steps().size());
+        graphPayload.put("stats", statsPayload(graph.stats()));
+        graphPayload.put("retrieved", comparison.graphRetrieved().stream()
+                .map(passage -> Map.<String, Object>of(
+                        "textUnitId", passage.id(),
+                        "documentName", passage.documentName(),
+                        "excerpt", passage.excerpt(),
+                        "sharedWithVector", passage.shared()))
+                .toList());
+
+        VectorBaselineAnswer vector = comparison.vector().answer();
+        Map<String, Object> vectorPayload = new java.util.LinkedHashMap<>();
+        vectorPayload.put("noAnswer", vector.noAnswer());
+        if (vector.noAnswer()) {
+            vectorPayload.put("reason", vector.reason() == null ? "" : vector.reason());
+        } else {
+            vectorPayload.put("answer", vector.answer());
+        }
+        vectorPayload.put("citations", vector.citations().stream().map(CorpusController::chunkCitationPayload).toList());
+        vectorPayload.put("traceId", captureTrace(vector.steps()));
+        vectorPayload.put("traceStepCount", vector.steps().size());
+        vectorPayload.put("queryProjection", List.of(vector.queryProjection()[0], vector.queryProjection()[1]));
+        vectorPayload.put("stats", statsPayload(comparison.vector().stats()));
+        vectorPayload.put("retrieved", comparison.vectorRetrieved().stream()
+                .map(passage -> Map.<String, Object>of(
+                        "chunkId", passage.id(),
+                        "documentName", passage.documentName(),
+                        "excerpt", passage.excerpt(),
+                        "sharedWithGraph", passage.shared()))
+                .toList());
+
+        List<Map<String, Object>> vectorOverlap = new java.util.ArrayList<>();
+        for (int i = 0; i < vector.citations().size(); i++) {
+            vectorOverlap.add(Map.of(
+                    "chunkId", vector.citations().get(i).textUnitId(),
+                    "sharedWithGraph", comparison.vectorCitationShared().get(i)));
+        }
+        List<Map<String, Object>> graphOverlap = new java.util.ArrayList<>();
+        for (int i = 0; i < graph.citations().size(); i++) {
+            graphOverlap.add(Map.of(
+                    "textUnitId", graph.citations().get(i).textUnitId(),
+                    "sharedWithVector", comparison.graphCitationShared().get(i)));
+        }
+
+        ComparisonVerdict verdict = comparison.verdict();
+        return Map.of(
+                "question", comparison.question() == null ? "" : comparison.question(),
+                "graph", graphPayload,
+                "vector", vectorPayload,
+                "overlap", Map.of(
+                        "vector", vectorOverlap,
+                        "graph", graphOverlap,
+                        "sharedPassages", comparison.facts().sharedPassages(),
+                        "vectorPassages", comparison.facts().vectorPassages()),
+                "verdict", Map.of(
+                        "text", verdict.text(),
+                        "source", verdict.source() == ComparisonVerdict.Source.LLM ? "llm" : "rule"));
+    }
+
+    private static Map<String, Object> statsPayload(ComparisonStats stats) {
+        return Map.of(
+                "contextItems", stats.contextItems(),
+                "distinctDocuments", stats.distinctDocuments(),
+                "latencyMs", stats.latencyMs());
+    }
+
+    /** A vector citation: {@link Citation#textUnitId()} holds the cited chunk's id. */
+    private static Map<String, Object> chunkCitationPayload(Citation citation) {
+        return Map.of(
+                "chunkId", citation.textUnitId(),
+                "documentName", citation.documentName(),
+                "excerpt", citation.excerpt());
     }
 
     /**
@@ -480,6 +644,17 @@ public class CorpusController {
                     "noAnswer", true,
                     "reason", result.reason()));
         }
+        if (result.noAnswer()) {
+            // Not in context: chunks were retrieved, so the replay can still place the query.
+            return ResponseEntity.ok(Map.of(
+                    "answerId", UUID.randomUUID().toString(),
+                    "traceId", traceId,
+                    "traceStepCount", result.steps().size(),
+                    "noAnswer", true,
+                    "reason", result.reason(),
+                    "mode", "VECTOR",
+                    "queryProjection", List.of(result.queryProjection()[0], result.queryProjection()[1])));
+        }
 
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
@@ -487,7 +662,8 @@ public class CorpusController {
                 "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
                 "mode", "VECTOR",
-                "queryProjection", List.of(result.queryProjection()[0], result.queryProjection()[1])));
+                "queryProjection", List.of(result.queryProjection()[0], result.queryProjection()[1]),
+                "citations", result.citations().stream().map(CorpusController::chunkCitationPayload).toList()));
     }
 
     /**

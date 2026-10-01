@@ -11,6 +11,7 @@ import dev.rabauer.graphrag.core.domain.RetrievalTrace;
 import dev.rabauer.graphrag.core.domain.UploadedDocument;
 import dev.rabauer.graphrag.core.port.VectorStorePort;
 import dev.rabauer.graphrag.core.usecase.AnswerVectorBaseline;
+import dev.rabauer.graphrag.core.usecase.VectorBaselineAnswer;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
@@ -105,6 +106,83 @@ class CorpusControllerVectorBaselineTest {
         String traceId = (String) body.get("traceId");
         assertThat(retrievalTraceStore.get(traceId)).isPresent();
         assertThat(body.get("traceStepCount")).isEqualTo(0);
+    }
+
+    /** A synthesizing LLM stub answering every context with {@code answer}. */
+    private static dev.rabauer.graphrag.core.port.LlmPort synthesizing(
+            dev.rabauer.graphrag.core.domain.SynthesizedAnswer answer) {
+        return new dev.rabauer.graphrag.core.port.LlmPort() {
+            @Override
+            public dev.rabauer.graphrag.core.domain.GraphExtraction extract(Corpus corpus) {
+                return new dev.rabauer.graphrag.core.domain.GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public boolean synthesizesAnswers() {
+                return true;
+            }
+
+            @Override
+            public dev.rabauer.graphrag.core.domain.SynthesizedAnswer synthesizeAnswer(
+                    String question, List<dev.rabauer.graphrag.core.domain.ContextItem> context) {
+                return answer;
+            }
+        };
+    }
+
+    private static CorpusController synthesizingController(String corpusId,
+                                                           dev.rabauer.graphrag.core.port.LlmPort llmPort) {
+        Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
+        corpusRegistry.put(new Corpus(corpusId, List.of(new UploadedDocument("doc.txt", "Some content."))));
+        corpusRegistry.markReady(corpusId);
+        InMemoryVectorStoreAdapter vectorStore = new InMemoryVectorStoreAdapter();
+        vectorStore.persistChunks(corpusId, List.of(new EmbeddedChunk(
+                new Chunk(corpusId + "::chunk-0", corpusId, 0, "Sherlock Holmes investigated the case", "doc.txt"),
+                new float[]{1f, 0f}, new double[]{0.0, 0.0})));
+        AnswerVectorBaseline answerVectorBaseline =
+                new AnswerVectorBaseline(text -> new float[]{1f, 0f}, vectorStore, llmPort);
+        return new CorpusController(null, corpusRegistry, List.of(), null, null, llmPort,
+                new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, answerVectorBaseline, vectorStore);
+    }
+
+    @Test
+    void vectorModeNotInContextReturnsTheNoAnswerShapeWithTheQueryProjection() {
+        CorpusController controller = synthesizingController("corpus-vector-nic",
+                synthesizing(new dev.rabauer.graphrag.core.domain.SynthesizedAnswer(true, "")));
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                "corpus-vector-nic", Map.of("question", "Who investigated?", "mode", "VECTOR"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        Map<String, Object> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body).containsEntry("noAnswer", true);
+        assertThat(body).containsEntry("reason", VectorBaselineAnswer.NOT_IN_CONTEXT_REASON);
+        assertThat(body).containsEntry("mode", "VECTOR");
+        assertThat((List<?>) body.get("queryProjection")).hasSize(2);
+        assertThat(body).doesNotContainKey("answer");
+        // VECTOR_QUERY_EMBEDDED + VECTOR_CHUNK, no SYNTHESIS.
+        assertThat(body.get("traceStepCount")).isEqualTo(2);
+    }
+
+    @Test
+    void vectorModeCitedAnswerReturnsChunkCitations() {
+        CorpusController controller = synthesizingController("corpus-vector-cited",
+                synthesizing(new dev.rabauer.graphrag.core.domain.SynthesizedAnswer(false, "Holmes did [1].")));
+
+        ResponseEntity<Map<String, Object>> response = controller.query(
+                "corpus-vector-cited", Map.of("question", "Who investigated?", "mode", "VECTOR"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        Map<String, Object> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body).containsEntry("answer", "Holmes did [1].");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> citations = (List<Map<String, Object>>) body.get("citations");
+        assertThat(citations).hasSize(1);
+        assertThat(citations.get(0)).containsEntry("chunkId", "corpus-vector-cited::chunk-0");
+        assertThat(citations.get(0)).containsEntry("documentName", "doc.txt");
+        assertThat(citations.get(0)).containsEntry("excerpt", "Sherlock Holmes investigated the case");
     }
 
     @Test

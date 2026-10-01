@@ -32,7 +32,8 @@ class ConstructVectorIndexTest {
 
         assertEquals(1, result.size());
         EmbeddedChunk embeddedChunk = result.getFirst();
-        assertEquals(new Chunk("corpus-1::chunk-0", "corpus-1", 0, "Short content."), embeddedChunk.chunk());
+        assertEquals(new Chunk("corpus-1::chunk-0", "corpus-1", 0, "Short content.", "doc.txt"),
+                embeddedChunk.chunk());
         assertArrayEquals(new float[]{1.0f, 2.0f}, embeddedChunk.embedding());
         assertArrayEquals(new double[]{0.0, 0.0}, embeddedChunk.projection());
         assertEquals(List.of("Short content."), embeddingPort.inputs);
@@ -126,6 +127,8 @@ class ConstructVectorIndexTest {
         assertEquals(1, result.get(1).chunk().ordinal());
         assertEquals("First document.", result.get(0).chunk().text());
         assertEquals("Second document.", result.get(1).chunk().text());
+        assertEquals("first.txt", result.get(0).chunk().documentName());
+        assertEquals("second.txt", result.get(1).chunk().documentName());
         assertEquals(List.of("First document.", "Second document."), embeddingPort.inputs);
     }
 

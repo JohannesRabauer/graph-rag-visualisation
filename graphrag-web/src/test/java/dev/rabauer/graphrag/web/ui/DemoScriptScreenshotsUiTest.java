@@ -115,10 +115,13 @@ class DemoScriptScreenshotsUiTest extends UiTestSupport {
         shoot("SCR-11");
         page.locator("#replay-close").click();
 
-        // SCR-12: Vector Space tab open with the vector-only answer.
+        // SCR-12: Vector Space tab open with the vector-only answer (the
+        // comparison itself opens the Compare tab first).
         page.locator(".message.answer").last().locator(".compare-cta").click();
-        assertThat(page.locator("#vector-space-panel"))
+        assertThat(page.locator("#compare-panel"))
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
+        page.locator("#tab-vector-space").click();
+        assertThat(page.locator("#vector-space-panel")).isVisible();
         shoot("SCR-12");
     }
 }

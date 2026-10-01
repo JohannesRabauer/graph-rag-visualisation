@@ -1,6 +1,9 @@
 package dev.rabauer.graphrag.adapter.langchain4j;
 
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
+import dev.rabauer.graphrag.core.domain.ComparisonFacts;
+import dev.rabauer.graphrag.core.domain.ComparisonStats;
+import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
 import dev.rabauer.graphrag.core.domain.ContextItem;
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.GraphExtraction;
@@ -266,7 +269,9 @@ class OpenAiLlmPortTest {
         assertTrue(prompt.contains("Entity, Relationship and Community summary items are background facts: "
                 + "use them, but never cite them."));
         assertFalse(prompt.contains("Never put [n] on an Entity or Relationship item."));
-        assertTrue(prompt.contains("community summaries from its knowledge graph, and source passages."));
+        assertTrue(prompt.contains("numbered retrieved context below: source passages and, depending on how "
+                + "it was retrieved, entities, relationships and community summaries."));
+        assertFalse(prompt.contains("from its knowledge graph"));
     }
 
     @Test
@@ -315,6 +320,95 @@ class OpenAiLlmPortTest {
         };
         OpenAiLlmPort down = new OpenAiLlmPort(failing, new FakeChatModel(FinishReason.STOP, ""));
         assertThrows(OpenAiLlmPort.LlmCallFailedException.class, () -> down.synthesizeAnswer("q", ANSWER_CONTEXT));
+    }
+
+    private static final ComparisonFacts FACTS = new ComparisonFacts("LOCAL", new ComparisonStats(7, 2, 120),
+            new ComparisonStats(5, 1, 40), 5, 2);
+
+    @Test
+    void answerPromptFitsAVectorOnlyContextOfSourcePassages() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, "{}"),
+                new FakeChatModel(FinishReason.STOP, ""));
+
+        String prompt = port.answerPrompt("Where does Holmes live?", List.of(
+                new ContextItem(1, RetrievalStep.Kind.TEXT_UNIT, "Holmes lives at Baker Street.", "c::chunk-0")));
+
+        assertTrue(prompt.contains("[1] Source passage: Holmes lives at Baker Street."));
+        assertTrue(prompt.contains("retrieved context"));
+        assertFalse(prompt.contains("knowledge graph"));
+    }
+
+    @Test
+    void verdictPromptCarriesTheQuestionBothAnswersAndTheFacts() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, "{}"),
+                new FakeChatModel(FinishReason.STOP, ""));
+
+        String prompt = port.verdictPrompt("Who is Irene Adler?", "A singer [1].", "A woman [1].", FACTS);
+
+        assertTrue(prompt.toLowerCase().contains("json"));
+        assertTrue(prompt.contains("Question: Who is Irene Adler?"));
+        assertTrue(prompt.contains("GraphRAG answer:\nA singer [1]."));
+        assertTrue(prompt.contains("Vector Search answer:\nA woman [1]."));
+        assertTrue(prompt.contains("GraphRAG (LOCAL search"));
+        assertTrue(prompt.contains("- GraphRAG: 7 context items from 2 distinct documents, 120 ms"));
+        assertTrue(prompt.contains("- Vector Search: 5 context items from 1 distinct documents, 40 ms"));
+        assertTrue(prompt.contains("2 of the 5 passages Vector Search retrieved were also read by GraphRAG."));
+        assertTrue(prompt.contains("at most 2 short sentences"));
+        assertTrue(prompt.contains("Do not claim which answer is correct"));
+    }
+
+    @Test
+    void compareAnswersMakesOneJsonCallAndKeepsAtMostTwoSentences() {
+        FakeChatModel json = new FakeChatModel(FinishReason.STOP,
+                "```json\n{\"verdict\":\"GraphRAG cites two documents. Vector Search stays in one. Extra.\"}\n```",
+                OpenAiLlmPort.MAX_VERDICT_OUTPUT_TOKENS);
+        OpenAiLlmPort port = new OpenAiLlmPort(json, new FakeChatModel(FinishReason.STOP, ""));
+
+        ComparisonVerdict verdict = port.compareAnswers("q", "a", "b", FACTS);
+
+        assertEquals(new ComparisonVerdict("GraphRAG cites two documents. Vector Search stays in one.",
+                ComparisonVerdict.Source.LLM), verdict);
+        assertEquals(1, json.requests.size());
+    }
+
+    @Test
+    void compareAnswersThrowsOnFailureLengthInvalidOrEmptyVerdicts() {
+        for (FakeChatModel json : List.of(
+                new FakeChatModel(FinishReason.STOP, "Not JSON.", OpenAiLlmPort.MAX_VERDICT_OUTPUT_TOKENS),
+                new FakeChatModel(FinishReason.STOP, "{\"verdict\":\" \"}", OpenAiLlmPort.MAX_VERDICT_OUTPUT_TOKENS),
+                new FakeChatModel(FinishReason.STOP, "", OpenAiLlmPort.MAX_VERDICT_OUTPUT_TOKENS),
+                new FakeChatModel(FinishReason.LENGTH, "{\"verdict\":\"x\"}",
+                        OpenAiLlmPort.MAX_VERDICT_OUTPUT_TOKENS))) {
+            OpenAiLlmPort port = new OpenAiLlmPort(json, new FakeChatModel(FinishReason.STOP, ""));
+            assertThrows(OpenAiLlmPort.LlmCallFailedException.class, () -> port.compareAnswers("q", "a", "b", FACTS));
+        }
+        ChatModel down = new ChatModel() {
+            @Override
+            public ChatResponse chat(ChatRequest request) {
+                throw new IllegalStateException("network");
+            }
+        };
+        OpenAiLlmPort failing = new OpenAiLlmPort(down, new FakeChatModel(FinishReason.STOP, ""));
+        assertThrows(OpenAiLlmPort.LlmCallFailedException.class, () -> failing.compareAnswers("q", "a", "b", FACTS));
+    }
+
+    @Test
+    void firstSentencesCutsAfterTheGivenCount() {
+        assertEquals("One. Two!", OpenAiLlmPort.firstSentences("One. Two! Three?", 2));
+        assertEquals("Only one sentence", OpenAiLlmPort.firstSentences("Only one sentence", 2));
+        assertEquals("Version 2.5 is out. Yes.", OpenAiLlmPort.firstSentences("Version 2.5 is out. Yes. No.", 2));
+    }
+
+    @Test
+    void firstSentencesDoesNotCutAtAbbreviationsOrInitials() {
+        assertEquals("Mr. Holmes met Dr. Watson at St. Bart's. Then they left.",
+                OpenAiLlmPort.firstSentences("Mr. Holmes met Dr. Watson at St. Bart's. Then they left. Extra.", 2));
+        assertEquals("GraphRAG read more, e.g. the letters. Vector Search did not, i.e. it stayed local.",
+                OpenAiLlmPort.firstSentences(
+                        "GraphRAG read more, e.g. the letters. Vector Search did not, i.e. it stayed local. More.", 2));
+        assertEquals("J. H. Watson wrote it. It is short.",
+                OpenAiLlmPort.firstSentences("J. H. Watson wrote it. It is short. Third.", 2));
+        assertEquals("Mrs. Hudson called. Done.", OpenAiLlmPort.firstSentences("Mrs. Hudson called. Done. Cut.", 2));
     }
 
     private static final class FakeChatModel implements ChatModel {

@@ -10,12 +10,14 @@ import org.junit.jupiter.api.Test;
 import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
+import org.neo4j.driver.Session;
 import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -63,6 +65,33 @@ class Neo4jVectorStoreAdapterTest {
         assertArrayEquals(new float[]{1.0f, 0.5f}, readChunk.embedding());
         assertArrayEquals(new double[]{0.1, 0.2}, readChunk.projection());
         assertTrue(adapter.chunks(otherCorpusId).isEmpty());
+    }
+
+    @Test
+    void persistsAndReadsBackTheChunksDocumentName() {
+        Neo4jVectorStoreAdapter adapter = new Neo4jVectorStoreAdapter(driver);
+        String corpusId = "corpus-doc-" + System.nanoTime();
+
+        adapter.persistChunks(corpusId, List.of(new EmbeddedChunk(
+                new Chunk(corpusId + "::chunk-0", corpusId, 0, "alpha", "story.txt"),
+                new float[]{1.0f, 0.5f}, new double[]{0.1, 0.2})));
+
+        assertEquals("story.txt", adapter.chunks(corpusId).iterator().next().chunk().documentName());
+    }
+
+    @Test
+    void readsAnOlderChunkWithoutADocumentNameAsUnknown() {
+        Neo4jVectorStoreAdapter adapter = new Neo4jVectorStoreAdapter(driver);
+        String corpusId = "corpus-old-" + System.nanoTime();
+        try (Session session = driver.session()) {
+            session.executeWrite(tx -> tx.run("CREATE (:Chunk {corpusId: $corpusId, id: $id, ordinal: 0, "
+                            + "text: 'old', embedding: [1.0, 0.5], projection: [0.1, 0.2]})",
+                    Map.of("corpusId", corpusId, "id", corpusId + "::chunk-0")).consume());
+        }
+
+        Chunk chunk = adapter.chunks(corpusId).iterator().next().chunk();
+        assertEquals("old", chunk.text());
+        assertEquals("", chunk.documentName());
     }
 
     @Test

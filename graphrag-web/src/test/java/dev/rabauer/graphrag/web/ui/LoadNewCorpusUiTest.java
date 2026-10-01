@@ -186,8 +186,9 @@ class LoadNewCorpusUiTest extends UiTestSupport {
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
 
         localAnswer.locator(".compare-cta").click();
-        assertThat(page.locator(".message.answer[data-mode='VECTOR']").last())
+        assertThat(page.locator("#compare-panel"))
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
+        page.locator("#tab-vector-space").click();
         assertThat(page.locator("#vector-space-panel")).isVisible();
 
         page.onceDialog(dialog -> dialog.accept());
@@ -200,5 +201,8 @@ class LoadNewCorpusUiTest extends UiTestSupport {
         assertThat(page.locator("#community-toggle-wrap")).isHidden();
         assertThat(page.locator("#entity-type-toggle-wrap")).isHidden();
         assertThat(page.locator("#canvas-settings-toggle")).isHidden();
+        assertThat(page.locator("#tab-compare")).isHidden();
+        assertThat(page.locator("#compare-panel")).isHidden();
+        assertThat(page.locator("#tab-vector-space")).isHidden();
     }
 }

@@ -69,6 +69,7 @@
         <div class="canvas-tab-bar" id="canvas-tab-bar" role="tablist" aria-label="Canvas view" hidden>
           <button type="button" class="canvas-tab" id="tab-knowledge-graph" role="tab" aria-selected="true" tabindex="0">Knowledge Graph</button>
           <button type="button" class="canvas-tab" id="tab-vector-space" role="tab" aria-selected="false" tabindex="-1" hidden>Vector Space</button>
+          <button type="button" class="canvas-tab" id="tab-compare" role="tab" aria-selected="false" tabindex="-1" aria-controls="compare-panel" hidden>Compare</button>
           <button type="button" class="help-btn help-btn--tabbar" data-help="kg-overview" aria-label="Help: the knowledge graph">?</button>
         </div>
 
@@ -174,6 +175,24 @@
             </p>
           </div>
           <p class="vector-space-note">Corpus chunks sit at their settled, ingestion-time positions. Replay a Vector Search answer to see the query land and its top matches highlight.</p>
+        </div>
+
+        <div id="compare-panel" class="compare-view" role="tabpanel" aria-labelledby="tab-compare" hidden>
+          <p class="graph-eyebrow">Compare — GraphRAG vs Vector Search</p>
+          <button type="button" class="help-btn help-btn--panel" data-help="vector-vs-graphrag" aria-label="Help: vector search versus GraphRAG">?</button>
+          <p class="compare-question-label">Question</p>
+          <p id="compare-question" class="compare-question"></p>
+          <div class="compare-fresh-row">
+            <p id="compare-fresh-note" class="compare-fresh-note">Both sides were answered fresh for this comparison.</p>
+            <button type="button" id="compare-run-again" class="compare-run-again">Run again</button>
+          </div>
+          <div id="compare-grid" class="compare-grid"></div>
+          <p id="compare-overlap" class="compare-overlap"></p>
+          <section class="compare-verdict" aria-labelledby="compare-verdict-label">
+            <p id="compare-verdict-label" class="compare-verdict-label"></p>
+            <p id="compare-verdict-text" class="compare-verdict-text"></p>
+          </section>
+          <div id="compare-replay-row" class="compare-replay-row"></div>
         </div>
 
         <div class="replay-scrubber" id="replay-scrubber" role="group" aria-label="Retrieval Trace replay controls" hidden>

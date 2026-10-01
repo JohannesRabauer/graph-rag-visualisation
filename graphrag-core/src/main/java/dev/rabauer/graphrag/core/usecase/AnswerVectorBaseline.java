@@ -1,11 +1,14 @@
 package dev.rabauer.graphrag.core.usecase;
 
 import dev.rabauer.graphrag.core.domain.Chunk;
+import dev.rabauer.graphrag.core.domain.Citation;
+import dev.rabauer.graphrag.core.domain.ContextItem;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.EmbeddedChunk;
 import dev.rabauer.graphrag.core.domain.GraphExtraction;
 import dev.rabauer.graphrag.core.domain.ProjectionModel;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
+import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
 import dev.rabauer.graphrag.core.port.LlmPort;
 import dev.rabauer.graphrag.core.port.VectorStorePort;
@@ -13,8 +16,10 @@ import dev.rabauer.graphrag.core.port.VectorStorePort;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -23,9 +28,16 @@ import java.util.Optional;
  * <p>The retrieval path is intentionally simple and contains no GraphRAG
  * logic: embed the query, compute cosine similarity against every persisted
  * {@link EmbeddedChunk} for the corpus, take the top-k most similar chunks,
- * and synthesize a plain-language answer from those chunks via
- * {@link LlmPort#synthesizeFromChunks}. No graph traversal, no community
- * summaries, no hybrid mixing.
+ * and synthesize a plain-language answer from those chunks. No graph
+ * traversal, no community summaries, no hybrid mixing.
+ *
+ * <p>With an answer-synthesizing {@link LlmPort}
+ * ({@link LlmPort#synthesizesAnswers()}) the answer is written by
+ * {@link LlmPort#synthesizeAnswer} over the top-k chunks as numbered
+ * "Source passage" items, and its {@code [n]} citations are resolved by the
+ * same {@link CitationResolver} GraphRAG uses — so both sides of a comparison
+ * stand on equal footing. Otherwise {@link LlmPort#synthesizeFromChunks}
+ * joins the chunk texts, as before.
  *
  * <p>This use case exists to make the contrast with GraphRAG's graph-based
  * retrieval path visible, not to compete with it in quality.
@@ -81,15 +93,54 @@ public class AnswerVectorBaseline {
                     String.format(Locale.ROOT, "score=%.3f", sc.score())));
         }
 
-        String synthesized = llmPort.synthesizeFromChunks(question, topChunks);
-        steps.add(new RetrievalStep(RetrievalStep.Kind.SYNTHESIS, "", synthesized));
-
         Optional<ProjectionModel> projectionModel = vectorStorePort.projectionModel(corpusId);
         double[] queryProjection = projectionModel
                 .map(model -> TwoDProjection.project(model, queryEmbedding))
                 .orElse(new double[]{0.0, 0.0});
 
+        if (llmPort.synthesizesAnswers()) {
+            return synthesizedAnswer(question, topChunks, steps, queryProjection);
+        }
+
+        String synthesized = llmPort.synthesizeFromChunks(question, topChunks);
+        steps.add(new RetrievalStep(RetrievalStep.Kind.SYNTHESIS, "", synthesized));
         return VectorBaselineAnswer.matched(synthesized, steps, queryProjection);
+    }
+
+    /**
+     * The synthesizing path: the top-k chunks become numbered, citable
+     * "Source passage" context items (the chunk id stands in for the Text
+     * Unit id), the LLM writes a cited answer, and its {@code [n]} markers are
+     * resolved by {@link CitationResolver} exactly as for GraphRAG.
+     */
+    private VectorBaselineAnswer synthesizedAnswer(String question, List<Chunk> topChunks,
+                                                   List<RetrievalStep> steps, double[] queryProjection) {
+        List<LocalContextAssembler.Item> items = new ArrayList<>();
+        Map<String, Citation> citationsByChunk = new LinkedHashMap<>();
+        for (Chunk chunk : topChunks) {
+            if (chunk == null || chunk.text() == null || citationsByChunk.containsKey(chunk.id())) {
+                continue;
+            }
+            citationsByChunk.put(chunk.id(),
+                    new Citation(chunk.id(), chunk.documentName(), LocalContextAssembler.excerpt(chunk.text())));
+            items.add(new LocalContextAssembler.Item("TEXT_UNIT:" + chunk.id(), RetrievalStep.Kind.TEXT_UNIT,
+                    chunk.text(), chunk.id()));
+        }
+        List<ContextItem> context = LocalContextAssembler.number(items);
+
+        SynthesizedAnswer synthesized = llmPort.synthesizeAnswer(question, context);
+        if (LocalContextAssembler.isNotInContext(synthesized)) {
+            return VectorBaselineAnswer.notInContext(VectorBaselineAnswer.NOT_IN_CONTEXT_REASON, steps,
+                    queryProjection);
+        }
+        CitationResolver.Resolution resolution =
+                CitationResolver.resolve(synthesized.text(), context, citationsByChunk);
+        if (resolution.text().isBlank()) {
+            return VectorBaselineAnswer.notInContext(VectorBaselineAnswer.NOT_IN_CONTEXT_REASON, steps,
+                    queryProjection);
+        }
+        steps.add(new RetrievalStep(RetrievalStep.Kind.SYNTHESIS, "", resolution.text()));
+        return VectorBaselineAnswer.synthesized(resolution.text(), steps, queryProjection, resolution.citations());
     }
 
     /**

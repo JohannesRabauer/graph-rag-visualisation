@@ -87,8 +87,11 @@
         projection = null;
       }
     }
+    // A chat answer's CTA reads the corpus off its message; the Compare
+    // view's replay buttons carry it themselves.
     var answerMsg = cta.closest('.message.answer');
-    openReplay(cta.dataset.traceId, projection, answerMsg ? answerMsg.dataset.corpusId : null);
+    openReplay(cta.dataset.traceId, projection,
+        answerMsg ? answerMsg.dataset.corpusId : (cta.dataset.corpusId || null));
   });
 
   if (closeButton) {

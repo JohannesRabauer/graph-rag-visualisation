@@ -82,7 +82,8 @@ public class ConstructVectorIndex {
 
                 String text = content.substring(start, end).trim();
                 if (!text.isBlank()) {
-                    chunks.add(new Chunk(corpus.id() + "::chunk-" + ordinal, corpus.id(), ordinal, text));
+                    chunks.add(new Chunk(corpus.id() + "::chunk-" + ordinal, corpus.id(), ordinal, text,
+                            document.filename()));
                     ordinal++;
                 }
                 start = end;

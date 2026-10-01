@@ -3028,26 +3028,108 @@ body {
   animation: node-pulse 1.4s ease-in-out infinite;
 }
 
-/* ---- compare panel ---- */
-.compare-panel {
-  margin-top: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  animation: rise-in 0.3s ease-out;
+/* ---- Compare view (GraphRAG vs Vector Search) ----
+   A third canvas tab: the question, both cited answers side by side with
+   their key figures, the passage overlap, a short verdict and one Replay
+   button per side. Laid out like the Vector Space panel. */
+.compare-view {
+  position: absolute;
+  inset: 0;
+  padding: calc(36px + var(--space-6)) var(--space-6) var(--space-6);
+  overflow-y: auto;
+  background: var(--paper);
 }
 
-.compare-columns {
+.compare-view[hidden] {
+  display: none;
+}
+
+.compare-view .graph-eyebrow {
+  position: static;
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+
+.compare-question-label,
+.compare-verdict-label {
+  margin: 0 0 var(--space-1);
+  color: var(--ink-600);
+  font-size: var(--font-tag-size);
+  font-weight: var(--font-tag-weight);
+  letter-spacing: var(--font-tag-tracking);
+  text-transform: uppercase;
+}
+
+.compare-question {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  font-weight: 600;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+
+.compare-fresh-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+}
+
+.compare-fresh-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-600);
+}
+
+.compare-run-again {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.compare-run-again:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.compare-retrieved {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.compare-retrieved-empty {
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--ink-600);
+}
+
+.compare-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
 }
 
 .compare-col {
   min-width: 0;
-  padding-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
   border-top: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
 }
 
 .compare-col--vector {
@@ -3055,52 +3137,126 @@ body {
 }
 
 .compare-col-title {
-  margin: 0 0 var(--space-1);
+  margin: 0 0 var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--font-mono-size);
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--ink-600);
 }
 
 .compare-col-answer {
-  margin: 0 0 var(--space-2);
-  font-size: 12.5px;
-  line-height: 1.45;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: var(--font-body-line-height);
   color: var(--ink-900);
-  max-height: 9em;
-  overflow-y: auto;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.compare-col-touch {
+.compare-col-answer--none {
+  color: var(--ink-600);
+  font-style: italic;
+}
+
+.answer-source--shared .answer-source-toggle {
+  font-weight: 600;
+}
+
+.compare-shared-badge {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--global-soft);
+  color: var(--global);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.compare-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.compare-figure {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.compare-figure-value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.compare-figure-label {
+  font-size: 11px;
+  color: var(--ink-600);
+}
+
+.compare-overlap {
+  margin: var(--space-3) 0 0;
+  font-size: 12px;
+  color: var(--ink-600);
+}
+
+.compare-verdict {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.compare-verdict-label[data-source="rule"] {
+  color: var(--ink-400);
+}
+
+.compare-verdict-text {
   margin: 0;
-  font-size: 12px;
-  color: var(--ink-600);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
 }
 
-.compare-takeaway {
-  margin: var(--space-3) 0 var(--space-2);
-  font-size: 12px;
-  color: var(--ink-600);
+.compare-replay-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
-.compare-show-vector {
-  padding: 0;
-  border: 0;
+.compare-replay-row .replay-cta {
+  width: auto;
+  margin-top: 0;
+}
+
+.compare-cta.compare-cta--ready {
+  border-color: transparent;
   background: transparent;
-  font: inherit;
-  font-size: 12px;
   color: var(--accent);
-  cursor: pointer;
-}
-
-.compare-show-vector:hover {
   text-decoration: underline;
 }
 
-@media (max-width: 640px) {
-  .compare-columns {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  .compare-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compare-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

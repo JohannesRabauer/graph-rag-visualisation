@@ -89,13 +89,14 @@ public class Neo4jVectorStoreAdapter implements VectorStorePort {
                         continue;
                     }
                     tx.run("MERGE (c:Chunk {corpusId: $corpusId, id: $id}) "
-                                    + "SET c.ordinal = $ordinal, c.text = $text, "
+                                    + "SET c.ordinal = $ordinal, c.text = $text, c.documentName = $documentName, "
                                     + "c.embedding = $embedding, c.projection = $projection",
                             Map.of(
                                     "corpusId", corpusId,
                                     "id", chunk.id(),
                                     "ordinal", chunk.ordinal(),
                                     "text", chunk.text(),
+                                    "documentName", chunk.documentName(),
                                     "embedding", embeddedChunk.embedding(),
                                     "projection", embeddedChunk.projection()));
                 }
@@ -114,13 +115,15 @@ public class Neo4jVectorStoreAdapter implements VectorStorePort {
                 List<EmbeddedChunk> result = new ArrayList<>();
                 for (Record record : tx.run(
                         "MATCH (c:Chunk {corpusId: $corpusId}) RETURN c.id AS id, c.ordinal AS ordinal, "
-                                + "c.text AS text, c.embedding AS embedding, c.projection AS projection",
+                                + "c.text AS text, coalesce(c.documentName, '') AS documentName, "
+                                + "c.embedding AS embedding, c.projection AS projection",
                         Map.of("corpusId", corpusId)).list()) {
                     Chunk chunk = new Chunk(
                             record.get("id").asString(),
                             corpusId,
                             record.get("ordinal").asInt(),
-                            record.get("text").asString());
+                            record.get("text").asString(),
+                            record.get("documentName").asString());
                     float[] embedding = toFloatArray(record.get("embedding").asList(Value::asFloat));
                     double[] projection = toDoubleArray(record.get("projection").asList(Value::asDouble));
                     result.add(new EmbeddedChunk(chunk, embedding, projection));

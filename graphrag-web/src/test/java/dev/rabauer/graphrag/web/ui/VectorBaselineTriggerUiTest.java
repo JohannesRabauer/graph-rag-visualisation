@@ -8,7 +8,9 @@ import org.junit.jupiter.api.Test;
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
 
 /**
- * Playwright UI tests for Story 8-3: Compare CTA and Vector Space tab.
+ * Playwright UI tests for the Compare CTA: it runs one comparison, opens the
+ * Compare tab, reveals the Vector Space tab with the vector answer, and never
+ * adds a chat message of its own.
  *
  * <p>All tests use the offline deterministic stub (no OPENAI_API_KEY),
  * so vector-index chunks are built via the offline {@code LangChain4jEmbeddingPort}
@@ -16,106 +18,96 @@ import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertTha
  */
 class VectorBaselineTriggerUiTest extends UiTestSupport {
 
-    @Test
-    void compareCTAAppearsOnLocalAnswerAndNotOnVectorAnswer() {
-        loadDemoDatasetAndWaitReady();
+    private static final String READY_LABEL = "Comparison ready — open Compare";
 
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
+    private Locator askAndWaitForAnswer(String question) {
+        int before = page.locator(".message.answer:not(.pending)").count();
+        page.locator("#chat-input").fill(question);
         page.locator("#chat-form .send-button").click();
+        assertThat(page.locator(".message.answer:not(.pending)"))
+                .hasCount(before + 1, new LocatorAssertions.HasCountOptions().setTimeout(20000));
+        // nth, not last(): a locator re-resolves, and last() would follow later answers.
+        Locator answer = page.locator(".message.answer:not(.pending)").nth(before);
+        assertThat(answer.locator(".replay-cta")).isVisible();
+        return answer;
+    }
 
-        // Wait for the answer message with a replay CTA (means response arrived).
-        Locator replayCta = page.locator(".replay-cta").last();
-        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-
-        // The LOCAL answer must have a Compare CTA.
-        Locator localAnswer = page.locator(".message.answer[data-mode='LOCAL']").last();
-        assertThat(localAnswer.locator(".compare-cta")).isVisible();
-
-        // Click Compare CTA and wait for the VECTOR answer to appear.
-        localAnswer.locator(".compare-cta").click();
-        Locator vectorAnswer = page.locator(".message.answer[data-mode='VECTOR']").last();
-        assertThat(vectorAnswer).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-
-        // VECTOR answer must NOT have its own Compare CTA.
-        assertThat(vectorAnswer.locator(".compare-cta")).hasCount(0);
+    private void compare(Locator answer) {
+        answer.locator(".compare-cta").click();
+        assertThat(answer.locator(".compare-cta"))
+                .hasText(READY_LABEL, new LocatorAssertions.HasTextOptions().setTimeout(20000));
     }
 
     @Test
-    void compareCTAHasATooltipExplainingWhatItDoesBeforeItIsClicked() {
+    void compareCtaAppearsOnGraphAnswersAndAddsNoChatMessage() {
+        loadDemoDatasetAndWaitReady();
+        Locator localAnswer = askAndWaitForAnswer("Tell me about Irene Adler.");
+        assertThat(localAnswer).hasAttribute("data-mode", "LOCAL");
+        assertThat(localAnswer.locator(".compare-cta")).isVisible();
+        int messages = page.locator("#chat-thread .message").count();
+
+        compare(localAnswer);
+
+        assertThat(page.locator("#compare-panel")).isVisible();
+        assertThat(page.locator(".message.answer[data-mode='VECTOR']")).hasCount(0);
+        assertThat(page.locator("#chat-thread .message")).hasCount(messages);
+        assertThat(page.locator(".compare-panel")).hasCount(0);
+    }
+
+    @Test
+    void compareCtaHasATooltipExplainingWhatItDoesBeforeItIsClicked() {
         loadDemoDatasetAndWaitReady();
 
         // Story 11-4: the button must carry a title/tooltip AND an aria-label
-        // (for keyboard/assistive-tech users, since native title tooltips
-        // don't surface on keyboard focus) explaining its purpose before the
-        // user clicks it — and it must render identically for LOCAL and
-        // GLOBAL answers alike.
+        // explaining its purpose before the user clicks it — identically for
+        // LOCAL and GLOBAL answers.
         java.util.regex.Pattern explanation =
-                java.util.regex.Pattern.compile("vector-similarity.*Vector Space", java.util.regex.Pattern.DOTALL);
+                java.util.regex.Pattern.compile("vector-similarity.*Compare tab", java.util.regex.Pattern.DOTALL);
 
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-
-        Locator localCompareCta = page.locator(".message.answer[data-mode='LOCAL']").last()
-                .locator(".compare-cta");
+        Locator localCompareCta = askAndWaitForAnswer("Tell me about Irene Adler.").locator(".compare-cta");
         assertThat(localCompareCta).hasAttribute("title", explanation);
         assertThat(localCompareCta).hasAttribute("aria-label", explanation);
 
         page.locator("label.mode-choice-option:has(input[value='GLOBAL'])").click();
-        page.locator("#chat-input").fill("What are the major themes across these stories?");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-
-        Locator globalCompareCta = page.locator(".message.answer[data-mode='GLOBAL']").last()
-                .locator(".compare-cta");
-        assertThat(globalCompareCta).hasAttribute("title", explanation);
-        assertThat(globalCompareCta).hasAttribute("aria-label", explanation);
+        Locator globalAnswer = askAndWaitForAnswer("What are the major themes across these stories?");
+        assertThat(globalAnswer).hasAttribute("data-mode", "GLOBAL");
+        assertThat(globalAnswer.locator(".compare-cta")).hasAttribute("title", explanation);
+        assertThat(globalAnswer.locator(".compare-cta")).hasAttribute("aria-label", explanation);
     }
 
     @Test
-    void vectorSpaceTabIsRevealedAfterFirstComparisonAndTabSwitchingWorks() {
+    void theVectorSpaceTabIsRevealedWithTheVectorAnswerButTheCompareTabOpens() {
         loadDemoDatasetAndWaitReady();
 
-        // Vector Space tab must be hidden before any comparison.
         assertThat(page.locator("#tab-vector-space")).isHidden();
+        assertThat(page.locator("#tab-compare")).isHidden();
 
-        page.locator("#chat-input").fill("Who is Sherlock Holmes?");
-        page.locator("#chat-form .send-button").click();
+        compare(askAndWaitForAnswer("Who is Sherlock Holmes?"));
 
-        Locator replayCta = page.locator(".replay-cta").last();
-        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-
-        // Trigger comparison.
-        page.locator(".message.answer").last().locator(".compare-cta").click();
-        assertThat(page.locator(".message.answer[data-mode='VECTOR']").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-
-        // Vector Space tab is now visible and auto-switched to.
+        assertThat(page.locator("#tab-compare")).isVisible();
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
         assertThat(page.locator("#tab-vector-space")).isVisible();
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "true");
+        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "false");
         assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "false");
 
-        // Vector space panel shows the answer text.
+        page.locator("#tab-vector-space").click();
         assertThat(page.locator("#vector-space-panel")).isVisible();
+        assertThat(page.locator("#compare-panel")).isHidden();
         assertThat(page.locator("#vector-space-answer")).not().isEmpty();
 
-        // Switch back to Knowledge Graph tab.
         page.locator("#tab-knowledge-graph").click();
         assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "false");
         assertThat(page.locator("#vector-space-panel")).isHidden();
+        assertThat(page.locator("#compare-panel")).isHidden();
+        assertThat(page.locator("#graph-canvas")).isVisible();
     }
 
     @Test
     void canvasTabBarIsHiddenBeforeCorpusLoadAndVisibleAfter() {
         page.navigate(baseUrl() + "/");
 
-        // Before corpus — tab bar is hidden.
         assertThat(page.locator("#canvas-tab-bar")).isHidden();
 
-        // After demo dataset loads — tab bar appears.
         page.locator("#demo-dataset-button").click();
         assertThat(page.locator("#workflow-status-text"))
                 .containsText("Ready", new LocatorAssertions.ContainsTextOptions().setTimeout(20000));
@@ -123,141 +115,75 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
     }
 
     @Test
-    void openingReplayWhileVectorSpaceTabIsActiveSwitchesBackToKnowledgeGraphTab() {
+    void openingReplayOfTheChatAnswerWhileCompareIsActiveSwitchesBackToKnowledgeGraph() {
         loadDemoDatasetAndWaitReady();
+        Locator localAnswer = askAndWaitForAnswer("Tell me about Irene Adler.");
 
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
-        page.locator("#chat-form .send-button").click();
-
-        // Scoped to the LOCAL answer specifically — a bare ".replay-cta"
-        // locator would re-resolve to the VECTOR answer's own Replay CTA
-        // once Compare adds it below (Story 8.5's own trace also renders
-        // one), since Playwright locators re-query at click time.
-        Locator localAnswer = page.locator(".message.answer[data-mode='LOCAL']").last();
-        Locator replayCta = localAnswer.locator(".replay-cta");
-        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-
-        // Trigger a comparison — auto-switches to Vector Space on first reveal.
-        localAnswer.locator(".compare-cta").click();
-        assertThat(page.locator(".message.answer[data-mode='VECTOR']").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-        assertThat(page.locator("#vector-space-panel")).isVisible();
+        compare(localAnswer);
+        assertThat(page.locator("#compare-panel")).isVisible();
         assertThat(page.locator("#replay-scrubber")).isHidden();
 
-        // Opening Replay on the original LOCAL answer must bring the
-        // Knowledge Graph tab back into view — the two tabs stay mutually
-        // exclusive regardless of which surface triggers the transition.
-        replayCta.click();
+        localAnswer.locator(".replay-cta").click();
         assertThat(page.locator("#replay-scrubber")).isVisible();
+        assertThat(page.locator("#compare-panel")).isHidden();
         assertThat(page.locator("#vector-space-panel")).isHidden();
         assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "false");
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "false");
     }
 
     @Test
-    void repeatedComparisonsDoNotForceTheUserBackToVectorSpaceTabOnceRevealed() {
+    void everyComparisonAndEveryReadyLinkOpensTheCompareTab() {
         loadDemoDatasetAndWaitReady();
 
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        Locator first = askAndWaitForAnswer("Tell me about Irene Adler.");
+        compare(first);
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
 
-        // First comparison reveals and auto-switches to Vector Space.
-        page.locator(".message.answer").last().locator(".compare-cta").click();
-        assertThat(page.locator(".message.answer[data-mode='VECTOR']").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "true");
-
-        // User manually returns to Knowledge Graph.
         page.locator("#tab-knowledge-graph").click();
         assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
 
-        // Ask another question and compare again — must NOT yank the user
-        // back to Vector Space now that the tab has already been revealed.
-        page.locator("#chat-input").fill("Who is Sherlock Holmes?");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-        page.locator(".message.answer").last().locator(".compare-cta").click();
-        assertThat(page.locator(".message.answer[data-mode='VECTOR']"))
-                .hasCount(2, new LocatorAssertions.HasCountOptions().setTimeout(15000));
+        Locator second = askAndWaitForAnswer("Who is Sherlock Holmes?");
+        compare(second);
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
+        assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "false");
+        assertThat(page.locator("#compare-question")).hasText("Who is Sherlock Holmes?");
 
-        assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "false");
+        // The first answer's ready link reopens the Compare tab on its own comparison.
+        page.locator("#tab-knowledge-graph").click();
+        first.locator(".compare-cta").click();
+        assertThat(page.locator("#tab-compare")).hasAttribute("aria-selected", "true");
+        assertThat(page.locator("#compare-question")).hasText("Tell me about Irene Adler.");
     }
 
     @Test
-    void aFailedComparisonShowsTheErrorBannerAndReEnablesTheCompareCTA() {
+    void aFailedComparisonShowsTheErrorBannerAndReEnablesTheCompareCta() {
         loadDemoDatasetAndWaitReady();
+        Locator answer = askAndWaitForAnswer("Tell me about Irene Adler.");
 
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        page.route("**/api/corpora/*/compare", (Route route) -> route.fulfill(
+                new Route.FulfillOptions().setStatus(502).setContentType("application/json")
+                        .setBody("{\"error\":\"The LLM call failed while writing the answer.\"}")));
 
-        page.route("**/api/corpora/*/query", (Route route) -> route.fulfill(
-                new Route.FulfillOptions().setStatus(500).setContentType("application/json")
-                        .setBody("{\"error\":\"boom\"}")));
-
-        Locator compareCta = page.locator(".message.answer").last().locator(".compare-cta");
+        Locator compareCta = answer.locator(".compare-cta");
         compareCta.click();
 
         assertThat(page.locator("#error-banner")).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(10000));
+        assertThat(page.locator("#error-banner")).containsText("The LLM call failed while writing the answer.");
         assertThat(compareCta).isEnabled();
-        assertThat(compareCta).hasText("\u21BB Compare with Vector Search");
+        assertThat(compareCta).hasText("↻ Compare with Vector Search");
+        assertThat(page.locator("#tab-compare")).isHidden();
         assertThat(page.locator(".message.answer[data-mode='VECTOR']")).hasCount(0);
     }
 
     @Test
-    void vectorSpaceTabIsKeyboardReachableFromTheKnowledgeGraphTab() {
+    void replayingTheVectorSideLabelsStepsAsEmbeddedQueryAndRetrievedChunk() {
         loadDemoDatasetAndWaitReady();
+        compare(askAndWaitForAnswer("Tell me about Irene Adler."));
 
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-        page.locator(".message.answer").last().locator(".compare-cta").click();
-        assertThat(page.locator(".message.answer[data-mode='VECTOR']").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-
-        // Move focus back to Knowledge Graph, then reach Vector Space purely
-        // via the keyboard (ARIA tabs pattern: ArrowRight moves focus and
-        // activates the next tab).
-        page.locator("#tab-knowledge-graph").click();
-        page.locator("#tab-knowledge-graph").focus();
-        page.keyboard().press("ArrowRight");
+        page.locator("#compare-replay-row .replay-cta", new com.microsoft.playwright.Page.LocatorOptions()
+                .setHasText("Replay Vector")).click();
 
         assertThat(page.locator("#tab-vector-space")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#tab-vector-space")).isFocused();
-        assertThat(page.locator("#vector-space-panel")).isVisible();
-
-        page.keyboard().press("ArrowLeft");
-        assertThat(page.locator("#tab-knowledge-graph")).hasAttribute("aria-selected", "true");
-        assertThat(page.locator("#tab-knowledge-graph")).isFocused();
-    }
-
-    @Test
-    void replayingAVectorAnswerLabelsStepsAsEmbeddedQueryAndRetrievedChunkNotMatchedEntity() {
-        loadDemoDatasetAndWaitReady();
-
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-
-        page.locator(".message.answer").last().locator(".compare-cta").click();
-        Locator vectorAnswer = page.locator(".message.answer[data-mode='VECTOR']").last();
-        assertThat(vectorAnswer).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-
-        // The VECTOR answer itself has no Compare CTA, but the pre-existing
-        // Replay CTA logic renders unconditionally whenever a traceId is
-        // present (Story 3.3), so it appears here too — replaying it must
-        // label its VECTOR_QUERY_EMBEDDED/VECTOR_CHUNK steps meaningfully.
-        Locator vectorReplayCta = vectorAnswer.locator(".replay-cta");
-        assertThat(vectorReplayCta).isVisible();
-        vectorReplayCta.click();
-
         Locator caption = page.locator("#replay-caption");
         assertThat(caption).isVisible();
         assertThat(caption).not().containsText("matched entity");
@@ -267,24 +193,15 @@ class VectorBaselineTriggerUiTest extends UiTestSupport {
     @Test
     void vectorSpaceScatterRendersCorpusChunksAndTheQueryDotDuringReplay() {
         loadDemoDatasetAndWaitReady();
+        compare(askAndWaitForAnswer("Tell me about Irene Adler."));
 
-        page.locator("#chat-input").fill("Tell me about Irene Adler.");
-        page.locator("#chat-form .send-button").click();
-        assertThat(page.locator(".replay-cta").last())
-                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
-
-        page.locator(".message.answer").last().locator(".compare-cta").click();
-        Locator vectorAnswer = page.locator(".message.answer[data-mode='VECTOR']").last();
-        assertThat(vectorAnswer).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
-
-        // Story 8.5: the corpus's chunk scatter renders as soon as the tab is
-        // revealed — no Replay needed to see the settled layout.
+        page.locator("#tab-vector-space").click();
         assertThat(page.locator(".vector-space-chunk-dot").first())
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(10000));
 
-        // Replaying the VECTOR answer plots the query dot and highlights its
-        // top-k retrieved chunks with connecting hit lines.
-        vectorAnswer.locator(".replay-cta").click();
+        page.locator("#tab-compare").click();
+        page.locator("#compare-replay-row .replay-cta", new com.microsoft.playwright.Page.LocatorOptions()
+                .setHasText("Replay Vector")).click();
         page.locator("#replay-step-forward").click();
 
         assertThat(page.locator(".vector-space-query-dot"))

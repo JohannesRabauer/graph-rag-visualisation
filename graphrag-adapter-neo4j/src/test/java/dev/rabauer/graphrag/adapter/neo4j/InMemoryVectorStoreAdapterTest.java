@@ -29,6 +29,17 @@ class InMemoryVectorStoreAdapterTest {
     }
 
     @Test
+    void keepsTheChunksDocumentName() {
+        InMemoryVectorStoreAdapter adapter = new InMemoryVectorStoreAdapter();
+
+        adapter.persistChunks("corpus-a", List.of(new EmbeddedChunk(
+                new Chunk("corpus-a::chunk-0", "corpus-a", 0, "alpha", "story.txt"),
+                new float[]{1.0f}, new double[]{0.0, 0.0})));
+
+        assertEquals("story.txt", adapter.chunks("corpus-a").iterator().next().chunk().documentName());
+    }
+
+    @Test
     void returnsAnEmptyCollectionForAnUnknownCorpusId() {
         InMemoryVectorStoreAdapter adapter = new InMemoryVectorStoreAdapter();
 

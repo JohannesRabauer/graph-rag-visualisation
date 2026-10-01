@@ -3,6 +3,8 @@ package dev.rabauer.graphrag.core.port;
 import dev.rabauer.graphrag.core.domain.Chunk;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
+import dev.rabauer.graphrag.core.domain.ComparisonFacts;
+import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
 import dev.rabauer.graphrag.core.domain.ContextItem;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -99,7 +101,10 @@ public interface LlmPort {
     }
 
     /**
-     * Synthesizes a plain-language answer from retrieved text chunks.
+     * Synthesizes a plain-language answer from retrieved text chunks. Used by
+     * the Vector Search baseline only when {@link #synthesizesAnswers()} is
+     * false; a synthesizing port answers from the chunks through
+     * {@link #synthesizeAnswer(String, List)} instead.
      *
      * <p>The default implementation concatenates chunk texts with a separator
      * and wraps them with a lead-in sentence. Real LLM implementations may
@@ -130,8 +135,10 @@ public interface LlmPort {
     }
 
     /**
-     * Writes a Local Search answer from a numbered, bounded context, citing
-     * items inline as {@code [n]} (Story 15.2). Only called when
+     * Writes an answer from a numbered, bounded context, citing items inline
+     * as {@code [n]} (Story 15.2) — for the GraphRAG modes and, with each
+     * retrieved chunk as a {@code TEXT_UNIT} item, for the Vector Search
+     * baseline. Only called when
      * {@link #synthesizesAnswers()} is true.
      *
      * @param question the user's question
@@ -140,6 +147,28 @@ public interface LlmPort {
      */
     default SynthesizedAnswer synthesizeAnswer(String question, List<ContextItem> context) {
         return null;
+    }
+
+    /**
+     * Writes a short verdict on where a GraphRAG answer and a Vector Search
+     * answer to the same question differ, and why, grounded in the measured
+     * {@code facts}.
+     *
+     * <p>The default is the deterministic {@link ComparisonVerdict#ruleBased(ComparisonFacts)}
+     * summary ({@link ComparisonVerdict.Source#RULE}), so offline stubs and
+     * lambdas need no model. Real adapters may override this with one short
+     * model call ({@link ComparisonVerdict.Source#LLM}); callers fall back to
+     * the rule text when that call fails.
+     *
+     * @param question     the user's question
+     * @param graphAnswer  the GraphRAG answer text, or its no-answer reason
+     * @param vectorAnswer the Vector Search answer text, or its no-answer reason
+     * @param facts        both sides' key figures and the passage overlap; never null
+     * @return the verdict; never null
+     */
+    default ComparisonVerdict compareAnswers(String question, String graphAnswer, String vectorAnswer,
+                                             ComparisonFacts facts) {
+        return ComparisonVerdict.ruleBased(facts);
     }
 
     default GraphExtraction extractEntitiesAndRelationships(Corpus corpus) {

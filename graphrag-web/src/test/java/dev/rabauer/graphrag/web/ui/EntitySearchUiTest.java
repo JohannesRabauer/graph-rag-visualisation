@@ -77,9 +77,12 @@ class EntitySearchUiTest extends UiTestSupport {
         assertThat(page.locator(".replay-cta").last())
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
         page.locator(".message.answer").last().locator(".compare-cta").click();
-        assertThat(page.locator("#vector-space-panel"))
+        assertThat(page.locator("#compare-panel"))
                 .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(15000));
+        assertThat(page.locator("#entity-search")).isHidden();
 
+        page.locator("#tab-vector-space").click();
+        assertThat(page.locator("#vector-space-panel")).isVisible();
         assertThat(page.locator("#entity-search")).isHidden();
 
         page.locator("#tab-knowledge-graph").click();

@@ -3,6 +3,9 @@ package dev.rabauer.graphrag.adapter.langchain4j;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
+import dev.rabauer.graphrag.core.domain.ComparisonFacts;
+import dev.rabauer.graphrag.core.domain.ComparisonStats;
+import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
 import dev.rabauer.graphrag.core.domain.ContextItem;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -29,6 +32,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Real, network-backed {@link LlmPort} implementation that calls the OpenAI
@@ -51,6 +56,9 @@ public class OpenAiLlmPort implements LlmPort {
     static final int MAX_PROMPT_DESCRIPTION_CHARS = 300;
     static final int MAX_ANSWER_OUTPUT_TOKENS = 1024;
     static final int MAX_PROMPT_CONTEXT_ITEM_CHARS = 1500;
+    static final int MAX_VERDICT_OUTPUT_TOKENS = 256;
+    static final int MAX_VERDICT_ANSWER_CHARS = 1500;
+    static final int MAX_VERDICT_SENTENCES = 2;
     static final String NOT_IN_CONTEXT = SynthesizedAnswer.NOT_IN_CONTEXT;
 
     private final ChatModel jsonChatModel;
@@ -370,9 +378,9 @@ public class OpenAiLlmPort implements LlmPort {
         }
 
         return """
-                You answer a question about a document collection using only the numbered context \
-                below: entities, relationships and community summaries from its knowledge graph, \
-                and source passages.
+                You answer a question about a document collection using only the numbered retrieved \
+                context below: source passages and, depending on how it was retrieved, entities, \
+                relationships and community summaries.
 
                 Rules:
                 - Use only facts stated in the context. Do not use outside knowledge.
@@ -410,6 +418,135 @@ public class OpenAiLlmPort implements LlmPort {
         String answer = answerNode.isTextual() ? answerNode.asText().trim() : "";
         boolean notInContext = root.path("notInContext").asBoolean(false) || SynthesizedAnswer.isNotInContextSentinel(answer);
         return new SynthesizedAnswer(notInContext, notInContext ? "" : answer);
+    }
+
+    /**
+     * One short JSON-mode OpenAI call that names the concrete difference
+     * between a GraphRAG answer and a Vector Search answer and its reason, in
+     * at most {@value #MAX_VERDICT_SENTENCES} sentences, grounded in the given
+     * facts and answers. No retries; a failed call, a {@code length} finish, or
+     * a non-JSON or empty verdict surfaces as {@link LlmCallFailedException},
+     * and the caller falls back to the rule-based summary.
+     */
+    @Override
+    public ComparisonVerdict compareAnswers(String question, String graphAnswer, String vectorAnswer,
+                                            ComparisonFacts facts) {
+        ChatResponse response;
+        try {
+            response = jsonChatModel.chat(ChatRequest.builder()
+                    .messages(UserMessage.from(verdictPrompt(question, graphAnswer, vectorAnswer, facts)))
+                    .maxOutputTokens(MAX_VERDICT_OUTPUT_TOKENS)
+                    .build());
+        } catch (RuntimeException e) {
+            throw new LlmCallFailedException("OpenAI comparison verdict call failed", e);
+        }
+        if (response != null && response.finishReason() == FinishReason.LENGTH) {
+            throw new LlmCallFailedException("OpenAI comparison verdict hit the output-token limit ("
+                    + MAX_VERDICT_OUTPUT_TOKENS + ")", null);
+        }
+        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
+        return parseVerdict(text);
+    }
+
+    /**
+     * Builds the verdict prompt from the question, both answers (each
+     * truncated to {@value #MAX_VERDICT_ANSWER_CHARS} characters) and the
+     * measured facts. Package-private so tests can check it without a network call.
+     */
+    String verdictPrompt(String question, String graphAnswer, String vectorAnswer, ComparisonFacts facts) {
+        ComparisonFacts f = facts == null ? new ComparisonFacts(null, null, null, 0, 0) : facts;
+        return """
+                You compare two answers to the same question about a document collection. One was \
+                written by GraphRAG (%s search over a knowledge graph of entities, relationships, \
+                community summaries and source passages); the other by plain Vector Search (the text \
+                chunks most similar to the question).
+
+                In at most %d short sentences, name the concrete difference between the two answers and \
+                the reason for it, using only the answers and the measured facts below. Do not claim \
+                which answer is correct; say what each side retrieved and what that changed.
+
+                Respond with strict JSON only (no markdown, no commentary) using exactly this shape:
+                { "verdict": "string" }
+
+                Measured facts:
+                - GraphRAG: %s
+                - Vector Search: %s
+                - %d of the %d passages Vector Search retrieved were also read by GraphRAG.
+
+                Question: %s
+
+                GraphRAG answer:
+                %s
+
+                Vector Search answer:
+                %s
+                """.formatted(f.graphMode(), MAX_VERDICT_SENTENCES, statsLine(f.graph()), statsLine(f.vector()),
+                f.sharedPassages(), f.vectorPassages(), question == null ? "" : question.trim(),
+                truncate(graphAnswer, MAX_VERDICT_ANSWER_CHARS), truncate(vectorAnswer, MAX_VERDICT_ANSWER_CHARS));
+    }
+
+    private static String statsLine(ComparisonStats stats) {
+        return stats.contextItems() + " context items from " + stats.distinctDocuments()
+                + " distinct documents, " + stats.latencyMs() + " ms";
+    }
+
+    ComparisonVerdict parseVerdict(String response) {
+        if (response == null || response.isBlank()) {
+            throw new LlmCallFailedException("OpenAI comparison verdict was empty", null);
+        }
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(stripMarkdownFences(response));
+        } catch (Exception e) {
+            throw new LlmCallFailedException("OpenAI comparison verdict was not valid JSON: " + response, e);
+        }
+        JsonNode verdictNode = root == null ? null : root.path("verdict");
+        String verdict = verdictNode != null && verdictNode.isTextual() ? verdictNode.asText().trim() : "";
+        if (verdict.isEmpty()) {
+            throw new LlmCallFailedException("OpenAI comparison verdict had no text: " + response, null);
+        }
+        return new ComparisonVerdict(firstSentences(verdict, MAX_VERDICT_SENTENCES), ComparisonVerdict.Source.LLM);
+    }
+
+    private static final Pattern SENTENCE_END = Pattern.compile("[.!?](?=\\s|$)");
+
+    /** Tokens whose trailing period does not end a sentence ("Mr. Holmes", "e.g. a clue"). */
+    private static final java.util.Set<String> ABBREVIATIONS = java.util.Set.of(
+            "mr", "mrs", "ms", "dr", "st", "prof", "sr", "jr", "rev", "capt", "col", "gen", "lt", "sgt",
+            "mt", "no", "vs", "etc", "e.g", "i.e", "cf", "approx");
+
+    /**
+     * The first {@code count} sentences of {@code text} (each ending in ".",
+     * "!" or "?" before whitespace). A period after a common abbreviation
+     * (Mr., Dr., St., e.g., i.e. …) or a single uppercase initial does not
+     * end a sentence.
+     */
+    static String firstSentences(String text, int count) {
+        Matcher end = SENTENCE_END.matcher(text);
+        int found = 0;
+        while (end.find()) {
+            if (text.charAt(end.start()) == '.' && isAbbreviation(text, end.start())) {
+                continue;
+            }
+            found++;
+            if (found == count) {
+                return text.substring(0, end.end()).trim();
+            }
+        }
+        return text.trim();
+    }
+
+    /** Whether the period at {@code period} closes an abbreviation or a single uppercase initial. */
+    private static boolean isAbbreviation(String text, int period) {
+        int start = period;
+        while (start > 0 && (Character.isLetter(text.charAt(start - 1)) || text.charAt(start - 1) == '.')) {
+            start--;
+        }
+        String token = text.substring(start, period);
+        if (token.length() == 1 && Character.isUpperCase(token.charAt(0))) {
+            return true;
+        }
+        return ABBREVIATIONS.contains(token.toLowerCase(Locale.ROOT));
     }
 
     private static String label(RetrievalStep.Kind kind) {
