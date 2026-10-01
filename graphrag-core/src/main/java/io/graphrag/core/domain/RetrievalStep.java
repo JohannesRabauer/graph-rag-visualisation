@@ -41,8 +41,8 @@ public record RetrievalStep(Kind kind, String identifier, String label) {
          */
         VECTOR_CHUNK,
         /**
-         * Records a source passage read into a synthesized Local Search
-         * answer's context (Story 15.2). Identifier is the
+         * Records a source passage read into a synthesized Local, Global or
+         * DRIFT Search answer's context (Stories 15.2, 15.3). Identifier is the
          * {@link io.graphrag.core.domain.TextUnit#id()}; label is the
          * passage excerpt.
          */

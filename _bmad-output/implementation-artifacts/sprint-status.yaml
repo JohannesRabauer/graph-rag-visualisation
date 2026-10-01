@@ -141,6 +141,6 @@ development_status:
   epic-15: in-progress
   15-1-match-questions-to-entities-and-communities-by-meaning: done
   15-2-synthesize-cited-local-search-answers: done
-  15-3-synthesize-cited-global-and-drift-answers: backlog
+  15-3-synthesize-cited-global-and-drift-answers: done
   15-4-show-citations-in-chat-and-source-passages-in-replay: backlog
   epic-15-retrospective: optional

@@ -415,8 +415,14 @@ public class CorpusController {
                 "excerpt", citation.excerpt());
     }
 
+    /**
+     * Story 15.3: like {@link #localSearchResponse}, a synthesizing
+     * {@link #llmPort} generates a cited answer; a successful answer always
+     * carries {@code citations} ({@code []} for the templated answer).
+     */
     private ResponseEntity<Map<String, Object>> globalSearchResponse(String question, String corpusId) {
-        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStorePort, embeddingPort).answer(question, corpusId);
+        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStorePort, embeddingPort, llmPort)
+                .answer(question, corpusId);
         String traceId = captureTrace(result.steps());
 
         if (result.noAnswer()) {
@@ -435,9 +441,11 @@ public class CorpusController {
                 "traceId", traceId,
                 "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
-                "mode", "GLOBAL"));
+                "mode", "GLOBAL",
+                "citations", result.citations().stream().map(CorpusController::citationPayload).toList()));
     }
 
+    /** Story 15.3: as {@link #globalSearchResponse}, with one synthesis over all branch contexts. */
     private ResponseEntity<Map<String, Object>> driftSearchResponse(String question, String corpusId) {
         DriftSearchAnswer result = new AnswerDriftSearch(graphStorePort, llmPort, embeddingPort).answer(question, corpusId);
         String traceId = captureTrace(result.steps());
@@ -456,7 +464,8 @@ public class CorpusController {
                 "traceId", traceId,
                 "traceStepCount", result.steps().size(),
                 "answer", result.answer(),
-                "mode", "DRIFT"));
+                "mode", "DRIFT",
+                "citations", result.citations().stream().map(CorpusController::citationPayload).toList()));
     }
 
     private ResponseEntity<Map<String, Object>> vectorBaselineResponse(String question, String corpusId) {

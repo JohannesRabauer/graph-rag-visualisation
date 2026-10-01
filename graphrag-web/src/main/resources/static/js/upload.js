@@ -905,7 +905,9 @@
                 result.body.mode || requestedSearchMode,
                 result.body.traceId,
                 result.body.traceStepCount,
-                question);
+                question,
+                undefined,
+                !!result.body.noAnswer);
           } else {
             showErrorBanner(errorMessage(result.body));
           }
@@ -1417,7 +1419,7 @@
     chatThread.scrollTop = chatThread.scrollHeight;
   }
 
-  function appendAnswer(text, mode, traceId, traceStepCount, question, queryProjection) {
+  function appendAnswer(text, mode, traceId, traceStepCount, question, queryProjection, noAnswer) {
     var activeMode = mode || currentSearchMode;
     var answerText = text || 'No answer was returned.';
     if (!chatThread) {
@@ -1513,7 +1515,8 @@
         stepCount: traceStepCount || 0,
         question: question || null,
         corpusId: activeCorpusId,
-        answer: answerText
+        answer: answerText,
+        noAnswer: !!noAnswer
       }
     }));
   }

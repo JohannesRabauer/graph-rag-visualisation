@@ -377,12 +377,25 @@
       return;
     }
     var answerText = String((answer && answer.answer) || '');
+    var noAnswer = !!(answer && answer.noAnswer);
     var best = null;
-    communities.forEach(function (c) {
-      if (c.label && answerText.indexOf(c.label) !== -1 && (!best || c.label.length > best.label.length)) {
-        best = c;
-      }
+    var bestHow = 'inferred from the answer text';
+    // Story 15.3: a synthesized trace (it reads TEXT_UNIT passages) is not
+    // matched against the answer text; the first community, the closest
+    // match, is marked.
+    var synthesized = steps.some(function (s) {
+      return s.kind === 'TEXT_UNIT';
     });
+    if (synthesized) {
+      best = communities[0];
+      bestHow = 'closest match, read first';
+    } else {
+      communities.forEach(function (c) {
+        if (c.label && answerText.indexOf(c.label) !== -1 && (!best || c.label.length > best.label.length)) {
+          best = c;
+        }
+      });
+    }
     var ordered = best ? [best].concat(communities.filter(function (c) {
       return c !== best;
     })) : communities;
@@ -397,16 +410,20 @@
       box(svg, 20, y, 360, rowH,
           (isBest ? '★ ' : '') + clip(c.identifier, 12) + ': ' + clip(c.label, 22),
           isBest ? 'hs-box--global hs-box--best' : 'hs-box--muted',
-          isBest ? 'Best match (inferred from the answer text): ' + c.label : c.label);
+          isBest ? 'Best match (' + bestHow + '): ' + c.label : c.label);
     });
     mount.appendChild(svg);
     var items = shown.map(function (c) {
-      return { head: (best === c ? 'Best match (inferred from the answer text), ' : '') + c.identifier + ':', text: c.label || '' };
+      return { head: (best === c ? 'Best match (' + bestHow + '), ' : '') + c.identifier + ':', text: c.label || '' };
     });
     if (communities.length > shown.length) {
       items.push({ head: 'And', text: (communities.length - shown.length) + ' more communities were also read.' });
     }
-    if (best) {
+    if (synthesized && noAnswer) {
+      items.unshift({ head: 'Note:', text: 'these communities and their passages were read, but they did not answer the question, so no answer was written; the first community read is marked as the closest match.' });
+    } else if (synthesized) {
+      items.unshift({ head: 'Note:', text: 'the answer was written from these communities and their passages; the first community read is marked as the closest match.' });
+    } else if (best) {
       items.unshift({ head: 'Note:', text: 'the trace carries no scores, so the best match is inferred from which summary the answer quotes.' });
     } else {
       items.unshift({ head: 'No clear winner:', text: 'no summary could be identified in the answer text, so none is marked.' });

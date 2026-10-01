@@ -10,8 +10,9 @@ import java.util.Objects;
  * inline {@code [n]} citations can be resolved back to them.
  *
  * @param number     the item's 1-based position in the context
- * @param kind       {@link RetrievalStep.Kind#ENTITY}, {@link RetrievalStep.Kind#RELATIONSHIP}
- *                   or {@link RetrievalStep.Kind#TEXT_UNIT}; never null
+ * @param kind       {@link RetrievalStep.Kind#ENTITY}, {@link RetrievalStep.Kind#RELATIONSHIP},
+ *                   {@link RetrievalStep.Kind#TEXT_UNIT}, or (Global and DRIFT
+ *                   Search, Story 15.3) {@link RetrievalStep.Kind#COMMUNITY}; never null
  * @param text       the text the prompt shows for this item (description or
  *                   passage); never null
  * @param textUnitId the Text Unit id when {@code kind} is {@code TEXT_UNIT},

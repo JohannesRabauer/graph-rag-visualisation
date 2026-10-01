@@ -1,5 +1,6 @@
 package io.graphrag.core.usecase;
 
+import io.graphrag.core.domain.Citation;
 import io.graphrag.core.domain.RetrievalStep;
 
 import java.util.List;
@@ -14,11 +15,32 @@ import java.util.List;
  * acceptance criteria. Once at least one sub-question is spawned and
  * answered, every outcome is an ordinary answer — even when no spawned
  * Local Search finds a graph-grounded result.
+ *
+ * <p>Story 15.3: when an answer-synthesizing LLM ran, the answer carries
+ * inline {@code [i]} markers that index into {@code citations}
+ * ({@code citations[i-1]}); otherwise {@code citations} is empty.
  */
-public record DriftSearchAnswer(boolean noAnswer, String answer, String reason, List<RetrievalStep> steps) {
+public record DriftSearchAnswer(boolean noAnswer, String answer, String reason, List<RetrievalStep> steps,
+                                List<Citation> citations) {
 
     public DriftSearchAnswer {
         steps = steps == null ? List.of() : List.copyOf(steps);
+        citations = citations == null ? List.of() : List.copyOf(citations);
+    }
+
+    /** Without citations: a templated answer or a no-answer outcome. */
+    public DriftSearchAnswer(boolean noAnswer, String answer, String reason, List<RetrievalStep> steps) {
+        this(noAnswer, answer, reason, steps, List.of());
+    }
+
+    /** Story 15.3: a generated answer whose {@code [i]} markers index into {@code citations}. */
+    public static DriftSearchAnswer synthesized(String answer, List<RetrievalStep> steps, List<Citation> citations) {
+        return new DriftSearchAnswer(false, answer, null, steps, citations);
+    }
+
+    /** Story 15.3: the retrieved context does not answer the question; the steps so far are kept. */
+    public static DriftSearchAnswer notInContext(String reason, List<RetrievalStep> steps) {
+        return new DriftSearchAnswer(true, null, reason, steps);
     }
 
     public static DriftSearchAnswer matched(String answer, List<RetrievalStep> steps) {

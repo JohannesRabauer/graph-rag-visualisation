@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `AnswerGlobalSearch(GraphStorePort, EmbeddingPort, LlmPort)` constructor
+  (Story 15.3). With a synthesizing port, Global Search takes the top 3
+  Communities (semantic, else the top 3 keyword scores above zero, id as
+  tiebreak) and records each as a `COMMUNITY` step and context item
+  (`title: summary`), directly followed by up to 2 member Text Units as
+  `TEXT_UNIT` steps, ranked by the summed weight of the internal
+  Relationships citing them plus 1 per citing member Entity (ties in
+  first-seen order); a Text Unit already added for an earlier Community is
+  skipped. Citations are resolved as for Local Search. Without a candidate
+  the existing no-match answer is returned with no LLM call. With a null or
+  non-synthesizing port the output is unchanged.
+- `AnswerDriftSearch` with a synthesizing `LlmPort` (Story 15.3): each
+  sub-question branch assembles a Local-style context (same rules and caps
+  as Local Search) under its `SUB_QUESTION_SPAWNED` step, with no LLM call
+  of its own. One synthesis runs over the candidate Community summaries
+  plus the union of the branch items (de-duplicated by entity identity,
+  edge id and Text Unit id, numbered in first-seen order) and is recorded
+  as the single `SYNTHESIS` step (identifier the first candidate's id,
+  label the answer) after the last branch. If no branch found a seed, the
+  existing no-local-match outcome is kept and no synthesis call is made.
+  With a non-synthesizing port the output is unchanged.
+- `GlobalSearchAnswer.synthesized(...)` / `notInContext(reason, steps)` and
+  the same factories on `DriftSearchAnswer` (Story 15.3): `[i]` in a
+  synthesized answer is `citations[i-1]`; not-in-context is a `noAnswer`
+  result with the steps kept (no `SYNTHESIS` step for DRIFT).
+- `LlmPort.synthesizeAnswer` may now receive `COMMUNITY` context items
+  (Global and DRIFT); they are background, never cited.
 - `LlmPort.synthesizesAnswers()` (default `false`) and
   `LlmPort.synthesizeAnswer(String question, List<ContextItem> context)`
   (default `null`): an answer-synthesizing LLM writes the Local Search answer
@@ -97,6 +124,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking for record patterns:** `GlobalSearchAnswer` and
+  `DriftSearchAnswer` gain a fifth record component, `citations` (Story
+  15.3), so their canonical constructors are now `(noAnswer, answer, reason,
+  steps, citations)`. Record patterns and deconstruction that use four
+  components (e.g. `case GlobalSearchAnswer(var n, var a, var r, var s)`) no
+  longer compile and must add the `citations` component. The four-argument
+  constructors and the existing factories still compile and produce no
+  citations.
 - `DetectCommunities` now gets its grouping from
   `GraphStorePort.detectCommunities(...)` instead of running its own BFS.
   Community ids stay `community-1..n`, assigned in the order of each group's

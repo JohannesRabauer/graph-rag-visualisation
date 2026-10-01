@@ -36,6 +36,7 @@
       branches: [],
       firstBranchIndex: -1,
       synthesisIndex: -1,
+      synthesized: false,
       signature: ''
     };
   }
@@ -44,11 +45,17 @@
     var safeSteps = Array.isArray(steps) ? steps : [];
     var branches = [];
     var synthesisIndex = -1;
+    // Story 15.3: TEXT_UNIT steps (source passages read inside a branch) mark
+    // the LLM-synthesized path; they stay ordinary steps of their branch.
+    var synthesized = false;
 
     for (var i = 0; i < safeSteps.length; i += 1) {
       var step = safeSteps[i];
       if (!step) {
         continue;
+      }
+      if (step.kind === 'TEXT_UNIT') {
+        synthesized = true;
       }
       if (step.kind === 'SUB_QUESTION_SPAWNED') {
         branches.push({
@@ -71,9 +78,10 @@
       branches: branches,
       firstBranchIndex: firstBranchIndex,
       synthesisIndex: synthesisIndex,
+      synthesized: synthesized,
       signature: branches.map(function (branch) {
         return branch.startIndex + ':' + branch.endIndex + ':' + branch.label;
-      }).join('|') + '::' + synthesisIndex
+      }).join('|') + '::' + synthesisIndex + '::' + synthesized
     };
   }
 
@@ -173,7 +181,11 @@
     var bottomStem = document.createElement('div');
     bottomStem.className = 'drift-tree-stem';
     var finalNode = createNode('3 · Synthesis', 'drift-tree-final');
-    finalNode.title = 'The first branch whose local search followed a relationship becomes the answer.';
+    finalNode.title = model.synthesized && model.synthesisIndex === -1
+        ? 'No answer: the retrieved context did not answer the question.'
+        : model.synthesized
+        ? 'One answer is written from every branch’s passages and graph facts together, citing the passages.'
+        : 'The first branch whose local search followed a relationship becomes the answer.';
 
     container.appendChild(root);
     container.appendChild(topStem);

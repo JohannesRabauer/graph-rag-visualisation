@@ -371,14 +371,16 @@ public class OpenAiLlmPort implements LlmPort {
 
         return """
                 You answer a question about a document collection using only the numbered context \
-                below: entities and relationships from its knowledge graph, and source passages.
+                below: entities, relationships and community summaries from its knowledge graph, \
+                and source passages.
 
                 Rules:
                 - Use only facts stated in the context. Do not use outside knowledge.
-                - Entity and Relationship items are background facts: use them, but never cite them.
+                - Entity, Relationship and Community summary items are background facts: use them, \
+                but never cite them.
                 - Cite every claim inline only with the numbers of "Source passage" items that \
-                support it, written as [n], for example [3] or [4][5]. Never put [n] on an Entity \
-                or Relationship item.
+                support it, written as [n], for example [3] or [4][5]. Only "Source passage" items \
+                may be cited; never put [n] on an Entity, Relationship or Community summary item.
                 - If the context does not answer the question, set "answer" to "%s" and \
                 "notInContext" to true.
 
@@ -415,6 +417,7 @@ public class OpenAiLlmPort implements LlmPort {
             case ENTITY -> "Entity";
             case RELATIONSHIP -> "Relationship";
             case TEXT_UNIT -> "Source passage";
+            case COMMUNITY -> "Community summary";
             default -> kind.name();
         };
     }

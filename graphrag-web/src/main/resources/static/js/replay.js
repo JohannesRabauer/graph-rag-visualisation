@@ -400,13 +400,18 @@
             + ' (highlighted on the graph) each get their own branch.';
       } else if (synthesis !== -1 && currentIndex >= synthesis) {
         phase = 'Drift 3/3 · Synthesis';
-        hint = 'The first branch whose local search followed a relationship becomes the answer.';
+        hint = steps.some(function (s) { return s.kind === 'TEXT_UNIT'; })
+            ? 'One answer is written from every branch’s passages and graph facts together; its [n] markers'
+                + ' cite the passages read.'
+            : 'The first branch whose local search followed a relationship becomes the answer.';
       } else {
         phase = 'Drift 2/3 · Branch ' + branchNumber + ' of ' + branchTotal;
         hint = step.kind === 'SUB_QUESTION_SPAWNED'
             ? 'The community (highlighted) is turned into a focused sub-question for this branch.'
-            : 'Local search for this branch’s sub-question: it matches entities and follows'
-                + ' their relationships on the graph.';
+            : step.kind === 'TEXT_UNIT'
+                ? 'This branch reads a source passage that its entities and relationships cite.'
+                : 'Local search for this branch’s sub-question: it matches entities and follows'
+                    + ' their relationships on the graph.';
       }
     }
     if (phaseEl) {

@@ -242,13 +242,31 @@ class OpenAiLlmPortTest {
         assertTrue(prompt.contains("[3] Source passage: "));
         assertTrue(prompt.contains("[n]"));
         assertTrue(prompt.contains("only with the numbers of \"Source passage\" items"));
-        assertTrue(prompt.contains("Entity and Relationship items are background facts"));
-        assertTrue(prompt.contains("Never put [n] on an Entity or Relationship item."));
+        assertTrue(prompt.contains("Entity, Relationship and Community summary items are background facts"));
+        assertTrue(prompt.contains("Only \"Source passage\" items may be cited; never put [n] on an Entity, "
+                + "Relationship or Community summary item."));
         assertFalse(prompt.contains("Prefer citing"));
         assertTrue(prompt.contains(OpenAiLlmPort.NOT_IN_CONTEXT));
         assertTrue(prompt.contains("Question: Who is Irene Adler?"));
         assertTrue(prompt.contains("P".repeat(OpenAiLlmPort.MAX_PROMPT_CONTEXT_ITEM_CHARS)));
         assertFalse(prompt.contains("P".repeat(OpenAiLlmPort.MAX_PROMPT_CONTEXT_ITEM_CHARS + 1)));
+    }
+
+    @Test
+    void answerPromptLabelsCommunitySummariesAsUncitableBackground() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, "{}"),
+                new FakeChatModel(FinishReason.STOP, ""));
+
+        String prompt = port.answerPrompt("What is the corpus about?", List.of(
+                new ContextItem(1, RetrievalStep.Kind.COMMUNITY, "Rivals: Holmes and Adler clash.", null),
+                new ContextItem(2, RetrievalStep.Kind.TEXT_UNIT, "Holmes admired her.", "tu-b")));
+
+        assertTrue(prompt.contains("[1] Community summary: Rivals: Holmes and Adler clash."));
+        assertTrue(prompt.contains("[2] Source passage: Holmes admired her."));
+        assertTrue(prompt.contains("Entity, Relationship and Community summary items are background facts: "
+                + "use them, but never cite them."));
+        assertFalse(prompt.contains("Never put [n] on an Entity or Relationship item."));
+        assertTrue(prompt.contains("community summaries from its knowledge graph, and source passages."));
     }
 
     @Test

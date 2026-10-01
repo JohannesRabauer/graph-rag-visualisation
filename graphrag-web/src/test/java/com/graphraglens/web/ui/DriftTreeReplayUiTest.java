@@ -91,6 +91,73 @@ class DriftTreeReplayUiTest extends UiTestSupport {
         assertThat(page.locator(".drift-tree-branch")).hasCount(0);
     }
 
+    /**
+     * Story 15.3: a synthesized DRIFT trace reads TEXT_UNIT passages inside its
+     * branches. The demo runs offline, so the trace is rewritten in the page
+     * into that shape: one TEXT_UNIT at the end of every branch.
+     */
+    @Test
+    void aSynthesizedDriftTraceWithTextUnitStepsReplaysWithoutErrorsAndReachesSynthesisLast() {
+        List<String> pageErrors = new java.util.ArrayList<>();
+        page.onPageError(pageErrors::add);
+        loadDemoDatasetAndWaitReady();
+        page.evaluate("() => {"
+                + "  const originalFetch = window.fetch;"
+                + "  window.fetch = (input, init) => originalFetch(input, init).then(response => {"
+                + "    const url = typeof input === 'string' ? input : input.url;"
+                + "    if (!url.includes('/api/traces/') || !response.ok) { return response; }"
+                + "    return response.json().then(body => {"
+                + "      const steps = [];"
+                + "      let inBranch = false;"
+                + "      (body.steps || []).forEach(step => {"
+                + "        if (inBranch && (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS')) {"
+                + "          steps.push({ kind: 'TEXT_UNIT', identifier: 'tu-' + steps.length, label: 'A passage.' });"
+                + "        }"
+                + "        if (step.kind === 'SUB_QUESTION_SPAWNED') { inBranch = true; }"
+                + "        if (step.kind === 'SYNTHESIS') { inBranch = false; step.label = 'Holmes solved it [1].'; }"
+                + "        steps.push(step);"
+                + "      });"
+                + "      body.steps = steps;"
+                + "      return new Response(JSON.stringify(body),"
+                + "          { status: 200, headers: { 'Content-Type': 'application/json' } });"
+                + "    });"
+                + "  });"
+                + "}");
+
+        page.locator("label.mode-choice-option:has(input[value='DRIFT'])").click();
+        page.locator("#chat-input").fill("Tell me about Holmes.");
+        page.locator("#chat-form .send-button").click();
+
+        Locator replayCta = page.locator(".replay-cta");
+        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        replayCta.click();
+
+        assertThat(page.locator("#drift-tree")).isVisible();
+        List<Map<String, Object>> traceSteps = fetchTraceSteps();
+        org.assertj.core.api.Assertions.assertThat(traceSteps.stream().map(step -> step.get("kind")))
+                .contains("TEXT_UNIT");
+        int branchCount = ((Number) readDriftTreeState().get("branchCount")).intValue();
+        org.assertj.core.api.Assertions.assertThat(page.locator(".drift-tree-final").getAttribute("title"))
+                .contains("One answer is written");
+
+        Locator caption = page.locator("#replay-caption");
+        Locator stepForward = page.locator("#replay-step-forward");
+        advanceUntilCaptionContains(caption, stepForward, "read passage", traceSteps.size());
+        Map<String, Object> passageState = readDriftTreeState();
+        org.assertj.core.api.Assertions.assertThat(passageState.get("currentBranch")).isEqualTo(0);
+        org.assertj.core.api.Assertions.assertThat(passageState.get("finalCurrent")).isEqualTo(false);
+        assertThat(page.locator("#replay-hint")).containsText("reads a source passage");
+
+        advanceUntilCaptionContains(caption, stepForward, "synthesized answer", traceSteps.size());
+        Map<String, Object> synthesisState = readDriftTreeState();
+        org.assertj.core.api.Assertions.assertThat(synthesisState.get("finalCurrent")).isEqualTo(true);
+        org.assertj.core.api.Assertions.assertThat(synthesisState.get("resolvedBranches")).isEqualTo(branchCount);
+        org.assertj.core.api.Assertions.assertThat(synthesisState.get("currentBranch")).isEqualTo(-1);
+        assertThat(page.locator("#replay-hint")).containsText("One answer is written");
+
+        org.assertj.core.api.Assertions.assertThat(pageErrors).isEmpty();
+    }
+
     @Test
     void theDriftPaneCanBeHiddenAndShownAgainFromTheReplayBar() {
         loadDemoDatasetAndWaitReady();

@@ -98,6 +98,64 @@ class HelpPaneUiTest extends UiTestSupport {
         assertThat(page.locator("#help-pane [data-live]")).containsText("Communities read");
     }
 
+    /**
+     * Story 15.3: a synthesized Global trace reads TEXT_UNIT passages and its
+     * answer quotes no summary. The demo runs offline, so the query response
+     * and the trace are rewritten in the page into that shape.
+     */
+    @Test
+    void liveGlobalLayerMarksTheFirstCommunityOfASynthesizedTrace() {
+        loadDemoDatasetAndWaitReady();
+        page.evaluate("() => {"
+                + "  const originalFetch = window.fetch;"
+                + "  const rewrite = (response, change) => response.json().then(body => {"
+                + "    change(body);"
+                + "    return new Response(JSON.stringify(body),"
+                + "        { status: 200, headers: { 'Content-Type': 'application/json' } });"
+                + "  });"
+                + "  window.fetch = (input, init) => originalFetch(input, init).then(response => {"
+                + "    const url = typeof input === 'string' ? input : input.url;"
+                + "    if (!response.ok) { return response; }"
+                + "    if (url.includes('/api/traces/')) {"
+                + "      return rewrite(response, body => {"
+                + "        const steps = [];"
+                + "        (body.steps || []).forEach(step => {"
+                + "          steps.push(step);"
+                + "          if (step.kind === 'COMMUNITY') {"
+                + "            steps.push({ kind: 'TEXT_UNIT', identifier: 'tu-' + steps.length, label: 'A passage.' });"
+                + "          }"
+                + "        });"
+                + "        body.steps = steps;"
+                + "      });"
+                + "    }"
+                + "    if (url.includes('/query')) {"
+                + "      return rewrite(response, body => {"
+                + "        if (body.answer) { body.answer = 'A written answer that quotes no summary [1].'; }"
+                + "      });"
+                + "    }"
+                + "    return response;"
+                + "  });"
+                + "}");
+
+        openHelp("global-search");
+        assertThat(page.locator("#help-pane [data-live]")).containsText("Ask a question", SLOW);
+        ask("GLOBAL", "Irene Adler");
+        assertThat(page.locator("#help-pane [data-live][data-live-state='ready']")).isVisible();
+        assertThat(page.locator(".message.answer").last())
+                .containsText("A written answer that quotes no summary [1].");
+
+        assertThat(page.locator("#help-pane [data-live] .hs-box--best")).hasCount(1);
+        String firstCommunityLabel = (String) page.evaluate(
+                "() => fetch('/api/traces/' + document.querySelector('.replay-cta').dataset.traceId)"
+                        + "  .then(response => response.json())"
+                        + "  .then(body => body.steps.find(step => step.kind === 'COMMUNITY').label)");
+        String bestTitle = (String) page.evaluate("() => document.querySelector("
+                + "'#help-pane [data-live] .hs-box--best').parentElement.querySelector('title').textContent");
+        assertThat(bestTitle).isEqualTo("Best match (closest match, read first): " + firstCommunityLabel);
+        assertThat(page.locator("#help-pane .help-live-captions"))
+                .containsText("the answer was written from these communities and their passages");
+    }
+
     @Test
     void theRealChooserAndSettingsHelpButtonsDoNotDisturbTheirNeighbours() {
         loadDemoDatasetAndWaitReady();

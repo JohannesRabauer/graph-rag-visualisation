@@ -1,5 +1,6 @@
 package io.graphrag.core.usecase;
 
+import io.graphrag.core.domain.Citation;
 import io.graphrag.core.domain.RetrievalStep;
 
 import java.util.List;
@@ -20,11 +21,32 @@ import java.util.List;
  * which outcome resulted. This use case stays trace-store-unaware: it only
  * returns the steps it touched; storing them under a {@code traceId} is the
  * web layer's job (Story 5.1).
+ *
+ * <p>Story 15.3: when an answer-synthesizing LLM ran, the answer carries
+ * inline {@code [i]} markers that index into {@code citations}
+ * ({@code citations[i-1]}); otherwise {@code citations} is empty.
  */
-public record GlobalSearchAnswer(boolean noAnswer, String answer, String reason, List<RetrievalStep> steps) {
+public record GlobalSearchAnswer(boolean noAnswer, String answer, String reason, List<RetrievalStep> steps,
+                                 List<Citation> citations) {
 
     public GlobalSearchAnswer {
         steps = steps == null ? List.of() : List.copyOf(steps);
+        citations = citations == null ? List.of() : List.copyOf(citations);
+    }
+
+    /** Without citations: a templated answer or a no-answer outcome. */
+    public GlobalSearchAnswer(boolean noAnswer, String answer, String reason, List<RetrievalStep> steps) {
+        this(noAnswer, answer, reason, steps, List.of());
+    }
+
+    /** Story 15.3: a generated answer whose {@code [i]} markers index into {@code citations}. */
+    public static GlobalSearchAnswer synthesized(String answer, List<RetrievalStep> steps, List<Citation> citations) {
+        return new GlobalSearchAnswer(false, answer, null, steps, citations);
+    }
+
+    /** Story 15.3: the retrieved context does not answer the question; the steps so far are kept. */
+    public static GlobalSearchAnswer notInContext(String reason, List<RetrievalStep> steps) {
+        return new GlobalSearchAnswer(true, null, reason, steps);
     }
 
     public static GlobalSearchAnswer matched(String answer, List<RetrievalStep> steps) {

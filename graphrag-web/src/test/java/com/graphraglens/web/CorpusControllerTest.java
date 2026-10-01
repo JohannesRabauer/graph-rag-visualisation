@@ -963,6 +963,123 @@ class CorpusControllerTest {
                 .andExpect(jsonPath("$.citations.length()").value(0));
     }
 
+    private static String modeQuery(String question, String mode) {
+        return "{\"question\": \"" + question + "\", \"mode\": \"" + mode + "\"}";
+    }
+
+    /** Story 15.3: cites the first Text Unit of the context and, uncitably, its first item. */
+    private static io.graphrag.core.domain.SynthesizedAnswer citeFirstTextUnit(
+            List<io.graphrag.core.domain.ContextItem> context) {
+        int textUnitNumber = context.stream()
+                .filter(io.graphrag.core.domain.ContextItem::isTextUnit)
+                .findFirst().orElseThrow().number();
+        return new io.graphrag.core.domain.SynthesizedAnswer(false,
+                "Ada Lovelace worked with Charles Babbage [" + textUnitNumber + "][1].");
+    }
+
+    @Test
+    void synthesizedGlobalAndDriftAnswersCiteTextUnitsThatAreTextUnitStepsOfTheirTrace() throws Exception {
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, synthesizingLlmPort(CorpusControllerTest::citeFirstTextUnit), graphStorePort,
+                new RetrievalTraceStore(), constructVectorIndex, null, null, null);
+        String corpusId = ingestAdaAndBabbage(controller);
+        MockMvc standalone = standaloneFor(controller);
+
+        for (String mode : List.of("GLOBAL", "DRIFT")) {
+            String body = standalone.perform(post("/api/corpora/" + corpusId + "/query")
+                            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                            .content(modeQuery("What did Ada Lovelace do?", mode)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.mode").value(mode))
+                    .andExpect(jsonPath("$.answer").value("Ada Lovelace worked with Charles Babbage [1]."))
+                    .andExpect(jsonPath("$.citations.length()").value(1))
+                    .andExpect(jsonPath("$.citations[0].documentName").value("pioneers.txt"))
+                    .andExpect(jsonPath("$.citations[0].excerpt").value("Two pioneers of computing."))
+                    .andReturn().getResponse().getContentAsString();
+
+            String citedId = JsonPath.read(body, "$.citations[0].textUnitId");
+            String traceId = JsonPath.read(body, "$.traceId");
+            String traceBody = standalone.perform(get("/api/traces/{traceId}", traceId))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            List<String> textUnitStepIds = JsonPath.read(traceBody, "$.steps[?(@.kind == 'TEXT_UNIT')].identifier");
+            assertThat(textUnitStepIds).as(mode).contains(citedId);
+            List<String> kinds = JsonPath.read(traceBody, "$.steps[*].kind");
+            assertThat(kinds.getFirst()).as(mode).isEqualTo("COMMUNITY");
+            if ("DRIFT".equals(mode)) {
+                assertThat(kinds.getLast()).isEqualTo("SYNTHESIS");
+                assertThat(kinds).containsOnlyOnce("SYNTHESIS");
+                assertThat(kinds.indexOf("TEXT_UNIT")).isGreaterThan(kinds.indexOf("SUB_QUESTION_SPAWNED"));
+            }
+        }
+    }
+
+    @Test
+    void notInContextGlobalAndDriftAnswersReturnTheNoAnswerShape() throws Exception {
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService,
+                synthesizingLlmPort(context -> new io.graphrag.core.domain.SynthesizedAnswer(true, "")),
+                graphStorePort, new RetrievalTraceStore(), constructVectorIndex, null, null, null);
+        String corpusId = ingestAdaAndBabbage(controller);
+
+        for (String mode : List.of("GLOBAL", "DRIFT")) {
+            standaloneFor(controller).perform(post("/api/corpora/" + corpusId + "/query")
+                            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                            .content(modeQuery("What did Ada Lovelace do?", mode)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.noAnswer").value(true))
+                    .andExpect(jsonPath("$.reason").isNotEmpty())
+                    .andExpect(jsonPath("$.traceStepCount").value(org.hamcrest.Matchers.greaterThan(1)))
+                    .andExpect(jsonPath("$.answer").doesNotExist())
+                    .andExpect(jsonPath("$.citations").doesNotExist());
+        }
+    }
+
+    @Test
+    void aGlobalOrDriftAnswerSynthesisFailureReturnsTheErrorShape() throws Exception {
+        LlmPort port = synthesizingLlmPort(context -> {
+            throw new com.graphraglens.adapter.langchain4j.OpenAiLlmPort.LlmCallFailedException(
+                    "simulated answer outage", null);
+        });
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, port, graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null, null);
+        String corpusId = ingestAdaAndBabbage(controller);
+
+        for (String mode : List.of("GLOBAL", "DRIFT")) {
+            standaloneFor(controller).perform(post("/api/corpora/" + corpusId + "/query")
+                            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                            .content(modeQuery("What did Ada Lovelace do?", mode)))
+                    .andExpect(status().isBadGateway())
+                    .andExpect(jsonPath("$.error").value(CorpusController.ANSWER_SYNTHESIS_FAILURE_MESSAGE))
+                    .andExpect(jsonPath("$.answer").doesNotExist());
+        }
+    }
+
+    @Test
+    void offlineGlobalAndDriftAnswersHaveAnEmptyCitationsArray() throws Exception {
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null, null);
+        String corpusId = ingestAdaAndBabbage(controller);
+
+        standaloneFor(controller).perform(post("/api/corpora/" + corpusId + "/query")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(modeQuery("What did Ada Lovelace do?", "GLOBAL")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value(
+                        org.hamcrest.Matchers.startsWith("Across the corpus, the strongest signal is that")))
+                .andExpect(jsonPath("$.citations").isArray())
+                .andExpect(jsonPath("$.citations.length()").value(0));
+        standaloneFor(controller).perform(post("/api/corpora/" + corpusId + "/query")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(modeQuery("What did Ada Lovelace do?", "DRIFT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.startsWith("DRIFT matched")))
+                .andExpect(jsonPath("$.citations").isArray())
+                .andExpect(jsonPath("$.citations.length()").value(0));
+    }
+
     @Test
     void submittingAQuestionReturnsAnAnswerAndTraceIdsForTheCorpus() throws Exception {
         MockMultipartFile file = new MockMultipartFile(

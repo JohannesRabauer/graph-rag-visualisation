@@ -1,11 +1,17 @@
 package io.graphrag.core.usecase;
 
 import io.graphrag.core.domain.Community;
+import io.graphrag.core.domain.CommunityMembership;
+import io.graphrag.core.domain.ContextItem;
+import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
+import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
+import io.graphrag.core.domain.SynthesizedAnswer;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.port.EmbeddingPort;
 import io.graphrag.core.port.GraphStorePort;
+import io.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -14,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Shared fakes for the semantic-seed tests: an {@link EmbeddingPort} with
@@ -65,6 +72,7 @@ final class SemanticTestFixtures {
         final Map<String, List<Relationship>> relationshipsByCorpus = new LinkedHashMap<>();
         final Map<String, List<Community>> communitiesByCorpus = new LinkedHashMap<>();
         final Map<String, List<TextUnit>> textUnitsByCorpus = new LinkedHashMap<>();
+        final Map<String, List<CommunityMembership>> membershipsByCorpus = new LinkedHashMap<>();
         final Map<String, Map<String, float[]>> entityEmbeddingsByCorpus = new HashMap<>();
         final Map<String, Map<String, float[]>> communityEmbeddingsByCorpus = new HashMap<>();
 
@@ -87,6 +95,20 @@ final class SemanticTestFixtures {
         FakeGraphStore textUnits(String corpusId, TextUnit... textUnits) {
             textUnitsByCorpus.computeIfAbsent(corpusId, ignored -> new ArrayList<>()).addAll(List.of(textUnits));
             return this;
+        }
+
+        FakeGraphStore memberships(String corpusId, String communityId, String... entityIdentities) {
+            List<CommunityMembership> memberships =
+                    membershipsByCorpus.computeIfAbsent(corpusId, ignored -> new ArrayList<>());
+            for (String identity : entityIdentities) {
+                memberships.add(new CommunityMembership(communityId, identity));
+            }
+            return this;
+        }
+
+        @Override
+        public Collection<CommunityMembership> communityMemberships(String corpusId) {
+            return membershipsByCorpus.getOrDefault(corpusId, List.of());
         }
 
         @Override
@@ -161,6 +183,52 @@ final class SemanticTestFixtures {
                 rightNorm += right[i] * right[i];
             }
             return leftNorm == 0 || rightNorm == 0 ? 0 : dot / Math.sqrt(leftNorm * rightNorm);
+        }
+    }
+
+    /**
+     * Story 15.3: an {@link LlmPort} that records each synthesis context and
+     * answers with {@code answer.apply(context)}; optional fixed sub-questions.
+     */
+    static final class RecordingLlmPort implements LlmPort {
+        private final boolean synthesizes;
+        private final Function<List<ContextItem>, SynthesizedAnswer> answer;
+        private List<String> subQuestions;
+        final List<List<ContextItem>> contexts = new ArrayList<>();
+
+        RecordingLlmPort(Function<List<ContextItem>, SynthesizedAnswer> answer) {
+            this(true, answer);
+        }
+
+        RecordingLlmPort(boolean synthesizes, Function<List<ContextItem>, SynthesizedAnswer> answer) {
+            this.synthesizes = synthesizes;
+            this.answer = answer;
+        }
+
+        RecordingLlmPort subQuestions(String... subQuestions) {
+            this.subQuestions = List.of(subQuestions);
+            return this;
+        }
+
+        @Override
+        public GraphExtraction extract(Corpus corpus) {
+            return new GraphExtraction(List.of(), List.of());
+        }
+
+        @Override
+        public List<String> deriveDriftSubQuestions(String question, Collection<Community> communities) {
+            return subQuestions != null ? subQuestions : LlmPort.super.deriveDriftSubQuestions(question, communities);
+        }
+
+        @Override
+        public boolean synthesizesAnswers() {
+            return synthesizes;
+        }
+
+        @Override
+        public SynthesizedAnswer synthesizeAnswer(String question, List<ContextItem> context) {
+            contexts.add(context);
+            return answer.apply(context);
         }
     }
 }
