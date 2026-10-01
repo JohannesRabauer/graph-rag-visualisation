@@ -2,10 +2,10 @@
 title: 'Story 13.1: Extract the Knowledge Graph Passage by Passage'
 type: 'feature'
 created: '2026-10-01'
-status: 'in-review'
+status: 'done'
 baseline_revision: '52fdc9297bc182da4119b56b29dea66954968243'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-13-context.md'
 warnings: [oversized]
@@ -90,6 +90,32 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-01 — Review pass
+- verdicts: 22 findings — high 0, medium 6, low 9, false 7, maybe-false 0
+- findings:
+  - `[low]` `[reject]` (blind) `persistTextUnits` and `persist(extraction)` are separate writes; a failure between them leaves an orphan TextUnit — real but the corpus is then `FAILED` anyway; an atomic store operation adds new port surface for a rare failure.
+  - `[medium]` `[patch]` (blind) callbacks re-emit every entity/relationship of overlapping units — canvas `addEntity`/`addRelationship` are idempotent (edge id check, graph-canvas.js:863-875), but the detail panel's `activeRelationships` is not; grouped with the duplicate-relationship entry; fixed in upload.js (see below).
+  - `[medium]` `[patch]` (blind) `upload.js` `activeRelationships.push(data)` not deduplicated → duplicate lines in the entity detail panel — fixed: the `relationship-extracted` listener skips a relationship whose `sourceIdentity`/`type`/`targetIdentity` is already stored.
+  - `[low]` `[reject]` (blind) relationship endpoints missing from `entities()` become implicit nodes without `entity-extracted` events — pre-existing (same `persist` + callback shape before this change) and the canvas already renders them via `ensureNode` placeholders.
+  - `[false]` `[reject]` (blind) no early validation of `corpus.id()` — `CorpusController` always assigns a generated id before `run`; a blank id is unreachable.
+  - `[false]` `[reject]` (blind) `persistTextUnits` doesn't check `TextUnit.corpusId()` matches — the only caller passes units from `TextUnitSplitter.split(corpus)` with `corpus.id()`.
+  - `[low]` `[reject]` (blind) `OpenAiLlmPort.extract(Corpus)` doesn't normalise types — no production caller (only `extract(TextUnit, …)` is used by core, which normalises); unlikely to be met.
+  - `[low]` `[reject]` (blind) `OpenAiLlmPort.extract(Corpus)` doesn't wrap failures with document/passage — same: no production caller.
+  - `[false]` `[reject]` (blind) `LlmPort` default ignores `entityTypes` — core always passes `EntityTypes.ALL` and normalises the result, so no off-list type escapes.
+  - `[false]` `[reject]` (blind) offline stub ignores a restricted type subset — it is only ever called with `EntityTypes.ALL`.
+  - `[false]` `[reject]` (blind) prompt names `Concept` fallback even if a subset omits it — only called with `ALL`; null/empty also falls back to `ALL`.
+  - `[low]` `[reject]` (blind) 5,000-event SSE replay cap is arbitrary — covers ~100 passages; overflow only affects late subscribers; a truncation strategy is new complexity.
+  - `[low]` `[reject]` (blind) hard cuts may split UTF-16 surrogate pairs — only reachable with 3,000+ chars without whitespace; the guard adds a branch for a rare input.
+  - `[medium]` `[patch]` (blind) no UI test for the passage status line — grouped with the verification-gap entry; fixed by `PassageProgressStatusUiTest`.
+  - `[low]` `[reject]` (edge) orphan TextUnit when extraction persistence fails — same as the blind finding above.
+  - `[medium]` `[patch]` (edge) duplicate relationships from overlapping units in detail panels — same fix as above (upload.js dedupe).
+  - `[medium]` `[patch]` (verification-gap) browser passage-progress status not verified — added `graphrag-web/src/test/java/com/graphraglens/web/ui/PassageProgressStatusUiTest.java` (mocked SSE stream with a `text-unit-extracted` event; asserts `#workflow-status-text` = `Extracting passage 1 of 2 — engine-notes.txt`); passes.
+  - `[low]` `[patch]` (verification-gap) sentence/whitespace split fallbacks not verified — added `textWithoutParagraphBreaksIsCutAtASentenceEnd` and `textWithoutSentenceEndsIsCutOnWhitespaceAndUnitsStartOnAWord` to `TextUnitSplitterTest`; pass.
+  - `[false]` `[reject]` (intent) no unit-to-result persistence link — the intent's Never list defers provenance to Story 13.2.
+  - `[low]` `[reject]` (intent) type normalisation not exercised through `OpenAiLlmPort.extract(Corpus)` — same as the blind finding: no production caller.
+  - `[medium]` `[patch]` (intent) browser/EventSource behaviour not exercised — same fix: `PassageProgressStatusUiTest`.
+  - `[false]` `[reject]` (intent) "no partial graph on failure" vs fail-fast — the matrix explicitly requires unit 1 persisted with the corpus `FAILED`; no partial graph is ever presented as READY.
+
 ## Design Notes
 
 AD-24 says "the old `extract(Corpus)` stays as a default method that loops over Text Units". Implemented inverted instead: `extract(Corpus)` stays abstract and the new per-unit method is the `default`. Same outcome for adapters (both real adapters override the per-unit method), but `LlmPort` remains a functional interface, so the 15 existing lambda/anonymous test implementations compile unchanged.
@@ -110,9 +136,48 @@ Type normalisation lives in core (`EntityTypes.normalize`) rather than in each a
 
 ## Auto Run Result
 
-Status: in-review (handed over mid-run on user request, 2026-10-01)
+Status: done (review pass completed 2026-10-01)
 Blocking condition: none
 
+**Summary:** Knowledge-graph extraction now runs per Text Unit (~6,000 chars, ~600 overlap) against a fixed, core-normalised Entity type list. Each unit and its extraction are persisted before the next unit starts, and every unit emits a `text-unit-extracted` SSE event that drives the browser status line.
+
+**Files changed (implementation, commit `6e43719e3a1783423075b869c065a5192d7ca4b1`):**
+- `graphrag-core/.../domain/TextUnit.java`: new Text Unit record.
+- `graphrag-core/.../usecase/TextUnitSplitter.java`: overlapping, boundary-aware splitter.
+- `graphrag-core/.../usecase/EntityTypes.java`: the 8 canonical types and `normalize`.
+- `graphrag-core/.../usecase/TextUnitProgress.java`: progress payload record.
+- `graphrag-core/.../usecase/ExtractEntitiesAndRelationships.java`: per-unit loop with normalise, persist, progress callback and contextual failure.
+- `graphrag-core/.../port/LlmPort.java`: default per-unit `extract`.
+- `graphrag-core/.../port/GraphStorePort.java`: `persistTextUnits`/`textUnits` defaults.
+- `graphrag-adapter-neo4j/.../Neo4jGraphStoreAdapter.java`, `InMemoryGraphStoreAdapter.java`: Text Unit storage, corpus-scoped.
+- `graphrag-adapter-langchain4j/.../OpenAiLlmPort.java`, `LangChain4jLlmPort.java`: per-unit extraction overrides.
+- `graphrag-web/.../CorpusController.java`: `text-unit-extracted` events plus a failure log.
+- `graphrag-web/.../CorpusProgressService.java`: SSE replay buffer raised to 5,000.
+- `graphrag-web/.../static/js/upload.js`: status-line text for passage progress.
+- Tests in core, both adapters and `CorpusControllerTest`.
+
+**Files changed (review patches):**
+- `graphrag-web/src/main/resources/static/js/upload.js`: de-duplicates `activeRelationships` so relationships re-emitted by overlapping passages appear once in the detail panel. Canvas edges were already idempotent (edge-id check).
+- `graphrag-web/src/test/java/com/graphraglens/web/ui/PassageProgressStatusUiTest.java`: new UI test for the status-line text.
+- `graphrag-core/src/test/java/io/graphrag/core/usecase/TextUnitSplitterTest.java`: tests for the sentence-end and whitespace fallbacks.
+
+**Review findings:** 22 findings. 3 patch entries were applied: duplicate relationships (medium), the status-line UI test (medium) and the splitter fallback tests (low). 0 items were deferred. 16 findings were rejected; the reason for each is in the Review Triage Log:
+- 7 were false: unreachable inputs, or out of scope per the intent.
+- 9 were low and not worth adding complexity for.
+
+**Follow-up review recommendation:** `true`. Patched counts: high 0, medium 2, low 1. Named risk: the relationship de-duplication in the entity detail panel has no automated test. Covering it would need a UI test that clicks a canvas node after duplicate `relationship-extracted` events.
+
+**Verification:**
+- `mvn -q -pl graphrag-core,graphrag-adapter-langchain4j -am test` (OPENAI_API_KEY cleared): BUILD SUCCESS.
+- `mvn -pl graphrag-web -am test -Dtest=CorpusControllerTest,PassageProgressStatusUiTest,ProgressStreamDisconnectedBannerUiTest,LoadNewCorpusUiTest -Dapi.version=1.44`: 47/47 passed.
+- Full `graphrag-web` suite: the only failures were `CanvasSettingsPopoverUiTest` ×1, `EntityTypeColorToggleUiTest` ×3 and `MainScreenDetailPanelUiTest` ×1, all in the known baseline set, plus `CorpusSwitcherUiTest` ×1. That test passes in isolation (2/2), so it is an order-dependent flake.
+- The Neo4j adapter module was not re-run because the review patches did not touch it. The implementer's earlier run applies.
+
+**Residual risks:**
+- With a real API key there is one OpenAI call per passage, so ingestion is slower. This matters for demo timing.
+- Overlapping passages still send duplicate `entity-extracted`/`relationship-extracted` SSE events. The browser handles them idempotently, and they count against the 5,000-event replay buffer.
+- A failure between `persistTextUnits` and `persist` can leave an orphan TextUnit in a `FAILED` corpus.
+- The pre-existing UI-test flakiness remains.
 **Handover:** step-01 (route), step-02 (plan → ready-for-dev) and step-03 (implement + verify) are complete; **step-04 (review) has not run**. Resume with `/bmad-build-auto` pointing at this spec file — its `in-review` status routes straight to step-04.
 
 **Implemented** (see the diff against `baseline_revision`): `TextUnit`, `TextUnitProgress`, `EntityTypes`, `TextUnitSplitter` in core; per-unit default `LlmPort.extract(TextUnit, List<String>)`; per-unit loop with type normalisation, per-unit persistence and progress callback in `ExtractEntitiesAndRelationships`; `persistTextUnits`/`textUnits` on `GraphStorePort` + Neo4j (constraint `text_unit_corpus_id`) + in-memory adapters; per-unit overrides in the OpenAI adapter (package-private `extractionPrompt`) and the offline stub; `text-unit-extracted` SSE + `LOG.warn` on failure in `CorpusController`; SSE buffer 500 → 5,000; status-line text in `upload.js`.

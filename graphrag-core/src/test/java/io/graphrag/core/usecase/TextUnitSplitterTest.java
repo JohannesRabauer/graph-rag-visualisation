@@ -68,6 +68,39 @@ class TextUnitSplitterTest {
     }
 
     @Test
+    void textWithoutParagraphBreaksIsCutAtASentenceEnd() {
+        String text = "Ada Lovelace wrote notes on the Analytical Engine. ".repeat(400);
+        Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("sentences.txt", text)));
+
+        List<TextUnit> units = TextUnitSplitter.split(corpus);
+
+        assertTrue(units.size() >= 2);
+        for (int i = 0; i < units.size() - 1; i++) {
+            String unitText = units.get(i).text();
+            assertTrue(unitText.length() <= TextUnitSplitter.TARGET_CHARS);
+            assertTrue(unitText.endsWith("Engine. "), "unit " + i + " should be cut at a sentence end");
+        }
+    }
+
+    @Test
+    void textWithoutSentenceEndsIsCutOnWhitespaceAndUnitsStartOnAWord() {
+        String text = "alpha beta gamma delta ".repeat(1_000);
+        Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("words.txt", text)));
+
+        List<TextUnit> units = TextUnitSplitter.split(corpus);
+
+        assertTrue(units.size() >= 2);
+        for (int i = 0; i < units.size(); i++) {
+            String unitText = units.get(i).text();
+            assertTrue(unitText.length() <= TextUnitSplitter.TARGET_CHARS);
+            assertTrue(Character.isLetter(unitText.charAt(0)), "unit " + i + " should start on a word");
+            if (i < units.size() - 1) {
+                assertTrue(unitText.endsWith(" "), "unit " + i + " should be cut on whitespace");
+            }
+        }
+    }
+
+    @Test
     void textWithoutAnyBoundaryIsHardCutAndTerminates() {
         String text = "x".repeat(15_000);
         Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("blob.txt", text)));

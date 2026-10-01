@@ -1452,8 +1452,16 @@
           // Accumulated for the entity detail panel's relationship list —
           // the main screen builds its graph incrementally from these SSE
           // events rather than one bulk fetch, so there's nothing else to
-          // read a node's relationships from.
-          activeRelationships.push(data);
+          // read a node's relationships from. Overlapping passages (Story
+          // 13.1) can re-emit the same Relationship, so keep one per edge.
+          var isDuplicate = activeRelationships.some(function (existing) {
+            return existing.sourceIdentity === data.sourceIdentity
+                && existing.targetIdentity === data.targetIdentity
+                && (existing.type || 'related_to') === (data.type || 'related_to');
+          });
+          if (!isDuplicate) {
+            activeRelationships.push(data);
+          }
         }
       } catch (e) {
         console.warn('Invalid SSE relationship-extracted payload', e);
