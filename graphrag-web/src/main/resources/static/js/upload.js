@@ -443,6 +443,8 @@
     button.dataset.traceId = side.traceId || '';
     button.dataset.stepCount = String(side.traceStepCount || 0);
     button.dataset.corpusId = corpusId || '';
+    // The trace pane names the mode and groups the steps into its phases.
+    button.dataset.mode = side.mode || (label === 'Replay Vector' ? 'VECTOR' : '');
     if (projection) {
       button.dataset.queryProjection = JSON.stringify(projection);
     }
@@ -699,6 +701,10 @@
     if (comparePanel) {
       comparePanel.hidden = target !== 'compare';
     }
+    // The Retrieval Trace pane (trace-pane.js) follows the tab its trace
+    // belongs to: a graph trace shows on the Knowledge Graph tab, a vector
+    // trace on the Vector Space tab, neither on Compare.
+    document.dispatchEvent(new CustomEvent('graphrag:canvas-tab', { detail: { tab: target } }));
   }
 
   // The visible tabs in order, each with the view it switches to.

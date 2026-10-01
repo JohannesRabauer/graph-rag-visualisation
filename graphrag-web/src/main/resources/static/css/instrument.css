@@ -823,6 +823,9 @@ body {
   height: 12px;
 }
 
+/* The bar's caption is one short line (replay.js clips the step label); the
+   full label and the reason for the step live in the Retrieval Trace pane,
+   so nothing here needs a max-height that would cut text off. */
 .replay-meta {
   flex: 1 0 100%;
   min-width: 0;
@@ -830,12 +833,11 @@ body {
   align-items: flex-start;
   gap: var(--space-3);
   padding-right: 64px;
-  max-height: 7.5em;
-  overflow-y: auto;
 }
 
+/* Phase badge and "why" line of the current step, shown in the trace pane. */
 .replay-phase {
-  flex-shrink: 0;
+  align-self: flex-start;
   padding: 2px var(--space-2);
   border-radius: var(--radius-full);
   background: var(--accent-soft);
@@ -852,17 +854,10 @@ body {
   display: none;
 }
 
-.replay-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .replay-hint {
+  margin: 0;
   font-size: var(--font-body-size);
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--ink-600);
 }
 
@@ -882,13 +877,14 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* ---- drift pane ----
-   The Drift Search tree docks as its own right-hand pane beside the graph
-   (like the help pane), instead of being painted over the canvas. It opens
-   whenever a Drift trace is replayed; its close button hides it and the
-   replay bar's "Drift tree" toggle brings it back. */
-.drift-pane {
-  width: 300px;
+/* ---- Retrieval Trace pane ----
+   Docks as a right-hand pane beside the graph (like the help pane) whenever
+   a Replay opens. It names the search mode, explains in one paragraph what
+   the trace is, shows the current step in full with the reason it was
+   taken, and lists every step grouped into the mode's phases. The scrubber
+   bar keeps only a one-line caption, so no label is ever cut off here. */
+.trace-pane {
+  width: 320px;
   flex-shrink: 0;
   height: 100%;
   position: relative;
@@ -896,7 +892,280 @@ body {
   border-left: 1px solid var(--line);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   z-index: 7;
+  animation: fade-in 0.2s ease-out;
+}
+
+.trace-pane[hidden] {
+  display: none;
+}
+
+.trace-pane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.trace-pane-title {
+  flex: 1;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+
+.trace-pane-mode {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--chrome);
+  color: var(--ink-600);
+  font-family: var(--font-tag);
+  font-size: var(--font-tag-size);
+  font-weight: var(--font-tag-weight);
+  letter-spacing: var(--font-tag-tracking);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.trace-pane-mode[data-mode="LOCAL"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.trace-pane-mode[data-mode="GLOBAL"] {
+  background: var(--global-soft);
+  color: var(--global);
+}
+
+.trace-pane-mode[data-mode="DRIFT"] {
+  background: var(--drift-soft);
+  color: var(--drift);
+}
+
+.trace-pane-mode:empty {
+  display: none;
+}
+
+.trace-pane-close {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-600);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.trace-pane-close:hover {
+  color: var(--ink-900);
+  background: var(--chrome);
+}
+
+.trace-pane-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.trace-pane-intro {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: 1.5;
+  color: var(--ink-600);
+  flex-shrink: 0;
+}
+
+/* The current step in full: phase badge, verb line, the whole label and the
+   reason. Scrolls on its own when a synthesized answer is long, so it never
+   pushes the step list out of the pane. */
+.trace-current {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  /* Never squeezed by the list below: the list scrolls instead, and this
+     card only scrolls once its own content exceeds its share of the pane. */
+  flex: 0 0 auto;
+  max-height: 45%;
+  overflow-y: auto;
+}
+
+.trace-current[hidden] {
+  display: none;
+}
+
+.trace-current-head {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--active);
+}
+
+.trace-current-label {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: 1.5;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.trace-current-why-label {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+.trace-steps {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) 0 var(--space-6);
+}
+
+.trace-phase {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+}
+
+.trace-phase + .trace-phase {
+  border-top: 1px solid var(--line);
+}
+
+.trace-phase-title {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-eyebrow);
+  font-size: var(--font-eyebrow-size);
+  font-weight: var(--font-eyebrow-weight);
+  letter-spacing: var(--font-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--ink-900);
+}
+
+.trace-phase-why {
+  margin: var(--space-1) 0 var(--space-2);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-600);
+}
+
+.trace-phase-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trace-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.trace-step:hover {
+  background: var(--chrome);
+}
+
+.trace-step:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.trace-step.is-done .trace-step-number {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.trace-step.is-current {
+  border-color: var(--active);
+  background: var(--active-soft);
+}
+
+.trace-step.is-current .trace-step-number {
+  border-color: var(--active);
+  background: var(--active);
+  color: var(--panel);
+}
+
+.trace-step-number {
+  flex-shrink: 0;
+  min-width: 22px;
+  padding: 1px var(--space-1);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  line-height: 1.5;
+  text-align: center;
+  color: var(--ink-600);
+  background: var(--panel);
+}
+
+.trace-step-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.trace-step-kind {
+  font-family: var(--font-tag);
+  font-size: var(--font-tag-size);
+  font-weight: var(--font-tag-weight);
+  letter-spacing: var(--font-tag-tracking);
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
+.trace-step-label {
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: 1.4;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+
+/* ---- drift pane ----
+   The Drift Search tree is the top section of the Retrieval Trace pane. It
+   opens whenever a Drift trace is replayed; its close button hides it and
+   the replay bar's "Drift tree" toggle brings it back. */
+.drift-pane {
+  position: relative;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  max-height: 32%;
+  min-height: 0;
   animation: fade-in 0.2s ease-out;
 }
 
@@ -1054,28 +1323,39 @@ body {
   border-left: 1.5px solid var(--line-strong);
 }
 
-.replay-drift-toggle {
+/* Replay bar toggles for the two docked panes: the Retrieval Trace pane
+   (accent) and, for Drift traces, its drift tree section (drift colour). */
+.replay-pane-toggle {
   height: 28px;
   padding: 0 var(--space-3);
-  border: 1px solid var(--drift);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--panel);
-  color: var(--drift);
+  color: var(--accent);
   font-family: var(--font-mono);
   font-size: var(--font-mono-size);
   white-space: nowrap;
   cursor: pointer;
 }
 
+.replay-pane-toggle[aria-pressed="true"] {
+  background: var(--accent-soft);
+}
+
+.replay-drift-toggle {
+  border-color: var(--drift);
+  color: var(--drift);
+}
+
 .replay-drift-toggle[aria-pressed="true"] {
   background: var(--drift-soft);
 }
 
-.replay-drift-toggle[hidden] {
+.replay-pane-toggle[hidden] {
   display: none;
 }
 
-.replay-drift-toggle:focus-visible {
+.replay-pane-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -2976,7 +3256,8 @@ body {
 }
 
 @media (max-width: 960px) {
-  .help-pane {
+  .help-pane,
+  .trace-pane {
     position: absolute;
     top: 0;
     right: 0;
@@ -2984,6 +3265,11 @@ body {
     width: min(440px, 100%);
     z-index: 30;
     box-shadow: -8px 0 24px rgba(20, 24, 28, 0.18);
+  }
+
+  .trace-pane {
+    width: min(320px, 100%);
+    z-index: 29;
   }
 }
 

@@ -175,9 +175,11 @@ class DriftTreeReplayUiTest extends UiTestSupport {
         Locator pane = page.locator("#drift-pane");
         Locator toggle = page.locator("#replay-drift-toggle");
         assertThat(pane).isVisible();
-        // Docked beside the graph, not painted over it.
+        // Docked beside the graph (as the top section of the Retrieval Trace
+        // pane), not painted over it.
         org.assertj.core.api.Assertions.assertThat(page.locator("#drift-pane").evaluate(
-                "el => el.parentElement.classList.contains('canvas')")).isEqualTo(true);
+                "el => el.parentElement.id === 'trace-pane'"
+                        + " && el.parentElement.parentElement.classList.contains('canvas')")).isEqualTo(true);
         assertThat(toggle).hasAttribute("aria-pressed", "true");
 
         page.locator("#drift-pane-close").click();

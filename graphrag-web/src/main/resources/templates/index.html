@@ -199,11 +199,7 @@
           <button type="button" class="replay-close" id="replay-close" aria-label="Close Replay">&times;</button>
           <button type="button" class="help-btn help-btn--replay" data-help="trace-replay" aria-label="Help: trace replay">?</button>
           <div class="replay-meta" aria-live="polite">
-            <span class="replay-phase" id="replay-phase" hidden></span>
-            <div class="replay-text">
-              <span class="replay-caption" id="replay-caption">Nothing was touched for this answer.</span>
-              <span class="replay-hint" id="replay-hint" hidden></span>
-            </div>
+            <span class="replay-caption" id="replay-caption">Nothing was touched for this answer.</span>
           </div>
           <div class="replay-transport">
             <button type="button" class="replay-transport-button" id="replay-step-back" aria-label="Step back">&#8249;</button>
@@ -212,7 +208,9 @@
           </div>
           <div class="replay-track" id="replay-tick-track" role="group" aria-label="Retrieval Trace steps"></div>
           <span class="replay-step-counter" id="replay-step-counter">00 / 00</span>
-          <button type="button" class="replay-drift-toggle" id="replay-drift-toggle"
+          <button type="button" class="replay-pane-toggle replay-trace-toggle" id="replay-trace-toggle"
+                  aria-controls="trace-pane" aria-pressed="true" hidden>Hide trace pane</button>
+          <button type="button" class="replay-pane-toggle replay-drift-toggle" id="replay-drift-toggle"
                   aria-controls="drift-pane" aria-pressed="true" hidden>Drift tree</button>
         </div>
 
@@ -244,13 +242,30 @@
         </aside>
       </div>
 
-      <aside id="drift-pane" class="drift-pane" aria-label="Drift Search tree" hidden>
-        <div class="drift-pane-head">
-          <p class="drift-pane-title">Drift Search tree</p>
-          <button type="button" class="help-btn" data-help="drift-tree" aria-label="Help: the drift tree">?</button>
-          <button type="button" id="drift-pane-close" class="drift-pane-close" aria-label="Hide the drift tree">&times;</button>
+      <aside id="trace-pane" class="trace-pane" aria-label="Retrieval Trace" hidden>
+        <div class="trace-pane-head">
+          <p class="trace-pane-title">Retrieval Trace</p>
+          <span id="trace-pane-mode" class="trace-pane-mode"></span>
+          <button type="button" class="help-btn" data-help="trace-replay" aria-label="Help: trace replay">?</button>
+          <button type="button" id="trace-pane-close" class="trace-pane-close" aria-label="Hide the Retrieval Trace pane">&times;</button>
         </div>
-        <div class="drift-tree" id="drift-tree"></div>
+        <p id="trace-pane-intro" class="trace-pane-intro"></p>
+        <section id="drift-pane" class="drift-pane" aria-label="Drift Search tree" hidden>
+          <div class="drift-pane-head">
+            <p class="drift-pane-title">Drift Search tree</p>
+            <button type="button" class="help-btn" data-help="drift-tree" aria-label="Help: the drift tree">?</button>
+            <button type="button" id="drift-pane-close" class="drift-pane-close" aria-label="Hide the drift tree">&times;</button>
+          </div>
+          <div class="drift-tree" id="drift-tree"></div>
+        </section>
+        <div id="trace-current" class="trace-current" hidden>
+          <span class="replay-phase" id="replay-phase" hidden></span>
+          <p id="trace-current-head" class="trace-current-head"></p>
+          <p id="trace-current-label" class="trace-current-label"></p>
+          <p class="trace-current-why-label">Why this step</p>
+          <p id="replay-hint" class="replay-hint trace-current-why" hidden></p>
+        </div>
+        <div id="trace-step-list" class="trace-steps" aria-label="All steps of this Retrieval Trace"></div>
       </aside>
 
       <aside id="help-pane" class="help-pane" role="complementary" aria-label="Help" tabindex="-1" hidden>
@@ -263,6 +278,7 @@
   <script th:src="@{/js/graph-canvas.js}" src="/js/graph-canvas.js"></script>
   <script th:src="@{/js/entity-search.js}" src="/js/entity-search.js"></script>
   <script th:src="@{/js/drift-tree.js}" src="/js/drift-tree.js"></script>
+  <script th:src="@{/js/trace-pane.js}" src="/js/trace-pane.js"></script>
   <script th:src="@{/js/vector-space.js}" src="/js/vector-space.js"></script>
   <script th:src="@{/js/replay.js}" src="/js/replay.js"></script>
   <script th:src="@{/js/upload.js}" src="/js/upload.js"></script>

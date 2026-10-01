@@ -28,6 +28,11 @@
     toggleButton.addEventListener('click', function () {
       dismissed = !dismissed;
       showContainer();
+      // The tree is a section of the Retrieval Trace pane: showing the tree
+      // must bring that pane back too, or nothing visible would change.
+      if (!dismissed && window.TracePane) {
+        window.TracePane.show();
+      }
     });
   }
 

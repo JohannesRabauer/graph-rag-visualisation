@@ -22,9 +22,11 @@
   var tickTrack = document.getElementById('replay-tick-track');
   var stepCounterEl = document.getElementById('replay-step-counter');
   var captionEl = document.getElementById('replay-caption');
-  var phaseEl = document.getElementById('replay-phase');
-  var hintEl = document.getElementById('replay-hint');
   var graphEyebrow = document.getElementById('graph-eyebrow');
+
+  // The bar's caption is one short line; the Retrieval Trace pane
+  // (trace-pane.js) carries the full label and the reason for every step.
+  var CAPTION_LABEL_CHARS = 120;
 
   if (!scrubber || !stepBackButton || !playPauseButton || !stepForwardButton) {
     var missing = [];
@@ -55,6 +57,10 @@
   // Story 15.4: the corpus the replayed answer belongs to, so TEXT_UNIT
   // captions can name their passage (document and ordinal).
   var traceCorpusId = null;
+  // The search mode of the replayed answer (LOCAL, GLOBAL, DRIFT, VECTOR),
+  // read off the Replay CTA; the trace pane names it and groups the steps
+  // into that mode's phases.
+  var traceMode = null;
   // Passages of the open trace that failed to load; not fetched again.
   var failedPassageIds = {};
 
@@ -91,7 +97,8 @@
     // view's replay buttons carry it themselves.
     var answerMsg = cta.closest('.message.answer');
     openReplay(cta.dataset.traceId, projection,
-        answerMsg ? answerMsg.dataset.corpusId : (cta.dataset.corpusId || null));
+        answerMsg ? answerMsg.dataset.corpusId : (cta.dataset.corpusId || null),
+        cta.dataset.mode || (answerMsg ? answerMsg.dataset.mode : null) || null);
   });
 
   if (closeButton) {
@@ -131,13 +138,14 @@
     });
   }
 
-  function openReplay(traceId, projection, corpusId) {
+  function openReplay(traceId, projection, corpusId, mode) {
     if (!traceId) {
       return;
     }
     stopPlayback();
     hideFetchError();
     queryProjection = projection;
+    traceMode = mode || null;
 
     // Guards against an out-of-order response: if a second Replay CTA is
     // clicked before this fetch resolves, only the most recently requested
@@ -168,6 +176,13 @@
           window.DriftTree.build(steps);
         }
         open();
+        if (window.TracePane) {
+          window.TracePane.open(steps, {
+            mode: traceMode,
+            corpusId: traceCorpusId,
+            surface: isVectorTrace ? 'vector-space' : 'knowledge-graph'
+          });
+        }
         buildTicks();
         renderStep();
       })
@@ -187,6 +202,13 @@
       window.DriftTree.clear();
     }
     open();
+    if (window.TracePane) {
+      window.TracePane.open([], {
+        mode: traceMode,
+        loadError: true,
+        surface: isVectorTrace ? 'vector-space' : 'knowledge-graph'
+      });
+    }
     buildTicks();
     updateCounterAndCaption();
     updateTicks();
@@ -221,6 +243,9 @@
     if (window.DriftTree) {
       window.DriftTree.clear();
     }
+    if (window.TracePane) {
+      window.TracePane.clear();
+    }
     if (window.GraphCanvas) {
       window.GraphCanvas.clearStepHighlights();
     }
@@ -229,13 +254,20 @@
     }
   }
 
+  // The trace pane's step rows jump the replay to their step.
+  function goTo(index) {
+    stopPlayback();
+    goToStep(Number(index) || 0);
+  }
+
   // Exposed so upload.js can close an open Replay before it reinitializes
   // the Cytoscape canvas for a newly-loaded Corpus (Story 4.3's
   // GraphCanvas.init()) — otherwise a still-running autoplay interval would
   // keep calling highlightStep with a stale trace's node ids against a
   // rebuilt, unrelated graph.
   window.Replay = {
-    close: closeReplay
+    close: closeReplay,
+    goTo: goTo
   };
 
   function buildTicks() {
@@ -379,7 +411,9 @@
         enrichPassageCaption(steps, currentIndex);
       }
     }
-    updatePhaseAndHint();
+    if (window.TracePane && !loadError && total > 0) {
+      window.TracePane.highlight(currentIndex);
+    }
   }
 
   function cachedPassageFor(step) {
@@ -403,6 +437,9 @@
       .then(function (passage) {
         if (steps === stepList && currentIndex === index && !loadError && captionEl) {
           captionEl.textContent = captionFor(step, index, stepList.length, passage);
+          if (window.TracePane) {
+            window.TracePane.highlight(index);
+          }
         }
       })
       .catch(function () {
@@ -413,64 +450,12 @@
       });
   }
 
-  function isDriftTrace() {
-    return steps.some(function (s) { return s.kind === 'SUB_QUESTION_SPAWNED'; });
-  }
-
-  function updatePhaseAndHint() {
-    var phase = '';
-    var hint = '';
-    if (!loadError && steps.length > 0 && !isVectorTrace && isDriftTrace()) {
-      var firstBranch = -1;
-      var synthesis = -1;
-      var branchNumber = 0;
-      var branchTotal = 0;
-      steps.forEach(function (s, i) {
-        if (s.kind === 'SUB_QUESTION_SPAWNED') {
-          branchTotal += 1;
-          if (firstBranch === -1) {
-            firstBranch = i;
-          }
-          if (i <= currentIndex) {
-            branchNumber += 1;
-          }
-        } else if (s.kind === 'SYNTHESIS' && synthesis === -1) {
-          synthesis = i;
-        }
-      });
-      var step = steps[currentIndex];
-      if (currentIndex < firstBranch) {
-        phase = 'Drift 1/3 · Community pass';
-        hint = 'Every community summary is scored against your question. The best-scoring ones'
-            + ' (highlighted on the graph) each get their own branch.';
-      } else if (synthesis !== -1 && currentIndex >= synthesis) {
-        phase = 'Drift 3/3 · Synthesis';
-        hint = steps.some(function (s) { return s.kind === 'TEXT_UNIT'; })
-            ? 'One answer is written from every branch’s passages and graph facts together; its [n] markers'
-                + ' cite the passages read.'
-            : 'The first branch whose local search followed a relationship becomes the answer.';
-      } else {
-        phase = 'Drift 2/3 · Branch ' + branchNumber + ' of ' + branchTotal;
-        hint = step.kind === 'SUB_QUESTION_SPAWNED'
-            ? 'The community (highlighted) is turned into a focused sub-question for this branch.'
-            : step.kind === 'TEXT_UNIT'
-                ? 'This branch reads a source passage that its entities and relationships cite.'
-                : 'Local search for this branch’s sub-question: it matches entities and follows'
-                    + ' their relationships on the graph.';
-      }
-    }
-    if (phaseEl) {
-      phaseEl.textContent = phase;
-      phaseEl.hidden = !phase;
-    }
-    if (hintEl) {
-      hintEl.textContent = hint;
-      hintEl.hidden = !hint;
-    }
-  }
-
+  // One short line for the bar: the full label and the reason for the step
+  // live in the trace pane, so a long passage excerpt or a whole synthesized
+  // answer never has to fit here.
   function captionFor(step, index, total, passage) {
     var prefix = 'Step ' + (index + 1) + ' / ' + total + ' — ';
+    var label = clip(step.label, CAPTION_LABEL_CHARS);
     if (step.kind === 'TEXT_UNIT') {
       // Story 15.4: "Read passage {ordinal+1} of {documentName}" (Story
       // 13.4's "passage N" convention) once the passage is known, else the
@@ -480,7 +465,7 @@
               ? 'Read passage ' + (passage.ordinal + 1) + ' of ' + passage.documentName
               : 'Read passage of ' + passage.documentName)
           : 'Read passage';
-      return prefix + head + (step.label ? ': ' + step.label : '');
+      return prefix + head + (label ? ': ' + label : '');
     }
     var verb = step.kind === 'COMMUNITY' ? 'examined community'
         : step.kind === 'RELATIONSHIP' ? 'traversed relationship'
@@ -489,7 +474,12 @@
         : step.kind === 'VECTOR_CHUNK' ? 'retrieved chunk'
         : step.kind === 'SYNTHESIS' ? 'synthesized answer'
         : 'matched entity';
-    return prefix + verb + ' ' + step.label;
+    return prefix + verb + ' ' + label;
+  }
+
+  function clip(text, max) {
+    var s = String(text == null ? '' : text);
+    return s.length > max ? s.slice(0, max - 1) + '…' : s;
   }
 
   function updateTicks() {

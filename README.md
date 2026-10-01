@@ -50,7 +50,7 @@ flowchart LR
     subgraph Browser["Browser — plain JavaScript, no build step"]
         UI["upload.js<br/>chat · corpus history · compare view"]
         GC["graph-canvas.js<br/>Cytoscape knowledge graph"]
-        RP["replay.js · drift-tree.js<br/>Retrieval Trace Replay"]
+        RP["replay.js · trace-pane.js · drift-tree.js<br/>Retrieval Trace Replay"]
         VS["vector-space.js<br/>embedding scatter"]
         HP["help.js<br/>in-app explanations"]
     end
@@ -446,7 +446,7 @@ The frontend is plain JavaScript modules on one page:
 
 - **`upload.js`**: corpus upload and history, the chat with citation markers and a Sources list, and the Compare view.
 - **`graph-canvas.js`**: the Cytoscape knowledge graph, community hulls, and a one-line legend with an "All communities" side-panel list.
-- **`replay.js` / `drift-tree.js`**: step-by-step Retrieval Trace Replay on the graph and as a branching DRIFT tree.
+- **`replay.js` / `trace-pane.js` / `drift-tree.js`**: step-by-step Retrieval Trace Replay on the graph, the Retrieval Trace pane that lists every step by phase with the reason it was taken, and the branching DRIFT tree inside that pane.
 - **`vector-space.js`**: the 2-D embedding map of the vector baseline.
 - **`help.js`**: contextual help topics (`static/help/*.html`), each with a live "in your data" view.
 
