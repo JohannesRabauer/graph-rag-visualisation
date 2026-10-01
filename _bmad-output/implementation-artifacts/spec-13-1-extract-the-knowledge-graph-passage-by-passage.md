@@ -5,7 +5,7 @@ created: '2026-10-01'
 status: 'done'
 baseline_revision: '52fdc9297bc182da4119b56b29dea66954968243'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-13-context.md'
 warnings: [oversized]
@@ -116,6 +116,31 @@ deferred: []
   - `[medium]` `[patch]` (intent) browser/EventSource behaviour not exercised — same fix: `PassageProgressStatusUiTest`.
   - `[false]` `[reject]` (intent) "no partial graph on failure" vs fail-fast — the matrix explicitly requires unit 1 persisted with the corpus `FAILED`; no partial graph is ever presented as READY.
 
+### 2026-10-01 — Review pass (follow-up)
+- verdicts: 21 findings — high 0, medium 2, low 10, false 9, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (blind) null entity/relationship lists in `normalizeTypes` — the `GraphExtraction` compact constructor maps null to `List.of()`.
+  - `[false]` `[reject]` (blind) null `relationship.type()` in the relationship key — `Relationship` defaults a null type to `related_to`.
+  - `[low]` `[reject]` (blind) orphan TextUnit if `persist` fails after `persistTextUnits` — carried; corpus is `FAILED` anyway.
+  - `[false]` `[reject]` (blind) no rollback of the partial graph on failure — carried; the matrix requires unit 1 persisted with the corpus `FAILED`.
+  - `[low]` `[reject]` (blind) `OpenAiLlmPort.extract(Corpus)` doesn't normalise types — carried; no production caller.
+  - `[low]` `[reject]` (blind) `OpenAiLlmPort.extract(Corpus)` dedupes relationship keys case-sensitively — no production caller.
+  - `[false]` `[reject]` (blind) offline stub ignores `entityTypes` — carried; only called with `EntityTypes.ALL`.
+  - `[low]` `[patch]` (blind) splitter misses CRLF paragraph breaks — fixed: `TextUnitSplitter.findCut` also recognises `\r\n\r\n`; new `crlfParagraphBreaksAreUsedAsCuts` test passes.
+  - `[false]` `[reject]` (blind) `corpus.id()` not validated — carried; the controller always assigns an id.
+  - `[false]` `[reject]` (blind) `TextUnit` record lacks constructor validation — only the splitter constructs it, always with valid values.
+  - `[low]` `[reject]` (blind) the 5,000-event replay cap has no truncation signal — carried.
+  - `[medium]` `[patch]` (blind) detail-panel relationship dedupe has no test — grouped with the verification-gap entry below.
+  - `[low]` `[reject]` (edge) orphan TextUnit — carried, same as above.
+  - `[false]` `[reject]` (edge) per-unit OpenAI call returns non-normalised types — the only caller (core) normalises.
+  - `[false]` `[reject]` (edge) "no partial graph" claim — carried.
+  - `[medium]` `[patch]` (verification-gap) detail-panel dedupe untested — added `relationshipRepeatedByOverlappingPassagesIsListedOnceInTheDetailPanel` to `PassageProgressStatusUiTest` (duplicate events, tap node, assert exactly one relationship row); passes.
+  - `[low]` `[patch]` (verification-gap) replay buffer above the old 500 cap untested — added `progressEndpointReplaysMoreThanFiveHundredBufferedEventsToALateSubscriber` to `CorpusControllerTest` (1,200 events, first and last replayed); passes.
+  - `[low]` `[patch]` (verification-gap) fallback splitter tests lack coverage/overlap checks — added `assertContiguousOverlappingCoverage` helper on non-repeating text; passes.
+  - `[low]` `[reject]` (intent) browser test uses a synthetic stream rather than real end-to-end — acceptable for a status-line contract; real pipeline covered by controller tests.
+  - `[low]` `[reject]` (intent) controller test captures emit calls rather than the real SSE stream — the replay test now exercises the actual `/progress` endpoint.
+  - `[low]` `[reject]` (intent) no end-to-end Neo4j durability check per unit — adapter tests cover persistence; an E2E container test adds cost for low value.
+
 ## Design Notes
 
 AD-24 says "the old `extract(Corpus)` stays as a default method that loops over Text Units". Implemented inverted instead: `extract(Corpus)` stays abstract and the new per-unit method is the `default`. Same outcome for adapters (both real adapters override the per-unit method), but `LlmPort` remains a functional interface, so the 15 existing lambda/anonymous test implementations compile unchanged.
@@ -136,7 +161,7 @@ Type normalisation lives in core (`EntityTypes.normalize`) rather than in each a
 
 ## Auto Run Result
 
-Status: done (review pass completed 2026-10-01)
+Status: done (review pass and follow-up review pass completed 2026-10-01)
 Blocking condition: none
 
 **Summary:** Knowledge-graph extraction now runs per Text Unit (~6,000 chars, ~600 overlap) against a fixed, core-normalised Entity type list. Each unit and its extraction are persisted before the next unit starts, and every unit emits a `text-unit-extracted` SSE event that drives the browser status line.
@@ -165,7 +190,7 @@ Blocking condition: none
 - 7 were false: unreachable inputs, or out of scope per the intent.
 - 9 were low and not worth adding complexity for.
 
-**Follow-up review recommendation:** `true`. Patched counts: high 0, medium 2, low 1. Named risk: the relationship de-duplication in the entity detail panel has no automated test. Covering it would need a UI test that clicks a canvas node after duplicate `relationship-extracted` events.
+**Follow-up review recommendation (first pass):** `true` — the detail-panel dedupe had no test. Addressed by the follow-up pass below.
 
 **Verification:**
 - `mvn -q -pl graphrag-core,graphrag-adapter-langchain4j -am test` (OPENAI_API_KEY cleared): BUILD SUCCESS.
@@ -178,13 +203,7 @@ Blocking condition: none
 - Overlapping passages still send duplicate `entity-extracted`/`relationship-extracted` SSE events. The browser handles them idempotently, and they count against the 5,000-event replay buffer.
 - A failure between `persistTextUnits` and `persist` can leave an orphan TextUnit in a `FAILED` corpus.
 - The pre-existing UI-test flakiness remains.
-**Handover:** step-01 (route), step-02 (plan → ready-for-dev) and step-03 (implement + verify) are complete; **step-04 (review) has not run**. Resume with `/bmad-build-auto` pointing at this spec file — its `in-review` status routes straight to step-04.
-
-**Implemented** (see the diff against `baseline_revision`): `TextUnit`, `TextUnitProgress`, `EntityTypes`, `TextUnitSplitter` in core; per-unit default `LlmPort.extract(TextUnit, List<String>)`; per-unit loop with type normalisation, per-unit persistence and progress callback in `ExtractEntitiesAndRelationships`; `persistTextUnits`/`textUnits` on `GraphStorePort` + Neo4j (constraint `text_unit_corpus_id`) + in-memory adapters; per-unit overrides in the OpenAI adapter (package-private `extractionPrompt`) and the offline stub; `text-unit-extracted` SSE + `LOG.warn` on failure in `CorpusController`; SSE buffer 500 → 5,000; status-line text in `upload.js`.
-
-**Verified by implementer:** core, langchain4j, neo4j module tests pass (except the 2 pre-existing registry failures); `CorpusControllerTest` 38/38 incl. 2 new; full web suite 159 tests with only baseline-identical failures. Re-checked at handover: `mvn -pl graphrag-core,graphrag-adapter-langchain4j -am test` green.
-
-**Open risks for the reviewer:**
-- No UI test asserts the new status-line text (spec did not require one).
-- Overlapping passages re-emit the same Entity as `entity-extracted`; canvas `addEntity` is assumed idempotent (it reuses existing nodes) — worth confirming for relationship edges too.
-- With a real API key ingestion is now one LLM call per passage: slower, and relevant for demo timing.
+**Follow-up review pass (2026-10-01):** 21 findings — high 0, medium 2, low 10, false 9. Patched: detail-panel dedupe UI test (medium), CRLF paragraph cuts (low), replay buffer >500 test (low), splitter coverage/overlap checks (low). 0 deferred; 17 rejected (reasons in the triage log).
+- Files: `TextUnitSplitter.java` (CRLF breaks), `TextUnitSplitterTest.java`, `CorpusControllerTest.java`, `PassageProgressStatusUiTest.java`.
+- Verification: `mvn -q -pl graphrag-core,graphrag-adapter-langchain4j -am test` (key cleared): BUILD SUCCESS. `CorpusControllerTest` 39/39, `PassageProgressStatusUiTest` 2/2 (`-Dapi.version=1.44`).
+- **Follow-up review recommendation:** `false` (no high-severity patch in a follow-up pass).

@@ -43,6 +43,37 @@ class TextUnitSplitterTest {
         List<TextUnit> units = TextUnitSplitter.split(corpus);
 
         assertTrue(units.size() >= 4, "expected at least 4 units but got " + units.size());
+        assertContiguousOverlappingCoverage(text, units);
+        for (int i = 0; i < units.size() - 1; i++) {
+            assertTrue(units.get(i).text().endsWith("\n\n"), "unit " + i + " should be cut on a paragraph break");
+        }
+    }
+
+    @Test
+    void crlfParagraphBreaksAreUsedAsCuts() {
+        StringBuilder builder = new StringBuilder();
+        int paragraph = 0;
+        while (builder.length() < 20_000) {
+            builder.append("Paragraph ").append(paragraph++).append(" talks about Java. ")
+                    .append("It mentions James Gosling and the Green Project in some detail. ".repeat(5))
+                    .append("\r\n\r\n");
+        }
+        String text = builder.toString();
+
+        List<TextUnit> units = TextUnitSplitter.split(new Corpus("c1", List.of(new UploadedDocument("crlf.txt", text))));
+
+        assertContiguousOverlappingCoverage(text, units);
+        for (int i = 0; i < units.size() - 1; i++) {
+            assertTrue(units.get(i).text().endsWith("\r\n\r\n"), "unit " + i + " should be cut on a CRLF paragraph break");
+        }
+    }
+
+    /**
+     * Asserts every unit is a slice of {@code text} within the size limit,
+     * overlaps its predecessor with no gap, and the units together cover the
+     * whole text. Assumes {@code text} has no repeated unit-length slices.
+     */
+    private static void assertContiguousOverlappingCoverage(String text, List<TextUnit> units) {
         int coveredUpTo = 0;
         int searchFrom = 0;
         for (int i = 0; i < units.size(); i++) {
@@ -58,9 +89,6 @@ class TextUnitSplitterTest {
                 String previous = units.get(i - 1).text();
                 assertTrue(previous.endsWith(text.substring(start, coveredUpTo)));
             }
-            if (i < units.size() - 1) {
-                assertTrue(unit.text().endsWith("\n\n"), "unit " + i + " should be cut on a paragraph break");
-            }
             coveredUpTo = start + unit.text().length();
             searchFrom = start + 1;
         }
@@ -69,30 +97,37 @@ class TextUnitSplitterTest {
 
     @Test
     void textWithoutParagraphBreaksIsCutAtASentenceEnd() {
-        String text = "Ada Lovelace wrote notes on the Analytical Engine. ".repeat(400);
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; builder.length() < 20_000; i++) {
+            builder.append("Note ").append(i).append(" by Ada Lovelace covers the Analytical Engine. ");
+        }
+        String text = builder.toString();
         Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("sentences.txt", text)));
 
         List<TextUnit> units = TextUnitSplitter.split(corpus);
 
         assertTrue(units.size() >= 2);
+        assertContiguousOverlappingCoverage(text, units);
         for (int i = 0; i < units.size() - 1; i++) {
-            String unitText = units.get(i).text();
-            assertTrue(unitText.length() <= TextUnitSplitter.TARGET_CHARS);
-            assertTrue(unitText.endsWith("Engine. "), "unit " + i + " should be cut at a sentence end");
+            assertTrue(units.get(i).text().endsWith("Engine. "), "unit " + i + " should be cut at a sentence end");
         }
     }
 
     @Test
     void textWithoutSentenceEndsIsCutOnWhitespaceAndUnitsStartOnAWord() {
-        String text = "alpha beta gamma delta ".repeat(1_000);
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; builder.length() < 20_000; i++) {
+            builder.append("alpha").append(i).append(" beta gamma ");
+        }
+        String text = builder.toString();
         Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("words.txt", text)));
 
         List<TextUnit> units = TextUnitSplitter.split(corpus);
 
         assertTrue(units.size() >= 2);
+        assertContiguousOverlappingCoverage(text, units);
         for (int i = 0; i < units.size(); i++) {
             String unitText = units.get(i).text();
-            assertTrue(unitText.length() <= TextUnitSplitter.TARGET_CHARS);
             assertTrue(Character.isLetter(unitText.charAt(0)), "unit " + i + " should start on a word");
             if (i < units.size() - 1) {
                 assertTrue(unitText.endsWith(" "), "unit " + i + " should be cut on whitespace");

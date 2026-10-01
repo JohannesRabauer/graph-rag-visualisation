@@ -96,6 +96,22 @@ class CorpusControllerTest {
     }
 
     @Test
+    void progressEndpointReplaysMoreThanFiveHundredBufferedEventsToALateSubscriber() throws Exception {
+        // Story 13.1: per-passage extraction emits far more events than the
+        // old 500-event replay cap; a late subscriber must still see the first.
+        String corpusId = "replay-buffer-" + java.util.UUID.randomUUID();
+        for (int i = 0; i < 1_200; i++) {
+            corpusProgressService.emit(corpusId, "text-unit-extracted",
+                    Map.of("index", i + 1, "total", 1_200, "documentName", "passage-" + (i + 1) + ".txt"));
+        }
+
+        mockMvc.perform(get("/api/corpora/" + corpusId + "/progress"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"passage-1.txt\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"passage-1200.txt\"")));
+    }
+
+    @Test
     void uploadingATxtFileReturns201WithCorpusIdAndDocumentNamesAndRegistersTheCorpus() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "files", "test.txt", "text/plain", "hello world".getBytes(StandardCharsets.UTF_8));

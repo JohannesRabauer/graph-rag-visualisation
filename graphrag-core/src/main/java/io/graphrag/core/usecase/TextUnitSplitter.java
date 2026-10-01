@@ -76,9 +76,11 @@ public final class TextUnitSplitter {
     private static int findCut(String text, int start, int windowEnd) {
         int minCut = start + MIN_CUT_CHARS;
 
-        int paragraph = text.lastIndexOf("\n\n", windowEnd - 2);
-        if (paragraph >= minCut) {
-            return paragraph + 2;
+        int lineFeedBreak = text.lastIndexOf("\n\n", windowEnd - 2);
+        int crlfBreak = text.lastIndexOf("\r\n\r\n", windowEnd - 4);
+        int paragraphEnd = Math.max(lineFeedBreak < 0 ? -1 : lineFeedBreak + 2, crlfBreak < 0 ? -1 : crlfBreak + 4);
+        if (paragraphEnd > minCut) {
+            return paragraphEnd;
         }
 
         for (int i = windowEnd - 1; i >= minCut; i--) {
