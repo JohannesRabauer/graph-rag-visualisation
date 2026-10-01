@@ -8,6 +8,15 @@ public class LangChain4jEmbeddingPort implements EmbeddingPort {
 
     static final int DIMENSIONS = 64;
 
+    /**
+     * A token-hash stub is not a semantic model: Entities and Communities are
+     * never embedded with it, so the searches keep matching by keywords.
+     */
+    @Override
+    public boolean isSemantic() {
+        return false;
+    }
+
     @Override
     public float[] embed(String text) {
         float[] vector = new float[DIMENSIONS];

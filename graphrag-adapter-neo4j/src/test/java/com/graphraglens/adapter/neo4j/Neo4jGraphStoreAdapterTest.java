@@ -503,6 +503,138 @@ class Neo4jGraphStoreAdapterTest {
         return Entity.identityOf(name, "Node");
     }
 
+    // -- Story 15.1: embeddings and vector similarity --------------------------
+
+    private static final float[] QUERY = {1, 0, 0, 0};
+
+    @Test
+    void similarEntitiesAndCommunitiesAreEmptyForACorpusWithoutEmbeddings() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-no-embeddings-" + System.nanoTime();
+        adapter.persistEntities(corpusId, List.of(new Entity("Plain", "Node")));
+        adapter.persistCommunities(corpusId, List.of(new Community("community-1", "Plain community.")));
+
+        assertTrue(adapter.similarEntities(corpusId, QUERY, 3).isEmpty());
+        assertTrue(adapter.similarCommunities(corpusId, QUERY, 3).isEmpty());
+    }
+
+    @Test
+    void similarEntitiesReturnsTheTopKOfTheCorpusInScoreOrderAsFullRecords() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-vec-" + System.nanoTime();
+        String otherCorpusId = "corpus-vec-other-" + System.nanoTime();
+        List<Entity> entities = List.of(
+                new Entity("Far", "Node", "far away", List.of()),
+                new Entity("Near", "Node", "very close", List.of("tu-1")),
+                new Entity("Mid", "Node", "in between", List.of()),
+                new Entity("Close", "Node", "close", List.of()),
+                new Entity("Unembedded", "Node", "no vector", List.of()));
+        adapter.persistEntities(corpusId, entities);
+        adapter.persistEntities(otherCorpusId, List.of(new Entity("Near", "Node"), new Entity("Exact", "Node")));
+
+        adapter.persistEntityEmbeddings(corpusId, Map.of(
+                id("Far"), new float[] {0, 1, 0, 0},
+                id("Near"), new float[] {1, 0.1f, 0, 0},
+                id("Mid"), new float[] {1, 1, 0, 0},
+                id("Close"), new float[] {1, 0.5f, 0, 0}));
+        adapter.persistEntityEmbeddings(otherCorpusId, Map.of(
+                id("Near"), new float[] {0, 0, 1, 0},
+                id("Exact"), new float[] {1, 0, 0, 0}));
+
+        List<Entity> similar = adapter.similarEntities(corpusId, QUERY, 3);
+
+        assertEquals(List.of("Near", "Close", "Mid"), similar.stream().map(Entity::name).toList());
+        assertEquals(new Entity("Near", "Node", "very close", List.of("tu-1")), similar.getFirst());
+        assertEquals(List.of("Exact", "Near"),
+                adapter.similarEntities(otherCorpusId, QUERY, 3).stream().map(Entity::name).toList());
+        assertTrue(vectorIndexExists(Neo4jGraphStoreAdapter.ENTITY_VECTOR_INDEX, "Entity"));
+    }
+
+    @Test
+    void similarCommunitiesReturnsTheTopKOfTheCorpusInScoreOrderAsFullRecords() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-cvec-" + System.nanoTime();
+        String otherCorpusId = "corpus-cvec-other-" + System.nanoTime();
+        adapter.persistCommunities(corpusId, List.of(
+                new Community("community-1", "Far title", "Far."),
+                new Community("community-2", "Near title", "Near."),
+                new Community("community-3", "Mid title", "Mid.")));
+        adapter.persistCommunities(otherCorpusId, List.of(new Community("community-1", "Exact.")));
+
+        adapter.persistCommunityEmbeddings(corpusId, Map.of(
+                "community-1", new float[] {0, 1, 0, 0},
+                "community-2", new float[] {1, 0.1f, 0, 0},
+                "community-3", new float[] {1, 1, 0, 0}));
+        adapter.persistCommunityEmbeddings(otherCorpusId, Map.of("community-1", new float[] {1, 0, 0, 0}));
+
+        List<Community> similar = adapter.similarCommunities(corpusId, QUERY, 2);
+
+        assertEquals(List.of(new Community("community-2", "Near title", "Near."),
+                new Community("community-3", "Mid title", "Mid.")), similar);
+        assertEquals(List.of("community-1"),
+                adapter.similarCommunities(otherCorpusId, QUERY, 3).stream().map(Community::id).toList());
+        assertTrue(vectorIndexExists(Neo4jGraphStoreAdapter.COMMUNITY_VECTOR_INDEX, "Community"));
+    }
+
+    @Test
+    void embeddingsSurviveALaterEntityAndCommunityRewrite() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-vec-survive-" + System.nanoTime();
+        adapter.persistEntities(corpusId, List.of(new Entity("Kept", "Node")));
+        adapter.persistCommunities(corpusId, List.of(new Community("community-1", "Kept.")));
+        adapter.persistEntityEmbeddings(corpusId, Map.of(id("Kept"), new float[] {1, 0, 0, 0}));
+        adapter.persistCommunityEmbeddings(corpusId, Map.of("community-1", new float[] {1, 0, 0, 0}));
+
+        adapter.persistEntities(corpusId, List.of(new Entity("Kept", "Node", "now described", List.of())));
+        adapter.persistCommunities(corpusId, List.of(new Community("community-1", "Kept again.")));
+
+        assertEquals(List.of("Kept"), adapter.similarEntities(corpusId, QUERY, 3).stream().map(Entity::name).toList());
+        assertEquals(List.of("community-1"),
+                adapter.similarCommunities(corpusId, QUERY, 3).stream().map(Community::id).toList());
+        try (var session = driver.session()) {
+            List<Object> stored = session.executeRead(tx -> tx.run(
+                    "MATCH (e:Entity {corpusId: $corpusId}) RETURN e.embedding AS embedding",
+                    Map.of("corpusId", corpusId)).single().get("embedding").asList());
+            assertEquals(List.of(1.0, 0.0, 0.0, 0.0), stored);
+        }
+    }
+
+    @Test
+    void persistingEmbeddingsOfADifferentDimensionThanTheExistingIndexFailsNamingTheIndexAndBothDimensions() {
+        String corpusId = "corpus-vec-dims-" + System.nanoTime();
+        Neo4jGraphStoreAdapter first = new Neo4jGraphStoreAdapter(driver);
+        first.persistEntities(corpusId, List.of(new Entity("Four", "Node"), new Entity("Five", "Node")));
+        first.persistCommunities(corpusId, List.of(new Community("community-1", "Dims.")));
+        first.persistEntityEmbeddings(corpusId, Map.of(id("Four"), new float[] {1, 0, 0, 0}));
+        first.persistCommunityEmbeddings(corpusId, Map.of("community-1", new float[] {1, 0, 0, 0}));
+
+        // A fresh adapter (e.g. after a restart with a new embedding model) has no cached dimension.
+        Neo4jGraphStoreAdapter restarted = new Neo4jGraphStoreAdapter(driver);
+        IllegalStateException entityFailure = assertThrows(IllegalStateException.class,
+                () -> restarted.persistEntityEmbeddings(corpusId, Map.of(id("Five"), new float[] {1, 0, 0, 0, 0})));
+        IllegalStateException communityFailure = assertThrows(IllegalStateException.class,
+                () -> first.persistCommunityEmbeddings(corpusId, Map.of("community-1", new float[] {1, 0, 0, 0, 0})));
+
+        assertTrue(entityFailure.getMessage().contains(Neo4jGraphStoreAdapter.ENTITY_VECTOR_INDEX));
+        assertTrue(entityFailure.getMessage().contains("4 dimensions"));
+        assertTrue(entityFailure.getMessage().contains("have 5"));
+        assertTrue(communityFailure.getMessage().contains(Neo4jGraphStoreAdapter.COMMUNITY_VECTOR_INDEX));
+        assertTrue(communityFailure.getMessage().contains("have 5"));
+        assertEquals(List.of("Four"), restarted.similarEntities(corpusId, QUERY, 3).stream().map(Entity::name).toList());
+    }
+
+    private static boolean vectorIndexExists(String name, String label) {
+        try (var session = driver.session()) {
+            return session.executeRead(tx -> tx.run(
+                    "SHOW VECTOR INDEXES YIELD name, labelsOrTypes, properties, state "
+                            + "WHERE name = $name RETURN labelsOrTypes, properties, state",
+                    Map.of("name", name)).list()).stream()
+                    .anyMatch(record -> record.get("labelsOrTypes").asList().contains(label)
+                            && record.get("properties").asList().contains("embedding")
+                            && "ONLINE".equals(record.get("state").asString()));
+        }
+    }
+
     private static Set<Set<String>> asSets(List<List<String>> groups) {
         Set<Set<String>> result = new HashSet<>();
         for (List<String> group : groups) {

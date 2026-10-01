@@ -202,6 +202,41 @@ public interface GraphStorePort {
         return List.copyOf(groups);
     }
 
+    /**
+     * Stores an embedding vector on each Entity of {@code corpusId}, keyed by
+     * {@link Entity#normalizedIdentity()}. Optional: the default is a no-op.
+     */
+    default void persistEntityEmbeddings(String corpusId, Map<String, float[]> byIdentity) {
+        // Optional for graph-store implementations that support vector similarity.
+    }
+
+    /**
+     * Stores an embedding vector on each Community of {@code corpusId}, keyed
+     * by {@link Community#id()}. Optional: the default is a no-op.
+     */
+    default void persistCommunityEmbeddings(String corpusId, Map<String, float[]> byCommunityId) {
+        // Optional for graph-store implementations that support vector similarity.
+    }
+
+    /**
+     * @return at most {@code k} Entities of {@code corpusId}, most similar to
+     *         {@code query} first; empty by default or when the corpus has no
+     *         embedded Entities (callers then fall back to keyword matching)
+     */
+    default List<Entity> similarEntities(String corpusId, float[] query, int k) {
+        return List.of();
+    }
+
+    /**
+     * @return at most {@code k} Communities of {@code corpusId}, most similar
+     *         to {@code query} first; empty by default or when the corpus has
+     *         no embedded Communities (callers then fall back to keyword
+     *         matching)
+     */
+    default List<Community> similarCommunities(String corpusId, float[] query, int k) {
+        return List.of();
+    }
+
     default void persist(GraphExtraction extraction) {
         if (extraction == null) {
             return;

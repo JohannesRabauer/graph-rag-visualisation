@@ -3,12 +3,14 @@ package io.graphrag.core.usecase;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.RetrievalStep;
+import io.graphrag.core.port.EmbeddingPort;
 import io.graphrag.core.port.GraphStorePort;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -35,25 +37,48 @@ import java.util.Set;
  */
 public class AnswerLocalSearch {
 
+    /** How many seed Entities the semantic path records as trace steps. */
+    static final int SEMANTIC_SEED_COUNT = 3;
+
     private final GraphStorePort graphStorePort;
+    private final EmbeddingPort embeddingPort;
 
     public AnswerLocalSearch(GraphStorePort graphStorePort) {
+        this(graphStorePort, null);
+    }
+
+    /**
+     * @param embeddingPort when semantic, seeds are the Entities closest in
+     *                      meaning to the question (keyword fallback when the
+     *                      corpus has no embeddings); null or a non-semantic
+     *                      port keeps pure keyword matching
+     */
+    public AnswerLocalSearch(GraphStorePort graphStorePort, EmbeddingPort embeddingPort) {
         this.graphStorePort = graphStorePort;
+        this.embeddingPort = embeddingPort;
     }
 
     public LocalSearchAnswer answer(String question, String corpusId) {
         Set<String> tokens = KeywordMatcher.tokenize(question);
-        Collection<Entity> entities = orEmpty(graphStorePort.entities(corpusId));
-        Collection<Relationship> relationships = orEmpty(graphStorePort.relationships(corpusId));
+        List<RetrievalStep> steps = new ArrayList<>();
 
-        Entity seed = bestMatchingEntity(entities, tokens);
+        Entity seed = null;
+        for (Entity similar : semanticSeeds(question, corpusId)) {
+            if (seed == null) {
+                seed = similar;
+            }
+            steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, similar.normalizedIdentity(), similar.name()));
+        }
         if (seed == null) {
-            return LocalSearchAnswer.noMatch();
+            seed = bestMatchingEntity(orEmpty(graphStorePort.entities(corpusId)), tokens);
+            if (seed == null) {
+                return LocalSearchAnswer.noMatch();
+            }
+            steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, seed.normalizedIdentity(), seed.name()));
         }
 
+        Collection<Relationship> relationships = orEmpty(graphStorePort.relationships(corpusId));
         String seedIdentity = seed.normalizedIdentity();
-        List<RetrievalStep> steps = new ArrayList<>();
-        steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, seedIdentity, seed.name()));
 
         Relationship hop = bestMatchingHop(relationships, seedIdentity, tokens);
         if (hop == null) {
@@ -76,6 +101,28 @@ public class AnswerLocalSearch {
         String answer = "In this corpus graph, " + hop.source() + " "
                 + hop.type().replace('_', ' ').toLowerCase(Locale.ROOT) + " " + hop.target() + ".";
         return LocalSearchAnswer.matched(answer, steps);
+    }
+
+    /**
+     * The top {@value #SEMANTIC_SEED_COUNT} Entities by meaning, most similar
+     * first; empty without a semantic port or when the corpus has no
+     * embedded Entities.
+     */
+    private List<Entity> semanticSeeds(String question, String corpusId) {
+        if (!EmbedGraphElements.isSemantic(embeddingPort)) {
+            return List.of();
+        }
+        List<Entity> similar;
+        try {
+            similar = graphStorePort.similarEntities(
+                    corpusId, embeddingPort.embed(question == null ? "" : question), SEMANTIC_SEED_COUNT);
+        } catch (RuntimeException e) {
+            throw new SemanticMatchingException("Semantic Entity matching failed: " + e.getMessage(), e);
+        }
+        if (similar == null) {
+            return List.of();
+        }
+        return similar.stream().filter(Objects::nonNull).limit(SEMANTIC_SEED_COUNT).toList();
     }
 
     private Entity bestMatchingEntity(Collection<Entity> entities, Set<String> tokens) {

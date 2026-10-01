@@ -28,14 +28,17 @@ import io.graphrag.core.usecase.AnswerDriftSearch;
 import io.graphrag.core.usecase.BuildKnowledgeGraph;
 import io.graphrag.core.usecase.ConstructVectorIndex;
 import io.graphrag.core.usecase.DetectCommunities;
+import io.graphrag.core.usecase.EmbedGraphElements;
 import io.graphrag.core.usecase.VectorBaselineAnswer;
 import io.graphrag.core.usecase.DriftSearchAnswer;
 import io.graphrag.core.usecase.GlobalSearchAnswer;
 import io.graphrag.core.usecase.IngestCorpus;
 import io.graphrag.core.usecase.LocalSearchAnswer;
+import io.graphrag.core.usecase.SemanticMatchingException;
 import io.graphrag.core.usecase.TextUnitProgress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -75,6 +78,12 @@ public class CorpusController {
     static final String COMMUNITY_DETECTION_FAILURE_MESSAGE =
             "Community detection failed after the knowledge graph was extracted (is the Neo4j Graph Data Science "
                     + "plugin available?). Nothing was retried — try again when ready.";
+    static final String EMBEDDING_FAILURE_MESSAGE =
+            "The embedding call failed while preparing Entities and Communities for semantic search. "
+                    + "Nothing was retried — try again when ready.";
+    static final String SEMANTIC_MATCHING_FAILURE_MESSAGE =
+            "Semantic matching failed: the embedding call for your question did not succeed, so no starting "
+                    + "points could be found. Nothing was retried — try again when ready.";
     private static final String GRAPH_BUILDING_MESSAGE =
             "The graph is still building for this corpus. Wait for “Knowledge Graph — Ready”, then ask your question.";
     private static final String GRAPH_FAILED_MESSAGE =
@@ -94,12 +103,31 @@ public class CorpusController {
     private final ConstructVectorIndex constructVectorIndex;
     private final AnswerVectorBaseline answerVectorBaseline;
     private final VectorStorePort vectorStorePort;
+    private final EmbeddingPort embeddingPort;
 
     public CorpusController(IngestCorpus ingestCorpus, Neo4jCorpusRegistry corpusStore,
                            List<DocumentParserPort> documentParsers, DemoDatasetService demoDatasetService,
                            CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort,
                            RetrievalTraceStore retrievalTraceStore, ConstructVectorIndex constructVectorIndex,
                            AnswerVectorBaseline answerVectorBaseline, VectorStorePort vectorStorePort) {
+        this(ingestCorpus, corpusStore, documentParsers, demoDatasetService, corpusProgressService, llmPort,
+                graphStorePort, retrievalTraceStore, constructVectorIndex, answerVectorBaseline, vectorStorePort, null);
+    }
+
+    /**
+     * @param embeddingPort when semantic (Story 15.1), Entities and Communities
+     *                      are embedded after community detection and the
+     *                      LOCAL/GLOBAL/DRIFT searches seed by meaning; null or
+     *                      the offline stub keeps pure keyword matching
+     */
+    @Autowired
+    public CorpusController(IngestCorpus ingestCorpus, Neo4jCorpusRegistry corpusStore,
+                           List<DocumentParserPort> documentParsers, DemoDatasetService demoDatasetService,
+                           CorpusProgressService corpusProgressService, LlmPort llmPort, GraphStorePort graphStorePort,
+                           RetrievalTraceStore retrievalTraceStore, ConstructVectorIndex constructVectorIndex,
+                           AnswerVectorBaseline answerVectorBaseline, VectorStorePort vectorStorePort,
+                           EmbeddingPort embeddingPort) {
+        this.embeddingPort = embeddingPort;
         this.ingestCorpus = ingestCorpus;
         this.corpusStore = corpusStore;
         this.documentParsers = documentParsers;
@@ -295,7 +323,7 @@ public class CorpusController {
         corpusStore.markOffline(corpus.id());
         corpusProgressService.emit(corpus.id(), "ingestion-started",
                 Map.of("message", "Knowledge graph construction started for " + corpus.name()));
-        startKnowledgeGraphConstruction(corpus, new LangChain4jLlmPort());
+        startKnowledgeGraphConstruction(corpus, new LangChain4jLlmPort(), null);
         startVectorIndexConstruction(corpus, new ConstructVectorIndex(new LangChain4jEmbeddingPort(), vectorStorePort));
         return ResponseEntity.status(HttpStatus.CREATED).body(corpusPayload(corpus, true));
     }
@@ -343,7 +371,7 @@ public class CorpusController {
             return vectorBaselineResponse(question, corpus.id());
         }
 
-        LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort).answer(question, corpus.id());
+        LocalSearchAnswer result = new AnswerLocalSearch(graphStorePort, embeddingPort).answer(question, corpus.id());
         String traceId = captureTrace(result.steps());
         return ResponseEntity.ok(Map.of(
                 "answerId", UUID.randomUUID().toString(),
@@ -354,7 +382,7 @@ public class CorpusController {
     }
 
     private ResponseEntity<Map<String, Object>> globalSearchResponse(String question, String corpusId) {
-        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStorePort).answer(question, corpusId);
+        GlobalSearchAnswer result = new AnswerGlobalSearch(graphStorePort, embeddingPort).answer(question, corpusId);
         String traceId = captureTrace(result.steps());
 
         if (result.noAnswer()) {
@@ -377,7 +405,7 @@ public class CorpusController {
     }
 
     private ResponseEntity<Map<String, Object>> driftSearchResponse(String question, String corpusId) {
-        DriftSearchAnswer result = new AnswerDriftSearch(graphStorePort, llmPort).answer(question, corpusId);
+        DriftSearchAnswer result = new AnswerDriftSearch(graphStorePort, llmPort, embeddingPort).answer(question, corpusId);
         String traceId = captureTrace(result.steps());
 
         if (result.noAnswer()) {
@@ -458,6 +486,17 @@ public class CorpusController {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", ex.getMessage()));
     }
 
+    /**
+     * Story 15.1: embedding the question (or the vector lookup) failed at query
+     * time. No keyword fallback is attempted, so the outage stays visible.
+     */
+    @ExceptionHandler(SemanticMatchingException.class)
+    public ResponseEntity<Map<String, String>> handleSemanticMatchingFailure(SemanticMatchingException ex) {
+        LOG.warn("Semantic matching failed at query time: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", SEMANTIC_MATCHING_FAILURE_MESSAGE));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
@@ -470,12 +509,16 @@ public class CorpusController {
     }
 
     private void startKnowledgeGraphConstruction(Corpus corpus) {
-        startKnowledgeGraphConstruction(corpus, llmPort);
+        startKnowledgeGraphConstruction(corpus, llmPort, embeddingPort);
     }
 
-    private void startKnowledgeGraphConstruction(Corpus corpus, LlmPort llmPortToUse) {
+    /**
+     * @param embeddingPortToUse null for the offline demo, so it never embeds
+     */
+    private void startKnowledgeGraphConstruction(Corpus corpus, LlmPort llmPortToUse, EmbeddingPort embeddingPortToUse) {
         CompletableFuture.runAsync(() -> {
             boolean detectingCommunities = false;
+            boolean embedding = false;
             try {
                 Map<String, SourceLabel> sourceLabelsById = new java.util.concurrent.ConcurrentHashMap<>();
                 new BuildKnowledgeGraph(llmPortToUse, graphStorePort).run(corpus,
@@ -496,18 +539,25 @@ public class CorpusController {
                         (community, memberEntityIdentities) -> corpusProgressService.emit(corpus.id(), "community-detected",
                                 communityEventPayload(community, memberEntityIdentities)));
                 detectingCommunities = false;
+                embedding = true;
+                // Story 15.1: a no-op unless the embedding port is a real semantic model.
+                new EmbedGraphElements(graphStorePort, embeddingPortToUse).run(corpus);
+                embedding = false;
                 corpusStore.markReady(corpus.id());
                 corpusProgressService.emit(corpus.id(), "ingestion-complete",
                         Map.of("message", "Knowledge graph construction and community detection completed for " + corpus.name()));
             } catch (Exception ex) {
                 // The exception message names the failing document and passage (Story 13.1),
-                // or the community-detection stage (Story 14.1) -- no fallback grouping is attempted.
-                LOG.warn("{} failed for corpus {}: {}",
-                        detectingCommunities && !isLlmFailure(ex) ? "Community detection" : "Knowledge graph construction",
-                        corpus.id(), ex.getMessage(), ex);
+                // or the community-detection stage (Story 14.1), or the embedding stage (Story 15.1)
+                // -- no fallback grouping and no retry is attempted.
+                String stage = embedding ? "Embedding"
+                        : detectingCommunities && !isLlmFailure(ex) ? "Community detection"
+                        : "Knowledge graph construction";
+                LOG.warn("{} failed for corpus {}: {}", stage, corpus.id(), ex.getMessage(), ex);
                 corpusStore.markFailed(corpus.id());
                 corpusProgressService.emit(corpus.id(), "error",
-                        Map.of("error", detectingCommunities && !isLlmFailure(ex)
+                        Map.of("error", embedding ? EMBEDDING_FAILURE_MESSAGE
+                                : detectingCommunities && !isLlmFailure(ex)
                                 ? COMMUNITY_DETECTION_FAILURE_MESSAGE
                                 : EXTRACTION_FAILURE_MESSAGE));
             }

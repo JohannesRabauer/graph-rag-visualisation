@@ -20,4 +20,16 @@ public interface EmbeddingPort {
      *         across calls
      */
     float[] embed(String text);
+
+    /**
+     * Whether this port is backed by a real semantic embedding model, i.e.
+     * whether nearby vectors mean nearby meanings. Deterministic offline
+     * stubs return {@code false}; Entities and Communities are then never
+     * embedded and the searches keep matching by keywords.
+     *
+     * @return {@code true} by default
+     */
+    default boolean isSemantic() {
+        return true;
+    }
 }

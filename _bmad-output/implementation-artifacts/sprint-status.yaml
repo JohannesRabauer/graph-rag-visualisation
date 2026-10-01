@@ -138,8 +138,8 @@ development_status:
   14-2-write-community-summaries-from-their-content: done
   epic-14-retrospective: optional
 
-  epic-15: backlog
-  15-1-match-questions-to-entities-and-communities-by-meaning: backlog
+  epic-15: in-progress
+  15-1-match-questions-to-entities-and-communities-by-meaning: done
   15-2-synthesize-cited-local-search-answers: backlog
   15-3-synthesize-cited-global-and-drift-answers: backlog
   15-4-show-citations-in-chat-and-source-passages-in-replay: backlog

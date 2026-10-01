@@ -78,6 +78,9 @@ class CorpusControllerTest {
     @Autowired
     private GraphStorePort graphStorePort;
 
+    @Autowired
+    private io.graphrag.core.port.VectorStorePort vectorStorePort;
+
     @MockitoSpyBean
     private CorpusProgressService corpusProgressService;
 
@@ -632,6 +635,195 @@ class CorpusControllerTest {
                 eq(Map.of("error", CorpusController.EXTRACTION_FAILURE_MESSAGE)));
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
+    }
+
+    /** Story 15.1: extracts two Entities whose descriptions, not names, carry the meaning. */
+    private static LlmPort adaAndBabbageLlmPort() {
+        return new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return new GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public GraphExtraction extract(io.graphrag.core.domain.TextUnit unit, List<String> entityTypes) {
+                return new GraphExtraction(List.of(
+                        new io.graphrag.core.domain.Entity("Ada Lovelace", "Person",
+                                "wrote the first computer program", List.of()),
+                        new io.graphrag.core.domain.Entity("Charles Babbage", "Person",
+                                "designed the difference engine", List.of())),
+                        List.of());
+            }
+        };
+    }
+
+    /**
+     * A 4-dim "semantic" port: software/program/Ada texts point one way,
+     * everything else another. Records every call, and can be switched to fail.
+     */
+    private static final class MeaningEmbeddingPort implements io.graphrag.core.port.EmbeddingPort {
+        final List<String> calls = new java.util.concurrent.CopyOnWriteArrayList<>();
+        volatile boolean failing;
+
+        @Override
+        public float[] embed(String text) {
+            calls.add(text);
+            if (failing) {
+                throw new IllegalStateException("simulated embedding outage");
+            }
+            String lower = text.toLowerCase(java.util.Locale.ROOT);
+            return lower.contains("software") || lower.contains("computer program") || lower.contains("ada lovelace")
+                    ? new float[] {1, 0, 0, 0}
+                    : new float[] {0, 1, 0, 0};
+        }
+    }
+
+    private String ingestAdaAndBabbage(CorpusController controller) {
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "pioneers.txt", "text/plain", "Two pioneers of computing.".getBytes(StandardCharsets.UTF_8));
+        String corpusId = String.valueOf(controller.upload(
+                List.<org.springframework.web.multipart.MultipartFile>of(file)).getBody().get("corpusId"));
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("ingestion-complete"), any());
+        return corpusId;
+    }
+
+    private static List<io.graphrag.core.domain.RetrievalStep> traceSteps(RetrievalTraceStore traces,
+                                                                         ResponseEntity<Map<String, Object>> answer) {
+        return traces.get(String.valueOf(answer.getBody().get("traceId"))).orElseThrow().steps();
+    }
+
+    @Test
+    void globalAndDriftSearchSeedByTheMostSimilarCommunityOnAnEmbeddedCorpus() {
+        RetrievalTraceStore traces = new RetrievalTraceStore();
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, traces,
+                constructVectorIndex, null, null, new MeaningEmbeddingPort());
+        String corpusId = ingestAdaAndBabbage(controller);
+        String adaCommunityId = graphStorePort.communityMemberships(corpusId).stream()
+                .filter(membership -> "ada lovelace::person".equals(membership.entityIdentity()))
+                .map(io.graphrag.core.domain.CommunityMembership::communityId)
+                .findFirst().orElseThrow();
+
+        List<io.graphrag.core.domain.RetrievalStep> global = traceSteps(traces, controller.query(corpusId,
+                Map.of("question", "who invented software?", "mode", "GLOBAL")));
+        List<io.graphrag.core.domain.RetrievalStep> drift = traceSteps(traces, controller.query(corpusId,
+                Map.of("question", "who invented software?", "mode", "DRIFT")));
+
+        List<io.graphrag.core.domain.RetrievalStep> globalCommunities = global.stream()
+                .filter(step -> step.kind() == io.graphrag.core.domain.RetrievalStep.Kind.COMMUNITY).toList();
+        assertThat(globalCommunities).isNotEmpty().hasSizeLessThanOrEqualTo(3);
+        assertThat(globalCommunities.getFirst().identifier()).isEqualTo(adaCommunityId);
+        assertThat(drift.getFirst().kind()).isEqualTo(io.graphrag.core.domain.RetrievalStep.Kind.COMMUNITY);
+        assertThat(drift.getFirst().identifier()).isEqualTo(adaCommunityId);
+    }
+
+    @Test
+    void aQueryTimeEmbeddingFailureReturnsThePlainLanguageErrorShapeForEveryGraphMode() throws Exception {
+        MeaningEmbeddingPort port = new MeaningEmbeddingPort();
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null, port);
+        String corpusId = ingestAdaAndBabbage(controller);
+        port.failing = true;
+        MockMvc standalone = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+
+        for (String mode : List.of("LOCAL", "GLOBAL", "DRIFT")) {
+            standalone.perform(post("/api/corpora/" + corpusId + "/query")
+                            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                            .content("{\"question\": \"who invented software?\", \"mode\": \"" + mode + "\"}"))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.error").value(CorpusController.SEMANTIC_MATCHING_FAILURE_MESSAGE));
+        }
+    }
+
+    @Test
+    void theOfflineDemoNeverCallsTheConfiguredSemanticEmbeddingPort() {
+        MeaningEmbeddingPort port = new MeaningEmbeddingPort();
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers,
+                new DemoDatasetService(), corpusProgressService, adaAndBabbageLlmPort(), graphStorePort,
+                new RetrievalTraceStore(), constructVectorIndex, null, vectorStorePort, port);
+
+        String corpusId = String.valueOf(controller.useOfflineDemoDataset().getBody().get("corpusId"));
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        assertThat(port.calls).isEmpty();
+        assertThat(storedEmbeddings(corpusId, "Entity")).isNotEmpty().containsOnlyNulls();
+        assertThat(storedEmbeddings(corpusId, "Community")).isNotEmpty().containsOnlyNulls();
+    }
+
+    private static List<Object> storedEmbeddings(String corpusId, String label) {
+        try (var session = SharedNeo4jTestContainer.driver().session()) {
+            return session.executeRead(tx -> tx.run(
+                    "MATCH (n:" + label + " {corpusId: $corpusId}) RETURN n.embedding AS embedding",
+                    Map.of("corpusId", corpusId)).list(record -> record.get("embedding").asObject()));
+        }
+    }
+
+    @Test
+    void aSemanticEmbeddingPortEmbedsEveryEntityAndCommunityAndLocalSearchSeedsByMeaning() {
+        RetrievalTraceStore traces = new RetrievalTraceStore();
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, traces,
+                constructVectorIndex, null, null, new MeaningEmbeddingPort());
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "pioneers.txt", "text/plain", "Two pioneers of computing.".getBytes(StandardCharsets.UTF_8));
+
+        String corpusId = String.valueOf(controller.upload(
+                List.<org.springframework.web.multipart.MultipartFile>of(file)).getBody().get("corpusId"));
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        assertThat(storedEmbeddings(corpusId, "Entity")).hasSize(2).doesNotContainNull();
+        assertThat(storedEmbeddings(corpusId, "Community")).isNotEmpty().doesNotContainNull();
+        try (var session = SharedNeo4jTestContainer.driver().session()) {
+            List<String> indexes = session.executeRead(tx -> tx.run("SHOW VECTOR INDEXES YIELD name RETURN name")
+                    .list(record -> record.get("name").asString()));
+            assertThat(indexes).contains("entity_embedding", "community_embedding");
+        }
+
+        ResponseEntity<Map<String, Object>> answer = controller.query(corpusId,
+                Map.of("question", "who invented software?", "mode", "LOCAL"));
+        String traceId = String.valueOf(answer.getBody().get("traceId"));
+        io.graphrag.core.domain.RetrievalStep firstStep = traces.get(traceId).orElseThrow().steps().getFirst();
+
+        assertThat(firstStep.kind()).isEqualTo(io.graphrag.core.domain.RetrievalStep.Kind.ENTITY);
+        assertThat(firstStep.identifier()).isEqualTo("ada lovelace::person");
+    }
+
+    @Test
+    void aFailingEmbeddingCallMarksTheCorpusFailedAndEmitsAnErrorNamingEmbedding() {
+        io.graphrag.core.port.EmbeddingPort failing = text -> {
+            throw new IllegalStateException("simulated embedding outage");
+        };
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null, failing);
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "pioneers.txt", "text/plain", "Two pioneers of computing.".getBytes(StandardCharsets.UTF_8));
+
+        String corpusId = String.valueOf(controller.upload(
+                List.<org.springframework.web.multipart.MultipartFile>of(file)).getBody().get("corpusId"));
+
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
+                eq(Map.of("error", CorpusController.EMBEDDING_FAILURE_MESSAGE)));
+        verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
+        assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
+    }
+
+    @Test
+    void theOfflineEmbeddingStubEmbedsNothingDuringIngestion() {
+        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+                corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
+                constructVectorIndex, null, null,
+                new com.graphraglens.adapter.langchain4j.LangChain4jEmbeddingPort());
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "pioneers.txt", "text/plain", "Two pioneers of computing.".getBytes(StandardCharsets.UTF_8));
+
+        String corpusId = String.valueOf(controller.upload(
+                List.<org.springframework.web.multipart.MultipartFile>of(file)).getBody().get("corpusId"));
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("ingestion-complete"), any());
+
+        assertThat(storedEmbeddings(corpusId, "Entity")).hasSize(2).containsOnlyNulls();
+        assertThat(storedEmbeddings(corpusId, "Community")).isNotEmpty().containsOnlyNulls();
     }
 
     @Test

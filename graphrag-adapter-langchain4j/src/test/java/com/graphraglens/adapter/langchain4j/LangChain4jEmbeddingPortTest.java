@@ -10,6 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LangChain4jEmbeddingPortTest {
 
     @Test
+    void theOfflineStubIsNotASemanticEmbeddingModel() {
+        assertFalse(new LangChain4jEmbeddingPort().isSemantic());
+    }
+
+    @Test
     void returnsTheSameEmbeddingForTheSameTextAcrossCallsAndInstances() {
         LangChain4jEmbeddingPort first = new LangChain4jEmbeddingPort();
         LangChain4jEmbeddingPort second = new LangChain4jEmbeddingPort();

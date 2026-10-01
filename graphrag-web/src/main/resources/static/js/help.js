@@ -313,7 +313,9 @@
     return parts.length === 3 ? parts[1].replace(/_/g, ' ') : 'related to';
   }
 
-  // Local: seed entity -> relationship -> other entity.
+  // Local: seed entity -> relationship -> other entity. With semantic seed
+  // matching the trace opens with up to three seed ENTITY steps; the first is
+  // the seed and the other entity is the one after the relationship.
   function localChain(steps) {
     var seed = null;
     var rel = null;
@@ -322,7 +324,7 @@
       if (step.kind === 'ENTITY') {
         if (!seed) {
           seed = step;
-        } else if (!other) {
+        } else if (rel && !other) {
           other = step;
         }
       } else if (step.kind === 'RELATIONSHIP' && !rel) {

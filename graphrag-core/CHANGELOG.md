@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `EmbeddingPort.isSemantic()`: whether the port is a real semantic embedding
+  model. The default is `true`; deterministic offline stubs return `false`.
+  Additive, minor change.
+- `GraphStorePort.persistEntityEmbeddings(String corpusId, Map<String, float[]> byIdentity)`
+  and `persistCommunityEmbeddings(String corpusId, Map<String, float[]> byCommunityId)`
+  (default no-ops), and `similarEntities(String corpusId, float[] query, int k)`
+  / `similarCommunities(String corpusId, float[] query, int k)` (default empty
+  lists): corpus-scoped embedding storage and top-k similarity lookup, most
+  similar first. Existing implementations need no change; an empty result
+  makes the searches fall back to keyword matching. Additive, minor change.
+- `EmbedGraphElements(GraphStorePort, EmbeddingPort)` use case: with a
+  semantic port, embeds every Entity (`name + ": " + description`) and
+  Community (`summary`) of a corpus and persists the vectors; does nothing
+  with a null or non-semantic port. An embedding failure propagates (no
+  retry), so ingestion fails visibly. In the Neo4j adapter the vectors sit
+  behind one vector index per label, `entity_embedding` and
+  `community_embedding` (cosine, filtered by `corpusId`, shared by all
+  corpora). The index dimension is fixed by the first vector ever persisted;
+  persisting vectors of a different dimension (e.g. after changing the
+  embedding model) now fails with an `IllegalStateException` naming the index
+  and both dimensions.
+- `SemanticMatchingException`: thrown by the semantic search path when
+  embedding the question or the similarity lookup fails at query time. The
+  searches do not fall back to keywords in that case.
+- `AnswerLocalSearch(GraphStorePort, EmbeddingPort)`,
+  `AnswerGlobalSearch(GraphStorePort, EmbeddingPort)` and
+  `AnswerDriftSearch(GraphStorePort, LlmPort, EmbeddingPort)` constructors.
+  With a semantic port, Local records the 3 most similar Entities as `ENTITY`
+  steps (in similarity order) and hops from the first; Global records the 3
+  most similar Communities and answers from the first; DRIFT uses the 3 most
+  similar Communities as candidates. When the store returns no similar
+  elements (e.g. a corpus ingested without embeddings), each mode falls back
+  to its keyword path. The existing constructors keep the keyword behavior
+  unchanged.
 - `GraphStorePort.detectCommunities(String corpusId)`: returns the corpus's
   Entities grouped into Communities, as lists of member identities
   (`Entity.normalizedIdentity()` format). The default implementation is the

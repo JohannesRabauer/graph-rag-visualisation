@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Real Neo4j-backed implementation of {@link GraphStorePort}, using the
@@ -58,7 +59,21 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     /** Prefix of every in-memory GDS projection this adapter creates. */
     static final String PROJECTION_PREFIX = "graphrag-communities-";
 
+    /** Vector index over {@code Entity.embedding}, filterable by {@code corpusId} (one for all corpora). */
+    static final String ENTITY_VECTOR_INDEX = "entity_embedding";
+
+    /** Vector index over {@code Community.embedding}, filterable by {@code corpusId} (one for all corpora). */
+    static final String COMMUNITY_VECTOR_INDEX = "community_embedding";
+
+    private static final long INDEX_ONLINE_TIMEOUT_SECONDS = 300L;
+
     private final Driver driver;
+
+    /** Vector indexes known to exist, so each is created/checked at most once per adapter. */
+    private final Set<String> knownVectorIndexes = ConcurrentHashMap.newKeySet();
+
+    /** The {@code vector.dimensions} of each vector index this adapter has ensured. */
+    private final Map<String, Long> vectorIndexDimensions = new ConcurrentHashMap<>();
 
     public Neo4jGraphStoreAdapter(Driver driver) {
         this.driver = Objects.requireNonNull(driver, "driver");
@@ -445,6 +460,196 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 return result;
             });
         }
+    }
+
+    // -- Embeddings and vector similarity (Story 15.1, AD-17) -------------------
+
+    /**
+     * Stores each vector as the {@code embedding} ({@code LIST<FLOAT>})
+     * property of the corpus's Entity with that normalized identity. The
+     * {@value #ENTITY_VECTOR_INDEX} index is created on the first persisted
+     * vector, with that vector's dimension and cosine similarity.
+     */
+    @Override
+    public void persistEntityEmbeddings(String corpusId, Map<String, float[]> byIdentity) {
+        persistEmbeddings(corpusId, byIdentity, "Entity", "normalizedIdentity", ENTITY_VECTOR_INDEX);
+    }
+
+    /**
+     * Stores each vector as the {@code embedding} ({@code LIST<FLOAT>})
+     * property of the corpus's Community with that id. The
+     * {@value #COMMUNITY_VECTOR_INDEX} index is created on the first
+     * persisted vector, with that vector's dimension and cosine similarity.
+     */
+    @Override
+    public void persistCommunityEmbeddings(String corpusId, Map<String, float[]> byCommunityId) {
+        persistEmbeddings(corpusId, byCommunityId, "Community", "id", COMMUNITY_VECTOR_INDEX);
+    }
+
+    private void persistEmbeddings(String corpusId, Map<String, float[]> byKey, String label, String keyProperty,
+                                   String indexName) {
+        requireCorpusId(corpusId);
+        if (byKey == null || byKey.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int dimensions = 0;
+        for (Map.Entry<String, float[]> entry : byKey.entrySet()) {
+            float[] vector = entry.getValue();
+            if (entry.getKey() == null || vector == null || vector.length == 0) {
+                continue;
+            }
+            if (dimensions == 0) {
+                dimensions = vector.length;
+            } else if (vector.length != dimensions) {
+                throw new IllegalStateException("Embeddings for vector index " + indexName
+                        + " have mixed dimensions: " + dimensions + " and " + vector.length);
+            }
+            rows.add(Map.of("key", entry.getKey(), "embedding", toDoubleList(vector)));
+        }
+        if (rows.isEmpty()) {
+            return;
+        }
+        ensureVectorIndex(indexName, label, dimensions);
+        try (Session session = driver.session()) {
+            session.executeWrite(tx -> tx.run(
+                    "UNWIND $rows AS row "
+                            + "MATCH (n:" + label + " {corpusId: $corpusId, " + keyProperty + ": row.key}) "
+                            + "SET n.embedding = row.embedding",
+                    Map.of("corpusId", corpusId, "rows", rows)).consume());
+        }
+    }
+
+    /**
+     * Declares the corpus-filterable vector index idempotently and waits for
+     * it to come online. Unlike {@link #ensureConstraint(String)}, a failure
+     * here propagates: without the index there is no similarity search.
+     *
+     * <p>The index dimension is fixed by the first vector ever persisted. When
+     * the index already exists with a different {@code vector.dimensions}
+     * (the embedding model changed), this throws instead of persisting
+     * vectors the index would never find.</p>
+     */
+    private void ensureVectorIndex(String indexName, String label, int dimensions) {
+        Long existing = vectorIndexDimensions.get(indexName);
+        if (existing == null) {
+            createVectorIndex(indexName, label, dimensions);
+            existing = vectorIndexDimension(indexName);
+            vectorIndexDimensions.put(indexName, existing);
+            knownVectorIndexes.add(indexName);
+        }
+        if (existing != dimensions) {
+            throw new IllegalStateException("Vector index " + indexName + " has " + existing
+                    + " dimensions, but the embeddings to persist have " + dimensions
+                    + " (did the embedding model change?). Drop the index and the stored embeddings to re-embed.");
+        }
+    }
+
+    private long vectorIndexDimension(String indexName) {
+        try (Session session = driver.session()) {
+            return session.executeRead(tx -> tx.run(
+                    "SHOW VECTOR INDEXES YIELD name, options WHERE name = $name "
+                            + "RETURN options.indexConfig['vector.dimensions'] AS dimensions",
+                    Map.of("name", indexName)).single().get("dimensions").asLong());
+        }
+    }
+
+    private void createVectorIndex(String indexName, String label, int dimensions) {
+        try (Session session = driver.session()) {
+            session.executeWrite(tx -> tx.run(
+                    "CREATE VECTOR INDEX " + indexName + " IF NOT EXISTS "
+                            + "FOR (n:" + label + ") ON (n.embedding) WITH [n.corpusId] "
+                            + "OPTIONS {indexConfig: {`vector.dimensions`: $dimensions, "
+                            + "`vector.similarity_function`: 'cosine'}}",
+                    Map.of("dimensions", (long) dimensions)).consume());
+            session.run("CALL db.awaitIndex($name, $timeout)",
+                    Map.of("name", indexName, "timeout", INDEX_ONLINE_TIMEOUT_SECONDS)).consume();
+        }
+    }
+
+    private boolean vectorIndexExists(String indexName) {
+        if (knownVectorIndexes.contains(indexName)) {
+            return true;
+        }
+        try (Session session = driver.session()) {
+            boolean exists = session.executeRead(tx -> tx.run(
+                    "SHOW VECTOR INDEXES YIELD name WHERE name = $name RETURN count(*) AS count",
+                    Map.of("name", indexName)).single().get("count").asLong() > 0);
+            if (exists) {
+                knownVectorIndexes.add(indexName);
+            }
+            return exists;
+        }
+    }
+
+    /**
+     * The {@code k} Entities of {@code corpusId} closest to {@code query}
+     * (cosine), most similar first, filtered by corpus inside the vector
+     * index. Empty when no Entity has ever been embedded or the corpus has
+     * none.
+     */
+    @Override
+    public List<Entity> similarEntities(String corpusId, float[] query, int k) {
+        if (corpusId == null || corpusId.isBlank() || query == null || query.length == 0 || k <= 0
+                || !vectorIndexExists(ENTITY_VECTOR_INDEX)) {
+            return List.of();
+        }
+        try (Session session = driver.session()) {
+            return session.executeRead(tx -> {
+                List<Entity> result = new ArrayList<>();
+                for (Record record : tx.run(
+                        "MATCH (e:Entity) "
+                                + "SEARCH e IN (VECTOR INDEX " + ENTITY_VECTOR_INDEX + " FOR $query "
+                                + "WHERE e.corpusId = $corpusId LIMIT $k) SCORE AS score "
+                                + "RETURN e.name AS name, e.type AS type, coalesce(e.description, '') AS description, "
+                                + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds, score "
+                                + "ORDER BY score DESC",
+                        Map.of("corpusId", corpusId, "query", toDoubleList(query), "k", (long) k)).list()) {
+                    result.add(new Entity(record.get("name").asString(), record.get("type").asString(),
+                            record.get("description").asString(),
+                            record.get("sourceTextUnitIds").asList(value -> value.asString())));
+                }
+                return result;
+            });
+        }
+    }
+
+    /**
+     * The {@code k} Communities of {@code corpusId} closest to {@code query}
+     * (cosine), most similar first, filtered by corpus inside the vector
+     * index. Empty when no Community has ever been embedded or the corpus has
+     * none.
+     */
+    @Override
+    public List<Community> similarCommunities(String corpusId, float[] query, int k) {
+        if (corpusId == null || corpusId.isBlank() || query == null || query.length == 0 || k <= 0
+                || !vectorIndexExists(COMMUNITY_VECTOR_INDEX)) {
+            return List.of();
+        }
+        try (Session session = driver.session()) {
+            return session.executeRead(tx -> {
+                List<Community> result = new ArrayList<>();
+                for (Record record : tx.run(
+                        "MATCH (c:Community) "
+                                + "SEARCH c IN (VECTOR INDEX " + COMMUNITY_VECTOR_INDEX + " FOR $query "
+                                + "WHERE c.corpusId = $corpusId LIMIT $k) SCORE AS score "
+                                + "RETURN c.id AS id, coalesce(c.title, '') AS title, c.summary AS summary, score "
+                                + "ORDER BY score DESC",
+                        Map.of("corpusId", corpusId, "query", toDoubleList(query), "k", (long) k)).list()) {
+                    result.add(new Community(record.get("id").asString(), record.get("title").asString(),
+                            record.get("summary").asString()));
+                }
+                return result;
+            });
+        }
+    }
+
+    private static List<Double> toDoubleList(float[] vector) {
+        List<Double> values = new ArrayList<>(vector.length);
+        for (float value : vector) {
+            values.add((double) value);
+        }
+        return values;
     }
 
     // -- Community detection (GDS Leiden, AD-4) --------------------------------
