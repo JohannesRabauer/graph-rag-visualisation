@@ -1,6 +1,9 @@
 package com.graphraglens.adapter.langchain4j;
 
+import io.graphrag.core.domain.CommunitySummary;
+import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
+import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.usecase.EntityTypes;
 import dev.langchain4j.data.message.AiMessage;
@@ -10,7 +13,11 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.FinishReason;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -124,19 +131,111 @@ class OpenAiLlmPortTest {
         assertEquals("A mathematician.", extraction.entities().getFirst().description());
     }
 
+    private static final List<Entity> MEMBERS = List.of(
+            new Entity("Sherlock Holmes", "Person", "A consulting detective. " + "x".repeat(400), List.of()),
+            new Entity("Dr. Watson", "Person", "Friend and chronicler of Holmes.", List.of()));
+    private static final List<Relationship> RELATIONSHIPS = List.of(
+            new Relationship("Sherlock Holmes", "Person", "works_with", "Dr. Watson", "Person",
+                    "They solve cases together.", List.of(), 3));
+
+    @Test
+    void communitySummaryPromptMentionsJsonNumbersMembersAndRelationshipsAndTruncatesDescriptions() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP, "{}"),
+                new FakeChatModel(FinishReason.STOP, ""));
+
+        String prompt = port.communitySummaryPrompt(MEMBERS, RELATIONSHIPS);
+
+        assertTrue(prompt.toLowerCase().contains("json"));
+        assertTrue(prompt.contains("1. Sherlock Holmes (Person): A consulting detective."));
+        assertTrue(prompt.contains("2. Dr. Watson (Person): Friend and chronicler of Holmes."));
+        assertTrue(prompt.contains("1. Sherlock Holmes -[works_with]-> Dr. Watson: They solve cases together."));
+        String longDescription = MEMBERS.getFirst().description();
+        assertTrue(prompt.contains(longDescription.substring(0, OpenAiLlmPort.MAX_PROMPT_DESCRIPTION_CHARS)));
+        assertFalse(prompt.contains(longDescription.substring(0, OpenAiLlmPort.MAX_PROMPT_DESCRIPTION_CHARS + 1)));
+    }
+
+    @Test
+    void summarizeCommunityParsesTitleAndSummaryFromJsonModel() {
+        FakeChatModel json = new FakeChatModel(FinishReason.STOP,
+                "{\"title\":\"Baker Street Detectives\",\"summary\":\"Holmes and Watson solve cases.\"}",
+                OpenAiLlmPort.MAX_SUMMARY_OUTPUT_TOKENS);
+        OpenAiLlmPort port = new OpenAiLlmPort(json, new FakeChatModel(FinishReason.STOP, ""));
+
+        CommunitySummary summary = port.summarizeCommunity(MEMBERS, RELATIONSHIPS);
+
+        assertEquals(new CommunitySummary("Baker Street Detectives", "Holmes and Watson solve cases."), summary);
+        assertEquals(1, json.requests.size());
+        assertTrue(json.requests.getFirst().contains("Dr. Watson"));
+    }
+
+    @Test
+    void summarizeCommunityTrimsLongTitlesToSixWords() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP,
+                "```json\n{\"title\":\"One two three four five six seven eight nine\",\"summary\":\"S.\"}\n```",
+                OpenAiLlmPort.MAX_SUMMARY_OUTPUT_TOKENS), new FakeChatModel(FinishReason.STOP, ""));
+
+        assertEquals("One two three four five six", port.summarizeCommunity(MEMBERS, RELATIONSHIPS).title());
+    }
+
+    @Test
+    void summarizeCommunityFallsBackToDeterministicSummaryWhenBlankAndEmptiesBlankTitle() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP,
+                "{\"title\":\"  \",\"summary\":\"\"}", OpenAiLlmPort.MAX_SUMMARY_OUTPUT_TOKENS),
+                new FakeChatModel(FinishReason.STOP, ""));
+
+        CommunitySummary summary = port.summarizeCommunity(MEMBERS, RELATIONSHIPS);
+
+        assertEquals("", summary.title());
+        assertEquals("This community centers on Sherlock Holmes, Dr. Watson.", summary.summary());
+    }
+
+    @Test
+    void summarizeCommunityThrowsOnInvalidJson() {
+        OpenAiLlmPort port = new OpenAiLlmPort(new FakeChatModel(FinishReason.STOP,
+                "Here is a summary, not JSON.", OpenAiLlmPort.MAX_SUMMARY_OUTPUT_TOKENS),
+                new FakeChatModel(FinishReason.STOP, ""));
+
+        OpenAiLlmPort.LlmCallFailedException failure = assertThrows(OpenAiLlmPort.LlmCallFailedException.class,
+                () -> port.summarizeCommunity(MEMBERS, RELATIONSHIPS));
+
+        assertTrue(failure.getMessage().contains("not valid JSON"));
+    }
+
+    @Test
+    void summarizeCommunityWrapsModelFailures() {
+        ChatModel failing = new ChatModel() {
+            @Override
+            public ChatResponse chat(ChatRequest request) {
+                throw new IllegalStateException("boom");
+            }
+        };
+        OpenAiLlmPort port = new OpenAiLlmPort(failing, new FakeChatModel(FinishReason.STOP, ""));
+
+        assertThrows(OpenAiLlmPort.LlmCallFailedException.class,
+                () -> port.summarizeCommunity(MEMBERS, RELATIONSHIPS));
+    }
+
     private static final class FakeChatModel implements ChatModel {
         private final FinishReason finishReason;
         private final String text;
+        private final int expectedMaxOutputTokens;
+        private final List<String> requests = new ArrayList<>();
 
         private FakeChatModel(FinishReason finishReason, String text) {
+            this(finishReason, text, OpenAiLlmPort.MAX_EXTRACTION_OUTPUT_TOKENS);
+        }
+
+        private FakeChatModel(FinishReason finishReason, String text, int expectedMaxOutputTokens) {
             this.finishReason = finishReason;
             this.text = text;
+            this.expectedMaxOutputTokens = expectedMaxOutputTokens;
         }
 
         @Override
         public ChatResponse chat(ChatRequest request) {
-            assertEquals(Integer.valueOf(OpenAiLlmPort.MAX_EXTRACTION_OUTPUT_TOKENS), request.maxOutputTokens());
+            assertEquals(Integer.valueOf(expectedMaxOutputTokens), request.maxOutputTokens());
             assertEquals(1, request.messages().size());
+            requests.add(((dev.langchain4j.data.message.UserMessage) request.messages().getFirst()).singleText());
             return ChatResponse.builder()
                     .aiMessage(AiMessage.from(text))
                     .finishReason(finishReason)

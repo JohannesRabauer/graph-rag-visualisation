@@ -1,7 +1,9 @@
 package com.graphraglens.adapter.langchain4j;
 
+import io.graphrag.core.domain.CommunitySummary;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
+import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.usecase.EntityTypes;
 import io.graphrag.core.domain.UploadedDocument;
@@ -43,5 +45,21 @@ class LangChain4jLlmPortTest {
         assertEquals(extraction, port.extract(unit, EntityTypes.ALL), "the offline stub must stay deterministic");
         assertTrue(port.extract(new TextUnit("c1::doc-0::tu-2", "c1", "x.txt", 2, "  "), EntityTypes.ALL)
                 .entities().isEmpty());
+    }
+
+    @Test
+    void offlineStubReturnsTheSameDeterministicTitleAndSummaryTwice() {
+        LangChain4jLlmPort port = new LangChain4jLlmPort();
+        List<Entity> members = List.of(new Entity("Sherlock Holmes", "Person"), new Entity("Dr. Watson", "Person"),
+                new Entity("Baker Street", "Concept"));
+        List<Relationship> relationships = List.of(
+                new Relationship("Sherlock Holmes", "Person", "met", "Dr. Watson", "Person"));
+
+        CommunitySummary first = port.summarizeCommunity(members, relationships);
+        CommunitySummary second = port.summarizeCommunity(members, relationships);
+
+        assertEquals(first, second);
+        assertEquals("Sherlock Holmes & Dr. Watson", first.title());
+        assertEquals("This community centers on Sherlock Holmes, Dr. Watson, Baker Street.", first.summary());
     }
 }

@@ -1656,7 +1656,8 @@
         var payload = JSON.parse(event.data);
         var data = payload && payload.data;
         if (data && window.GraphCanvas) {
-          window.GraphCanvas.addCommunity(data.communityId, data.summary, data.memberEntityIdentities);
+          window.GraphCanvas.addCommunity(data.communityId, data.summary, data.memberEntityIdentities,
+              data.title);
         }
       } catch (e) {
         console.warn('Invalid SSE community-detected payload', e);
@@ -1962,7 +1963,8 @@
             });
             (body.communities || []).forEach(function (community) {
               window.GraphCanvas.addCommunity(
-                  community.communityId, community.summary, community.memberEntityIdentities);
+                  community.communityId, community.summary, community.memberEntityIdentities,
+                  community.title);
             });
           }
           setIngestionBusy(false);

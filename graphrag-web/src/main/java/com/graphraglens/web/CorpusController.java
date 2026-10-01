@@ -601,6 +601,7 @@ public class CorpusController {
     private Map<String, Object> communityEventPayload(Community community, List<String> memberEntityIdentities) {
         return Map.of(
                 "communityId", community.id(),
+                "title", community.title(),
                 "summary", community.summary(),
                 "memberEntityIdentities", memberEntityIdentities);
     }

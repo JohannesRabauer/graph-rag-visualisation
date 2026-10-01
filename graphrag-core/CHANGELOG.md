@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connected-components grouping `DetectCommunities` used before, so existing
   implementations need no change. A graph store may override it with a native
   algorithm (the Neo4j adapter uses GDS Leiden). Additive, minor change.
+- `Community.title()`: a short Community title. The canonical constructor is
+  now `Community(id, title, summary)` (a null title becomes `""`); the
+  `Community(id, summary)` constructor remains and sets an empty title.
+- `CommunitySummary(title, summary)` value record, with `trimTitle(...)`
+  (at most 6 words) and `deterministicTitle(members)` (first two distinct
+  member names joined with " & ", or "Related entities").
+- `LlmPort.summarizeCommunity(Collection<Entity> members,
+  Collection<Relationship> relationships)`: writes a Community's title and
+  summary from its members and internal Relationships. The default wraps the
+  existing `summarizeCommunity(members)` with the deterministic title, so
+  existing implementations need no change. Additive, minor change.
 
 ### Changed
 
@@ -28,6 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   order instead of BFS discovery order; this also changes the order of the
   `onCommunityDetected` member lists, of the persisted memberships, and of the
   names in the fallback (no-LLM) summary.
+- **Breaking for record patterns:** `Community`'s record components and
+  canonical constructor are now `(id, title, summary)` instead of
+  `(id, summary)`. Record patterns and deconstruction that use two components
+  (e.g. `case Community(var id, var summary)`) no longer compile and must add
+  the `title` component. The `Community(id, summary)` constructor still
+  compiles and sets an empty title.
+- `DetectCommunities` now calls the new two-argument `summarizeCommunity`
+  with the Community's first 25 members (entity order) and its internal
+  Relationships (both endpoints among those 25 members), the 30 highest-weight
+  first with ties in stored order, and stores the returned title on each
+  Community. A port returning null gets the deterministic title and summary.
+  It reads `relationships(corpusId)` once per detection run.
 
 ## [1.0.0] - 2026-09-27
 

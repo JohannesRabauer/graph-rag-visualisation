@@ -246,6 +246,26 @@ class Neo4jGraphStoreAdapterTest {
     }
 
     @Test
+    void communityTitleRoundTripsAndATitleLessNodeReadsAsEmpty() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-title-" + System.nanoTime();
+
+        adapter.persistCommunities(corpusId, List.of(
+                new Community("community-1", "Baker Street Detectives", "Holmes and Watson solve cases.")));
+        try (var session = driver.session()) {
+            session.executeWrite(tx -> tx.run(
+                    "CREATE (:Community {corpusId: $corpusId, id: 'community-2', summary: 'Old summary'})",
+                    Map.of("corpusId", corpusId)).consume());
+        }
+
+        Map<String, Community> byId = new java.util.HashMap<>();
+        adapter.communities(corpusId).forEach(community -> byId.put(community.id(), community));
+        assertEquals(new Community("community-1", "Baker Street Detectives", "Holmes and Watson solve cases."),
+                byId.get("community-1"));
+        assertEquals(new Community("community-2", "", "Old summary"), byId.get("community-2"));
+    }
+
+    @Test
     void unscopedLegacyCallsThrow() {
         Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
 

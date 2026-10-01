@@ -3,13 +3,17 @@ package io.graphrag.core.usecase;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
+import io.graphrag.core.domain.CommunitySummary;
 import io.graphrag.core.domain.Entity;
+import io.graphrag.core.domain.GraphExtraction;
 import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.UploadedDocument;
 import io.graphrag.core.port.GraphStorePort;
+import io.graphrag.core.port.LlmPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -146,6 +150,183 @@ class DetectCommunitiesTest {
         assertEquals(List.of(id("A1"), id("A2"), id("A3"), id("A4"), id("B1"), id("B2"), id("B3"), id("B4")),
                 callbackInvocations.get("community-1"));
         assertEquals(List.of(id("Loner")), callbackInvocations.get("community-2"));
+    }
+
+    @Test
+    void handsTheLlmOnlyInternalRelationshipsWithDescriptions() {
+        List<Entity> entities = List.of(
+                new Entity("A", "Node", "Alpha node", List.of()),
+                new Entity("B", "Node", "Beta node", List.of()),
+                new Entity("X", "Node", "Outsider", List.of()));
+        Relationship internal = new Relationship("A", "Node", "links", "B", "Node", "A links B", List.of(), 2);
+        Relationship external = new Relationship("A", "Node", "links", "X", "Node", "A links X", List.of(), 5);
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, List.of(internal, external)) {
+            @Override
+            public List<List<String>> detectCommunities(String corpusId) {
+                return List.of(List.of(id("A"), id("B")), List.of(id("X")));
+            }
+        };
+        RecordingLlm llm = new RecordingLlm();
+
+        new DetectCommunities(graphStore, llm).detect(corpus());
+
+        assertEquals(List.of("Alpha node", "Beta node"),
+                llm.memberCalls.get(0).stream().map(Entity::description).toList());
+        assertEquals(List.of(internal), llm.relationshipCalls.get(0));
+        assertEquals(List.of(), llm.relationshipCalls.get(1));
+    }
+
+    @Test
+    void capsInternalRelationshipsToTheThirtyHighestWeightsKeepingStoredOrderOnTies() {
+        List<Entity> entities = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            entities.add(new Entity("N" + i, "Node"));
+        }
+        List<Relationship> relationships = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            int weight = (i % 4) + 1;
+            relationships.add(new Relationship("N" + (i % 10), "Node", "rel" + i, "N" + ((i + 1) % 10), "Node",
+                    "", List.of(), weight));
+        }
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, relationships);
+        RecordingLlm llm = new RecordingLlm();
+
+        new DetectCommunities(graphStore, llm).detect(corpus());
+
+        List<Relationship> passed = llm.relationshipCalls.get(0);
+        assertEquals(30, passed.size());
+        List<Relationship> expected = new ArrayList<>(relationships);
+        expected.sort(java.util.Comparator.comparingInt(Relationship::weight).reversed());
+        assertEquals(expected.subList(0, 30), passed);
+        // Ties keep stored order: the weight-4 group is rel3, rel7, rel11, ...
+        assertEquals("rel3", passed.get(0).type());
+        assertEquals("rel7", passed.get(1).type());
+    }
+
+    @Test
+    void capsMembersHandedToTheLlmToTheFirstTwentyFiveInEntityOrder() {
+        List<Entity> entities = new ArrayList<>();
+        List<Relationship> relationships = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            entities.add(new Entity("M" + i, "Node"));
+            if (i > 0) {
+                relationships.add(new Relationship("M0", "Node", "links", "M" + i, "Node"));
+            }
+        }
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, relationships);
+        RecordingLlm llm = new RecordingLlm();
+
+        List<Community> communities = new DetectCommunities(graphStore, llm).detect(corpus());
+
+        assertEquals(1, communities.size());
+        assertEquals(entities.subList(0, 25), llm.memberCalls.get(0));
+        java.util.Set<String> passedIdentities = new java.util.HashSet<>();
+        llm.memberCalls.get(0).forEach(member -> passedIdentities.add(member.normalizedIdentity()));
+        assertEquals(24, llm.relationshipCalls.get(0).size());
+        for (Relationship relationship : llm.relationshipCalls.get(0)) {
+            assertTrue(passedIdentities.contains(Entity.identityOf(relationship.source(), relationship.sourceType())));
+            assertTrue(passedIdentities.contains(Entity.identityOf(relationship.target(), relationship.targetType())));
+        }
+    }
+
+    @Test
+    void aPortReturningNullGetsTheDeterministicTitleAndSummaryWithoutASecondCall() {
+        RecordingGraphStore graphStore = new RecordingGraphStore(
+                List.of(new Entity("Sherlock Holmes", "Person"), new Entity("Dr. Watson", "Person")),
+                List.of(new Relationship("Sherlock Holmes", "Person", "knows", "Dr. Watson", "Person")));
+        List<Collection<Entity>> namesOnlyCalls = new ArrayList<>();
+        LlmPort nullPort = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return new GraphExtraction(List.of(), List.of());
+            }
+
+            @Override
+            public CommunitySummary summarizeCommunity(Collection<Entity> members,
+                                                       Collection<Relationship> relationships) {
+                return null;
+            }
+
+            @Override
+            public String summarizeCommunity(Collection<Entity> members) {
+                namesOnlyCalls.add(members);
+                return "second call";
+            }
+        };
+
+        Community community = new DetectCommunities(graphStore, nullPort).detect(corpus()).get(0);
+
+        assertEquals(new Community("community-1", "Sherlock Holmes & Dr. Watson",
+                "This community centers on Sherlock Holmes, Dr. Watson."), community);
+        assertTrue(namesOnlyCalls.isEmpty());
+    }
+
+    @Test
+    void trimTitleSplitsOnAnyWhitespaceAndSingleSpacesTheResult() {
+        assertEquals("One Two Three Four Five Six",
+                CommunitySummary.trimTitle(" One\tTwo\nThree  Four\r\nFive\tSix Seven "));
+        assertEquals("Baker Street", CommunitySummary.trimTitle("Baker\t\nStreet"));
+    }
+
+    @Test
+    void setsTheTitleAndSummaryReturnedByThePort() {
+        RecordingGraphStore graphStore = new RecordingGraphStore(
+                List.of(new Entity("Sherlock Holmes", "Person"), new Entity("Dr. Watson", "Person")),
+                List.of(new Relationship("Sherlock Holmes", "Person", "knows", "Dr. Watson", "Person")));
+        RecordingLlm llm = new RecordingLlm();
+        llm.response = new CommunitySummary("Baker Street Detectives", "Holmes and Watson solve cases together.");
+
+        List<Community> communities = new DetectCommunities(graphStore, llm).detect(corpus());
+
+        assertEquals(new Community("community-1", "Baker Street Detectives",
+                "Holmes and Watson solve cases together."), communities.get(0));
+        assertEquals(communities, graphStore.persistedCommunities);
+    }
+
+    @Test
+    void usesTheDeterministicDefaultTitleWithAndWithoutALlmPort() {
+        List<Entity> entities = List.of(
+                new Entity("Sherlock Holmes", "Person"), new Entity("Dr. Watson", "Person"),
+                new Entity("Baker Street", "Location"));
+        List<Relationship> relationships = List.of(
+                new Relationship("Sherlock Holmes", "Person", "knows", "Dr. Watson", "Person"),
+                new Relationship("Sherlock Holmes", "Person", "lives_at", "Baker Street", "Location"));
+        LlmPort defaultPort = corpus -> new GraphExtraction(List.of(), List.of());
+
+        Community withoutPort = new DetectCommunities(new RecordingGraphStore(entities, relationships))
+                .detect(corpus()).get(0);
+        Community withDefaultPort = new DetectCommunities(new RecordingGraphStore(entities, relationships), defaultPort)
+                .detect(corpus()).get(0);
+
+        assertEquals("Sherlock Holmes & Dr. Watson", withoutPort.title());
+        assertEquals("Sherlock Holmes & Dr. Watson", withDefaultPort.title());
+        assertTrue(withDefaultPort.summary().startsWith("This community centers on Sherlock Holmes"));
+        assertEquals("Related entities", CommunitySummary.deterministicTitle(List.of()));
+        assertEquals("One Two Three & Four Five",
+                CommunitySummary.deterministicTitle(List.of(new Entity("One Two Three", "X"),
+                        new Entity("Four Five Six Seven", "X"))));
+    }
+
+    private static Corpus corpus() {
+        return new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content")));
+    }
+
+    private static class RecordingLlm implements LlmPort {
+        private final List<List<Entity>> memberCalls = new ArrayList<>();
+        private final List<List<Relationship>> relationshipCalls = new ArrayList<>();
+        private CommunitySummary response;
+
+        @Override
+        public GraphExtraction extract(Corpus corpus) {
+            return new GraphExtraction(List.of(), List.of());
+        }
+
+        @Override
+        public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
+            memberCalls.add(List.copyOf(members));
+            relationshipCalls.add(List.copyOf(relationships));
+            return response != null ? response : LlmPort.super.summarizeCommunity(members, relationships);
+        }
     }
 
     private static List<Relationship> clique(String... names) {

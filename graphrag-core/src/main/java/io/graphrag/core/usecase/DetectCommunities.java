@@ -3,17 +3,22 @@ package io.graphrag.core.usecase;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Community;
 import io.graphrag.core.domain.CommunityMembership;
+import io.graphrag.core.domain.CommunitySummary;
 import io.graphrag.core.domain.Entity;
+import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.port.GraphStorePort;
 import io.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 
 /**
@@ -29,6 +34,11 @@ import java.util.function.BiConsumer;
  * the port leaves out of every group becomes its own single-member Community.</p>
  */
 public class DetectCommunities {
+
+    /** At most this many members (in entity order) are handed to the LLM per Community. */
+    static final int MAX_SUMMARY_MEMBERS = 25;
+    /** At most this many internal Relationships (highest weight first) are handed to the LLM per Community. */
+    static final int MAX_SUMMARY_RELATIONSHIPS = 30;
 
     private final GraphStorePort graphStorePort;
     private final LlmPort llmPort;
@@ -67,11 +77,12 @@ public class DetectCommunities {
 
         List<Community> communities = new ArrayList<>();
         List<CommunityMembership> memberships = new ArrayList<>();
+        List<Relationship> allRelationships = storedRelationships(corpus.id());
         int index = 1;
         for (List<Entity> members : groups) {
             String communityId = "community-" + index++;
-            String summary = summarizeCommunity(members);
-            communities.add(new Community(communityId, summary));
+            CommunitySummary generated = summarizeCommunity(members, allRelationships);
+            communities.add(new Community(communityId, generated.title(), generated.summary()));
             for (Entity member : members) {
                 memberships.add(new CommunityMembership(communityId, member.normalizedIdentity()));
             }
@@ -104,10 +115,51 @@ public class DetectCommunities {
         detect(corpus, onCommunityDetected);
     }
 
-    private String summarizeCommunity(List<Entity> members) {
-        if (llmPort != null) {
-            return llmPort.summarizeCommunity(members);
+    private List<Relationship> storedRelationships(String corpusId) {
+        Collection<Relationship> stored = graphStorePort.relationships(corpusId);
+        if (stored == null) {
+            return List.of();
         }
+        return stored.stream().filter(Objects::nonNull).toList();
+    }
+
+    /**
+     * Summarizes one Community from its first {@value #MAX_SUMMARY_MEMBERS} members
+     * and its internal Relationships (both endpoints among those passed members), the
+     * {@value #MAX_SUMMARY_RELATIONSHIPS} highest-weight first, ties in stored order.
+     * A port returning null gets the deterministic title and summary (no second call).
+     */
+    private CommunitySummary summarizeCommunity(List<Entity> members, List<Relationship> allRelationships) {
+        List<Entity> cappedMembers = members.stream().limit(MAX_SUMMARY_MEMBERS).toList();
+        CommunitySummary generated = llmPort == null ? null
+                : llmPort.summarizeCommunity(cappedMembers, internalRelationships(cappedMembers, allRelationships));
+        if (generated == null) {
+            return new CommunitySummary(CommunitySummary.deterministicTitle(cappedMembers),
+                    fallbackSummary(cappedMembers));
+        }
+        return generated;
+    }
+
+    static List<Relationship> internalRelationships(List<Entity> members, List<Relationship> relationships) {
+        Set<String> memberIdentities = new HashSet<>();
+        for (Entity member : members) {
+            memberIdentities.add(member.normalizedIdentity());
+        }
+        // List.sort is stable, so ties keep stored order.
+        List<Relationship> internal = new ArrayList<>();
+        for (Relationship relationship : relationships) {
+            if (memberIdentities.contains(Entity.identityOf(relationship.source(), relationship.sourceType()))
+                    && memberIdentities.contains(Entity.identityOf(relationship.target(), relationship.targetType()))) {
+                internal.add(relationship);
+            }
+        }
+        internal.sort(Comparator.comparingInt(Relationship::weight).reversed());
+        return internal.size() > MAX_SUMMARY_RELATIONSHIPS
+                ? List.copyOf(internal.subList(0, MAX_SUMMARY_RELATIONSHIPS))
+                : List.copyOf(internal);
+    }
+
+    private static String fallbackSummary(List<Entity> members) {
         if (members == null || members.isEmpty()) {
             return "A small connected cluster of related entities.";
         }

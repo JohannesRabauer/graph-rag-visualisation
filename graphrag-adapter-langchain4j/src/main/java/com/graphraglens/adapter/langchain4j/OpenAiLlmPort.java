@@ -2,6 +2,7 @@ package com.graphraglens.adapter.langchain4j;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.graphrag.core.domain.CommunitySummary;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
@@ -43,6 +44,8 @@ public class OpenAiLlmPort implements LlmPort {
 
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
     static final int MAX_EXTRACTION_OUTPUT_TOKENS = 4096;
+    static final int MAX_SUMMARY_OUTPUT_TOKENS = 512;
+    static final int MAX_PROMPT_DESCRIPTION_CHARS = 300;
 
     private final ChatModel jsonChatModel;
     private final ChatModel textChatModel;
@@ -195,6 +198,127 @@ public class OpenAiLlmPort implements LlmPort {
         } catch (RuntimeException e) {
             throw new LlmCallFailedException("OpenAI community summarization call failed", e);
         }
+    }
+
+    /**
+     * Story 14.2: one JSON-mode OpenAI call that writes a Community's title and
+     * 2-4 sentence summary from its members and internal Relationships (both
+     * already capped by the caller). No retries; a failed call or a non-JSON
+     * response surfaces as {@link LlmCallFailedException}. A blank summary
+     * falls back to the deterministic one; the title is trimmed to six words.
+     */
+    @Override
+    public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
+        if (members == null || members.isEmpty()) {
+            return LlmPort.super.summarizeCommunity(members, relationships);
+        }
+
+        ChatResponse response;
+        try {
+            response = jsonChatModel.chat(ChatRequest.builder()
+                    .messages(UserMessage.from(communitySummaryPrompt(members, relationships)))
+                    .maxOutputTokens(MAX_SUMMARY_OUTPUT_TOKENS)
+                    .build());
+        } catch (RuntimeException e) {
+            throw new LlmCallFailedException("OpenAI community summarization call failed", e);
+        }
+        if (response != null && response.finishReason() == FinishReason.LENGTH) {
+            throw new LlmCallFailedException("OpenAI community summary response hit the output-token limit ("
+                    + MAX_SUMMARY_OUTPUT_TOKENS + ")", null);
+        }
+
+        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
+        return parseCommunitySummary(text, members);
+    }
+
+    /**
+     * Builds the community-summary prompt: numbered members and numbered
+     * internal Relationships, each description truncated to
+     * {@value #MAX_PROMPT_DESCRIPTION_CHARS} characters. Package-private so
+     * tests can check it without a network call.
+     */
+    String communitySummaryPrompt(Collection<Entity> members, Collection<Relationship> relationships) {
+        StringBuilder memberLines = new StringBuilder();
+        int index = 1;
+        for (Entity member : members) {
+            if (member == null) {
+                continue;
+            }
+            memberLines.append(index++).append(". ").append(member.name())
+                    .append(" (").append(member.type()).append(")");
+            String description = truncate(member.description());
+            if (!description.isEmpty()) {
+                memberLines.append(": ").append(description);
+            }
+            memberLines.append('\n');
+        }
+
+        StringBuilder relationshipLines = new StringBuilder();
+        index = 1;
+        if (relationships != null) {
+            for (Relationship relationship : relationships) {
+                if (relationship == null) {
+                    continue;
+                }
+                relationshipLines.append(index++).append(". ").append(relationship.source())
+                        .append(" -[").append(relationship.type()).append("]-> ").append(relationship.target());
+                String description = truncate(relationship.description());
+                if (!description.isEmpty()) {
+                    relationshipLines.append(": ").append(description);
+                }
+                relationshipLines.append('\n');
+            }
+        }
+        if (relationshipLines.isEmpty()) {
+            relationshipLines.append("(none)\n");
+        }
+
+        return """
+                You summarize one community of a knowledge graph. Using only the members and \
+                relationships below, write a short title (at most 6 words) naming what the community \
+                is about, and a summary of 2 to 4 sentences describing what connects its members.
+
+                Respond with strict JSON only (no markdown, no commentary) using exactly this shape:
+                { "title": "string", "summary": "string" }
+
+                Members:
+                %s
+                Relationships:
+                %s""".formatted(memberLines, relationshipLines);
+    }
+
+    CommunitySummary parseCommunitySummary(String response, Collection<Entity> members) {
+        if (response == null || response.isBlank()) {
+            throw new LlmCallFailedException("OpenAI community summary response was empty", null);
+        }
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(stripMarkdownFences(response));
+        } catch (Exception e) {
+            throw new LlmCallFailedException("OpenAI community summary response was not valid JSON: " + response, e);
+        }
+        if (root == null || !root.isObject()) {
+            throw new LlmCallFailedException("OpenAI community summary response was not a JSON object: " + response,
+                    null);
+        }
+        JsonNode titleNode = root.path("title");
+        JsonNode summaryNode = root.path("summary");
+        String title = titleNode.isTextual() ? CommunitySummary.trimTitle(titleNode.asText()) : "";
+        String summary = summaryNode.isTextual() ? summaryNode.asText().trim() : "";
+        if (summary.isEmpty()) {
+            summary = LlmPort.super.summarizeCommunity(members);
+        }
+        return new CommunitySummary(title, summary);
+    }
+
+    private static String truncate(String text) {
+        if (text == null) {
+            return "";
+        }
+        String trimmed = text.trim();
+        return trimmed.length() <= MAX_PROMPT_DESCRIPTION_CHARS
+                ? trimmed
+                : trimmed.substring(0, MAX_PROMPT_DESCRIPTION_CHARS);
     }
 
     GraphExtraction parseExtraction(String response) {

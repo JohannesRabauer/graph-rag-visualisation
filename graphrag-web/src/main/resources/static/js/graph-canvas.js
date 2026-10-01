@@ -921,20 +921,32 @@
     queueLayout();
   }
 
-  function addCommunity(communityId, summary, memberEntityIdentities) {
+  // Story 14.2: the Community's short title names it in the legend, on its
+  // hull and in the detail panel; an empty title (older corpora) falls back
+  // to the summary-derived `legendLabel`.
+  function communityDisplayName(communityId, summary, title) {
+    var trimmedTitle = typeof title === 'string' ? title.trim() : '';
+    return trimmedTitle || legendLabel(communityId, summary);
+  }
+
+  function addCommunity(communityId, summary, memberEntityIdentities, title) {
     if (!cy || !communityId) {
       return;
     }
     setEmptyState(null);
     var colors = communityColors(communityId);
     var parentId = 'community::' + communityId;
+    var displayName = communityDisplayName(communityId, summary, title);
 
-    if (cy.getElementById(parentId).length === 0) {
+    var existingHull = cy.getElementById(parentId);
+    if (existingHull.length > 0) {
+      existingHull.data({ label: displayName, summary: summary });
+    } else {
       cy.add({
         group: 'nodes',
         data: {
           id: parentId,
-          label: communityId,
+          label: displayName,
           summary: summary,
           hullFill: colors.fill,
           labelColor: colors.labelColor
@@ -951,7 +963,7 @@
     });
 
     communityLegendEntries[communityId] = {
-      name: legendLabel(communityId, summary),
+      name: displayName,
       fullSummary: summary || communityId,
       fill: colors.fill,
       labelColor: colors.labelColor
@@ -1474,6 +1486,19 @@
     return hull.numericStyle('background-opacity');
   }
 
+  // Test-support only: the label text a Community hull carries (its title,
+  // or the summary-derived fallback), or null when no such hull exists.
+  function communityHullLabel(communityId) {
+    if (!cy || !communityId) {
+      return null;
+    }
+    var hull = cy.getElementById('community::' + communityId);
+    if (!hull || hull.length === 0) {
+      return null;
+    }
+    return hull.data('label');
+  }
+
   // Test-support only: the raw communityId (no `community::` prefix) the
   // given Entity is currently parented under, i.e. which rendered hull it
   // belongs to — reads Cytoscape's own compound-node structure directly
@@ -1700,6 +1725,7 @@
     fitToView: fitToView,
     simulateTap: simulateTap,
     communityHullOpacity: communityHullOpacity,
+    communityHullLabel: communityHullLabel,
     communityIdForEntity: communityIdForEntity,
     elementHasClass: elementHasClass,
     entityNodeFillColor: entityNodeFillColor,

@@ -404,7 +404,8 @@ class CorpusControllerTest {
                 "description");
 
         Map<String, Object> communityPayload = payloads.get(eventTypes.indexOf("community-detected"));
-        assertThat(communityPayload).containsKeys("communityId", "summary", "memberEntityIdentities");
+        assertThat(communityPayload).containsKeys("communityId", "title", "summary", "memberEntityIdentities");
+        assertThat((String) communityPayload.get("title")).isNotBlank();
     }
 
     @Test
@@ -1092,8 +1093,11 @@ class CorpusControllerTest {
                         org.hamcrest.Matchers.hasKey("description"))))
                 .andExpect(jsonPath("$.communities[0]", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.hasKey("communityId"),
+                        org.hamcrest.Matchers.hasKey("title"),
                         org.hamcrest.Matchers.hasKey("summary"),
                         org.hamcrest.Matchers.hasKey("memberEntityIdentities"))))
+                .andExpect(jsonPath("$.communities[0].title").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.blankOrNullString())))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();

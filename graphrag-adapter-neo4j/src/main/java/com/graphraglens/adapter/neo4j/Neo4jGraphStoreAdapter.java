@@ -273,10 +273,11 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                     if (community == null) {
                         continue;
                     }
-                    tx.run("MERGE (c:Community {corpusId: $corpusId, id: $id}) SET c.summary = $summary",
+                    tx.run("MERGE (c:Community {corpusId: $corpusId, id: $id}) SET c.title = $title, c.summary = $summary",
                             Map.of(
                                     "corpusId", corpusId,
                                     "id", community.id(),
+                                    "title", community.title(),
                                     "summary", community.summary()));
                 }
                 return null;
@@ -417,8 +418,9 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
             return session.executeRead(tx -> {
                 List<Community> result = new ArrayList<>();
                 for (Record record : tx.run("MATCH (c:Community {corpusId: $corpusId}) RETURN c.id AS id, "
-                        + "c.summary AS summary", Map.of("corpusId", corpusId)).list()) {
-                    result.add(new Community(record.get("id").asString(), record.get("summary").asString()));
+                        + "coalesce(c.title, '') AS title, c.summary AS summary", Map.of("corpusId", corpusId)).list()) {
+                    result.add(new Community(record.get("id").asString(), record.get("title").asString(),
+                            record.get("summary").asString()));
                 }
                 return result;
             });

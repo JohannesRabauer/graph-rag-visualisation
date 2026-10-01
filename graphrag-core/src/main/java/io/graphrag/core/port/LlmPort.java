@@ -2,9 +2,11 @@ package io.graphrag.core.port;
 
 import io.graphrag.core.domain.Chunk;
 import io.graphrag.core.domain.Community;
+import io.graphrag.core.domain.CommunitySummary;
 import io.graphrag.core.domain.Corpus;
 import io.graphrag.core.domain.Entity;
 import io.graphrag.core.domain.GraphExtraction;
+import io.graphrag.core.domain.Relationship;
 import io.graphrag.core.domain.TextUnit;
 import io.graphrag.core.domain.UploadedDocument;
 
@@ -57,6 +59,23 @@ public interface LlmPort {
                 .orElse("related entities");
 
         return "This community centers on " + names + ".";
+    }
+
+    /**
+     * Writes a Community's title and summary from its members (with
+     * descriptions) and its internal Relationships (both endpoints are
+     * members, with descriptions). Callers cap both collections.
+     *
+     * <p>The default wraps {@link #summarizeCommunity(Collection)} with the
+     * deterministic title from {@link CommunitySummary#deterministicTitle(Collection)},
+     * so existing implementations and lambdas keep working.
+     *
+     * @param members       the Community's members, in entity order; never null
+     * @param relationships the internal Relationships, highest weight first; never null
+     * @return the title and summary; never null
+     */
+    default CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
+        return new CommunitySummary(CommunitySummary.deterministicTitle(members), summarizeCommunity(members));
     }
 
     default List<String> deriveDriftSubQuestions(String question, Collection<Community> communities) {

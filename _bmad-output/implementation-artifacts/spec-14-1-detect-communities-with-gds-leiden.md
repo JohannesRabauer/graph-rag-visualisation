@@ -169,3 +169,5 @@ Status: done
 **Residual risks:**
 - Test containers download the GDS plugin at startup, which needs network access and makes startup slower.
 - Leiden may group the demo corpus differently, so UI tests that assume specific demo community layouts could shift in CI.
+
+**Correction (2026-10-01, after Story 14.2):** the 5 UI failures listed above as "baseline" were caused by `OPENAI_API_KEY` being set in the local shell, which made the Spring/UI tests call the real LLM. With the key unset, as in CI, the full `mvn -B install` passes with 0 failures.

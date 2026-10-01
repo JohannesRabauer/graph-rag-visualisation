@@ -133,9 +133,9 @@ development_status:
   13-4-show-descriptions-and-source-passages-in-the-detail-panel: done
   epic-13-retrospective: optional
 
-  epic-14: in-progress
+  epic-14: done
   14-1-detect-communities-with-gds-leiden: done
-  14-2-write-community-summaries-from-their-content: backlog
+  14-2-write-community-summaries-from-their-content: done
   epic-14-retrospective: optional
 
   epic-15: backlog
