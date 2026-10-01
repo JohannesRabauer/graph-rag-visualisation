@@ -446,20 +446,71 @@ body {
    DESIGN.md `components.graph-canvas`: "a legend row lists visible
    Community names with color swatches" whenever hulls are shown. A row of
    small pills, one per visible Community, monospace labels matching the
-   corpus-chip/step-badge treatment. */
+   corpus-chip/step-badge treatment.
+   Always exactly one line (a real corpus can have dozens of Communities):
+   the legend box spans the canvas up to the help button, the chips wrap
+   inside .graph-legend-chips, and graph-canvas.js's `layoutLegend` hides
+   every chip that lands past the first line — largest Communities first —
+   and counts them on the trailing "+N · All communities" button. The box
+   itself lets clicks through to the canvas; only its buttons take them. */
 .graph-legend {
   position: absolute;
   left: var(--space-5);
   bottom: var(--space-4);
   z-index: 2;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: var(--space-2);
-  max-width: calc(100% - var(--space-8));
+  /* Ends a gap short of the floating help button (22px at right: --space-5). */
+  width: calc(100% - var(--space-5) - var(--space-5) - 22px - var(--space-2));
+  pointer-events: none;
 }
 
 .graph-legend[hidden] {
   display: none;
+}
+
+.graph-legend-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.graph-legend-item[hidden] {
+  display: none;
+}
+
+.graph-legend-item,
+.graph-legend-more {
+  pointer-events: auto;
+}
+
+.graph-legend-more {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--accent);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.graph-legend-more:hover {
+  border-color: var(--accent);
+}
+
+.graph-legend-more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .graph-legend-item {
@@ -1993,7 +2044,7 @@ body {
 }
 
 .graph-stage:has(.node-detail-panel.is-open) .graph-legend {
-  max-width: calc(100% - 300px - var(--space-8));
+  width: calc(100% - 300px - var(--space-5) - var(--space-5));
 }
 
 .node-detail-close {
@@ -2146,6 +2197,65 @@ body {
   color: var(--ink-900);
 }
 
+/* "All communities" list mode of the detail panel (upload.js
+   `openCommunityListPanel`): one pill-shaped row button per Community,
+   largest first, with the legend's swatch, its name and member count. */
+.node-detail-communities {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.node-detail-community-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 10px);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.node-detail-community-row:hover {
+  border-color: var(--ink-400);
+}
+
+.node-detail-community-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Titles wrap to at most two lines in the narrow panel instead of being
+   cut to a few characters; longer ones still end in an ellipsis. */
+.node-detail-community-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-align: left;
+}
+
+.node-detail-community-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  color: var(--ink-400);
+}
+
 /* ---- error banner ----
    DESIGN.md `components.error-banner`: Active-soft fill, Active border,
    plain-language message, no icon glyphs beyond the warm-color cue. */
@@ -2201,6 +2311,10 @@ body {
 
   .node-detail-panel {
     width: 260px;
+  }
+
+  .graph-stage:has(.node-detail-panel.is-open) .graph-legend {
+    width: calc(100% - 260px - var(--space-5) - var(--space-5));
   }
 
   .drift-pane {
@@ -2270,6 +2384,7 @@ body {
 
   .graph-legend {
     left: var(--space-3);
+    width: calc(100% - var(--space-3) - var(--space-5) - 22px - var(--space-2));
   }
 
   .replay-scrubber {

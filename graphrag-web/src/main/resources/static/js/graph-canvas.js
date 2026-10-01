@@ -26,6 +26,15 @@
   // so registering before or after `init()` both work.
   var nodeTapCallback = null;
   var communityTapCallback = null;
+  // The legend's trailing "All communities" button (see `renderLegend`);
+  // upload.js registers it to open the detail panel's community list.
+  var allCommunitiesCallback = null;
+  // The legend chip currently marked active, kept so a re-render (another
+  // Community streaming in) does not drop the selection highlight.
+  var activeLegendCommunityId = null;
+  // Re-fits the one-line legend whenever its box changes width (window
+  // resize, the detail panel opening/closing narrows it via CSS).
+  var legendResizeObserver = null;
   var backgroundTapCallback = null;
   // Roving-focus state for keyboard navigation (see `init`'s container
   // keydown wiring below): the id of the node currently carrying the
@@ -171,6 +180,7 @@
     }
 
     communityLegendEntries = {};
+    activeLegendCommunityId = null;
     hullsVisible = true;
     entityTypeColoringEnabled = true;
     focusedNodeId = null;
@@ -653,6 +663,7 @@
   }
 
   function setLegendActiveCommunity(communityId) {
+    activeLegendCommunityId = communityId || null;
     var legend = legendContainer();
     if (!legend) {
       return;
@@ -666,6 +677,41 @@
 
   function onCommunityTap(callback) {
     communityTapCallback = typeof callback === 'function' ? callback : null;
+  }
+
+  function onAllCommunities(callback) {
+    allCommunitiesCallback = typeof callback === 'function' ? callback : null;
+  }
+
+  // Every Community currently in the legend, largest (most member Entities)
+  // first: the order of both the legend chips and the detail panel's
+  // "All communities" list.
+  function listCommunities() {
+    return sortedCommunityIds().map(function (communityId) {
+      var entry = communityLegendEntries[communityId];
+      return {
+        communityId: communityId,
+        name: entry.name,
+        summary: entry.fullSummary,
+        memberCount: entry.memberCount,
+        fill: entry.fill,
+        labelColor: entry.labelColor
+      };
+    });
+  }
+
+  // Focuses a Community and opens its detail view exactly as tapping its
+  // hull does. Returns false when no such Community is on the canvas.
+  function activateCommunity(communityId) {
+    if (!cy || !communityId) {
+      return false;
+    }
+    var hull = cy.getElementById('community::' + communityId);
+    if (!hull || hull.length === 0) {
+      return false;
+    }
+    activateCommunityHull(hull);
+    return true;
   }
 
   function onNodeTap(callback) {
@@ -976,6 +1022,7 @@
     communityLegendEntries[communityId] = {
       name: displayName,
       fullSummary: summary || communityId,
+      memberCount: (memberEntityIdentities || []).length,
       fill: colors.fill,
       labelColor: colors.labelColor
     };
@@ -1004,6 +1051,14 @@
     }
   }
 
+  // Community ids ordered by member count, largest first. `sort` is stable,
+  // so equally sized Communities keep their arrival order.
+  function sortedCommunityIds() {
+    return Object.keys(communityLegendEntries).sort(function (a, b) {
+      return (communityLegendEntries[b].memberCount || 0) - (communityLegendEntries[a].memberCount || 0);
+    });
+  }
+
   function renderLegend() {
     var legend = legendContainer();
     if (!legend) {
@@ -1011,8 +1066,14 @@
     }
     legend.textContent = '';
 
-    var communityIds = Object.keys(communityLegendEntries);
+    var communityIds = sortedCommunityIds();
     var shouldShow = hullsVisible && communityIds.length > 0;
+
+    // The chips sit in their own wrapping row so `layoutLegend` can tell
+    // which ones spill onto a second line and hide them: the legend never
+    // takes more than one line, however many Communities a corpus has.
+    var chips = document.createElement('div');
+    chips.className = 'graph-legend-chips';
 
     communityIds.forEach(function (communityId) {
       var entry = communityLegendEntries[communityId];
@@ -1028,6 +1089,7 @@
       item.setAttribute('aria-label', entry.fullSummary || entry.name);
       item.setAttribute('aria-pressed', 'false');
       item.dataset.communityId = communityId;
+      item.dataset.memberCount = String(entry.memberCount || 0);
       item.addEventListener('click', function () {
         focusCommunity(communityId);
       });
@@ -1044,11 +1106,100 @@
       name.textContent = entry.name;
       item.appendChild(name);
 
-      legend.appendChild(item);
+      chips.appendChild(item);
     });
+    legend.appendChild(chips);
+
+    // Always visible after the chips once there are two or more
+    // Communities: the way to every one of them, including those that did
+    // not fit on the line.
+    if (communityIds.length >= 2) {
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'graph-legend-more';
+      more.setAttribute('aria-controls', 'entity-detail-panel');
+      more.addEventListener('click', function () {
+        if (allCommunitiesCallback) {
+          allCommunitiesCallback(listCommunities());
+        }
+      });
+      legend.appendChild(more);
+      setLegendMoreLabel(more, 0);
+    }
 
     legend.hidden = !shouldShow;
     legend.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+    setLegendActiveCommunity(activeLegendCommunityId);
+    layoutLegend();
+    observeLegendResize(legend);
+  }
+
+  function setLegendMoreLabel(more, hiddenCount) {
+    if (!more) {
+      return;
+    }
+    more.textContent = hiddenCount > 0 ? '+' + hiddenCount + ' · All communities' : 'All communities';
+    more.dataset.hiddenCount = String(hiddenCount);
+  }
+
+  // Hides every chip that wraps past the first line. Measures with all
+  // chips shown, then again once the "+N" label (which narrows the room
+  // left for chips) is known, until the hidden count settles.
+  function layoutLegend() {
+    var legend = legendContainer();
+    if (!legend || legend.hidden) {
+      return;
+    }
+    var chips = legend.querySelector('.graph-legend-chips');
+    var more = legend.querySelector('.graph-legend-more');
+    var items = chips ? Array.prototype.slice.call(chips.querySelectorAll('.graph-legend-item')) : [];
+    if (items.length === 0) {
+      return;
+    }
+    var hiddenCount = 0;
+    for (var pass = 0; pass < 4; pass += 1) {
+      setLegendMoreLabel(more, hiddenCount);
+      items.forEach(function (item) {
+        item.hidden = false;
+      });
+      if (items[0].offsetParent === null) {
+        // Not laid out (an ancestor is display: none): the ResizeObserver
+        // runs this again once the legend gets a real box.
+        return;
+      }
+      var firstTop = items[0].offsetTop;
+      var overflowing = items.filter(function (item) {
+        return item.offsetTop > firstTop;
+      });
+      overflowing.forEach(function (item) {
+        item.hidden = true;
+      });
+      var settled = overflowing.length === hiddenCount;
+      hiddenCount = overflowing.length;
+      if (settled) {
+        break;
+      }
+    }
+    setLegendMoreLabel(more, hiddenCount);
+  }
+
+  // The legend box spans the canvas width (see `.graph-legend`), so its
+  // width changes with window resizes and with the detail panel opening or
+  // closing; only width changes need a re-fit.
+  function observeLegendResize(legend) {
+    if (legendResizeObserver || typeof window.ResizeObserver === 'undefined') {
+      return;
+    }
+    var lastWidth = -1;
+    legendResizeObserver = new window.ResizeObserver(function (entries) {
+      var width = entries.length > 0 ? entries[0].contentRect.width : -1;
+      if (width === lastWidth) {
+        return;
+      }
+      lastWidth = width;
+      layoutLegend();
+    });
+    legendResizeObserver.observe(legend);
   }
 
   // Resolves a RetrievalStep's node id on the Cytoscape canvas. ENTITY steps
@@ -1764,6 +1915,9 @@
     clearStepHighlights: clearStepHighlights,
     onNodeTap: onNodeTap,
     onCommunityTap: onCommunityTap,
+    onAllCommunities: onAllCommunities,
+    listCommunities: listCommunities,
+    activateCommunity: activateCommunity,
     onBackgroundTap: onBackgroundTap,
     focusCommunity: focusCommunity,
     searchEntities: searchEntities,

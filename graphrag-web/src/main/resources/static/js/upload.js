@@ -72,6 +72,11 @@
   var entityDetailSources = document.getElementById('entity-detail-sources');
   var entityDetailRelationshipsHeading = document.getElementById('entity-detail-relationships-heading');
   var entityDetailTagsSection = document.getElementById('entity-detail-tags-section');
+  var entityDetailRelationshipsSection = document.getElementById('entity-detail-relationships-section');
+  var entityDetailCommunitiesSection = document.getElementById('entity-detail-communities-section');
+  var entityDetailCommunities = document.getElementById('entity-detail-communities');
+  // True while the panel shows the legend's "All communities" list.
+  var communityListOpen = false;
   var selectedCommunityId = null;
   var selectedEntityIdentity = null;
   // Story 10.3: the currently-open Entity's `type`, kept alongside
@@ -507,6 +512,7 @@
     selectedEntityIdentity = null;
     selectedEntityType = null;
     selectedCommunityId = null;
+    communityListOpen = false;
     if (!entityDetailPanel) {
       return;
     }
@@ -782,10 +788,14 @@
     entityDetailTags.appendChild(chip);
   }
 
+  // Modes: 'entity', 'community' (one Community's detail) and 'list' (the
+  // legend's "All communities" list).
   function setDetailMode(mode) {
     var isCommunity = mode === 'community';
+    var isList = mode === 'list';
+    communityListOpen = isList;
     if (entityDetailEyebrow) {
-      entityDetailEyebrow.textContent = isCommunity ? 'Community' : 'Entity';
+      entityDetailEyebrow.textContent = isList ? 'Communities' : (isCommunity ? 'Community' : 'Entity');
     }
     if (entityDetailRelationshipsHeading) {
       entityDetailRelationshipsHeading.textContent = isCommunity ? 'Members' : 'Relationships';
@@ -797,8 +807,78 @@
       entityDetailSourcesSection.hidden = true;
     }
     if (entityDetailTagsSection) {
-      entityDetailTagsSection.hidden = isCommunity;
+      entityDetailTagsSection.hidden = isCommunity || isList;
     }
+    if (entityDetailRelationshipsSection) {
+      entityDetailRelationshipsSection.hidden = isList;
+    }
+    if (entityDetailCommunitiesSection) {
+      entityDetailCommunitiesSection.hidden = !isList;
+    }
+  }
+
+  function entityCountLabel(count) {
+    return count + (count === 1 ? ' entity' : ' entities');
+  }
+
+  // The legend's "All communities" button: every Community, largest first
+  // (GraphCanvas.listCommunities' order). A row opens that Community exactly
+  // as tapping its hull does (GraphCanvas.activateCommunity, which fires the
+  // `onCommunityTap` callback below).
+  function openCommunityListPanel(communities) {
+    if (!entityDetailPanel) {
+      return;
+    }
+    var list = communities || [];
+    selectedCommunityId = null;
+    selectedEntityIdentity = null;
+    selectedEntityType = null;
+    setDetailMode('list');
+    if (entityDetailName) {
+      entityDetailName.textContent = list.length + (list.length === 1 ? ' community' : ' communities');
+    }
+    if (entityDetailType) {
+      entityDetailType.textContent = 'Largest first. Pick one to focus it on the graph.';
+    }
+    if (entityDetailCommunities) {
+      entityDetailCommunities.textContent = '';
+      list.forEach(function (community) {
+        var item = document.createElement('li');
+        var row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'node-detail-community-row';
+        row.dataset.communityId = community.communityId;
+        row.title = community.summary || community.name;
+
+        var swatch = document.createElement('span');
+        swatch.className = 'graph-legend-swatch';
+        swatch.style.background = community.fill || '';
+        swatch.style.borderColor = community.labelColor || '';
+        swatch.setAttribute('aria-hidden', 'true');
+        row.appendChild(swatch);
+
+        var name = document.createElement('span');
+        name.className = 'node-detail-community-name';
+        name.textContent = community.name || community.communityId;
+        row.appendChild(name);
+
+        var count = document.createElement('span');
+        count.className = 'node-detail-community-count';
+        count.textContent = entityCountLabel(community.memberCount || 0);
+        row.appendChild(count);
+
+        row.addEventListener('click', function () {
+          if (window.GraphCanvas && typeof window.GraphCanvas.activateCommunity === 'function') {
+            window.GraphCanvas.activateCommunity(community.communityId);
+          }
+        });
+        item.appendChild(row);
+        entityDetailCommunities.appendChild(item);
+      });
+    }
+    entityDetailPanel.scrollTop = 0;
+    entityDetailPanel.classList.add('is-open');
+    entityDetailPanel.setAttribute('aria-hidden', 'false');
   }
 
   function openCommunityDetailPanel(community) {
@@ -814,7 +894,7 @@
       entityDetailName.textContent = community.name || community.communityId;
     }
     if (entityDetailType) {
-      entityDetailType.textContent = members.length + (members.length === 1 ? ' entity' : ' entities');
+      entityDetailType.textContent = entityCountLabel(members.length);
     }
     if (entityDetailDescription) {
       entityDetailDescription.textContent = community.summary || 'No description available.';
@@ -876,6 +956,16 @@
         return;
       }
       openCommunityDetailPanel(community);
+    });
+  }
+
+  if (window.GraphCanvas && typeof window.GraphCanvas.onAllCommunities === 'function') {
+    window.GraphCanvas.onAllCommunities(function (communities) {
+      if (communityListOpen) {
+        closeEntityDetailPanel();
+        return;
+      }
+      openCommunityListPanel(communities);
     });
   }
 
