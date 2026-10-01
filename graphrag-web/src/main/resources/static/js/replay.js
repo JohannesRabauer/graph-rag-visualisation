@@ -52,6 +52,11 @@
   var loadError = false;
   var isVectorTrace = false;
   var queryProjection = null;
+  // Story 15.4: the corpus the replayed answer belongs to, so TEXT_UNIT
+  // captions can name their passage (document and ordinal).
+  var traceCorpusId = null;
+  // Passages of the open trace that failed to load; not fetched again.
+  var failedPassageIds = {};
 
   // The bar grows with its wrapped caption; publish its height so the drift
   // tree and help buttons stacked above it never overlap it.
@@ -82,7 +87,8 @@
         projection = null;
       }
     }
-    openReplay(cta.dataset.traceId, projection);
+    var answerMsg = cta.closest('.message.answer');
+    openReplay(cta.dataset.traceId, projection, answerMsg ? answerMsg.dataset.corpusId : null);
   });
 
   if (closeButton) {
@@ -122,7 +128,7 @@
     });
   }
 
-  function openReplay(traceId, projection) {
+  function openReplay(traceId, projection, corpusId) {
     if (!traceId) {
       return;
     }
@@ -150,6 +156,8 @@
           return;
         }
         loadError = false;
+        traceCorpusId = corpusId || null;
+        failedPassageIds = {};
         steps = (result.body && result.body.steps) || [];
         currentIndex = 0;
         isVectorTrace = steps.length > 0 && steps[0].kind === 'VECTOR_QUERY_EMBEDDED';
@@ -363,9 +371,43 @@
           ? 'This Retrieval Trace could not be loaded. Please try again.'
           : total === 0
               ? 'Nothing was touched for this answer.'
-              : captionFor(steps[currentIndex], currentIndex, total);
+              : captionFor(steps[currentIndex], currentIndex, total, cachedPassageFor(steps[currentIndex]));
+      if (!loadError && total > 0) {
+        enrichPassageCaption(steps, currentIndex);
+      }
     }
     updatePhaseAndHint();
+  }
+
+  function cachedPassageFor(step) {
+    if (!step || step.kind !== 'TEXT_UNIT' || !traceCorpusId || !window.Passages) {
+      return null;
+    }
+    return window.Passages.cached(traceCorpusId, step.identifier);
+  }
+
+  // A TEXT_UNIT caption first shows the plain "Read passage" fallback, then
+  // names the passage once the shared passage cache resolves it — but only
+  // if Replay is still showing that very step of that very trace.
+  function enrichPassageCaption(stepList, index) {
+    var step = stepList[index];
+    if (!step || step.kind !== 'TEXT_UNIT' || !step.identifier || !traceCorpusId || !window.Passages
+        || cachedPassageFor(step) || failedPassageIds[step.identifier]) {
+      return;
+    }
+    var corpusId = traceCorpusId;
+    window.Passages.load(corpusId, step.identifier)
+      .then(function (passage) {
+        if (steps === stepList && currentIndex === index && !loadError && captionEl) {
+          captionEl.textContent = captionFor(step, index, stepList.length, passage);
+        }
+      })
+      .catch(function () {
+        // The fallback caption already shown stays.
+        if (steps === stepList && traceCorpusId === corpusId) {
+          failedPassageIds[step.identifier] = true;
+        }
+      });
   }
 
   function isDriftTrace() {
@@ -424,16 +466,27 @@
     }
   }
 
-  function captionFor(step, index, total) {
+  function captionFor(step, index, total, passage) {
+    var prefix = 'Step ' + (index + 1) + ' / ' + total + ' — ';
+    if (step.kind === 'TEXT_UNIT') {
+      // Story 15.4: "Read passage {ordinal+1} of {documentName}" (Story
+      // 13.4's "passage N" convention) once the passage is known, else the
+      // plain fallback; the excerpt (the step label) follows either way.
+      var head = passage && passage.documentName
+          ? (typeof passage.ordinal === 'number'
+              ? 'Read passage ' + (passage.ordinal + 1) + ' of ' + passage.documentName
+              : 'Read passage of ' + passage.documentName)
+          : 'Read passage';
+      return prefix + head + (step.label ? ': ' + step.label : '');
+    }
     var verb = step.kind === 'COMMUNITY' ? 'examined community'
         : step.kind === 'RELATIONSHIP' ? 'traversed relationship'
         : step.kind === 'SUB_QUESTION_SPAWNED' ? 'spawned sub-question'
         : step.kind === 'VECTOR_QUERY_EMBEDDED' ? 'embedded query'
         : step.kind === 'VECTOR_CHUNK' ? 'retrieved chunk'
         : step.kind === 'SYNTHESIS' ? 'synthesized answer'
-        : step.kind === 'TEXT_UNIT' ? 'read passage'
         : 'matched entity';
-    return 'Step ' + (index + 1) + ' / ' + total + ' — ' + verb + ' ' + step.label;
+    return prefix + verb + ' ' + step.label;
   }
 
   function updateTicks() {

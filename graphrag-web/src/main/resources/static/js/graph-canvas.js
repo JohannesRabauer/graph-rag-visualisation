@@ -822,7 +822,11 @@
     });
   }
 
-  function addEntity(identity, name, type) {
+  // `sourceTextUnitIds` (Story 15.4, optional): the ids of the passages
+  // this Entity was extracted from, kept on the node so a TEXT_UNIT Replay
+  // step can highlight the Entities that cite it. Omitted, a node keeps the
+  // ids it already has.
+  function addEntity(identity, name, type, sourceTextUnitIds) {
     if (!cy || !identity) {
       return;
     }
@@ -841,6 +845,9 @@
       node.data('placeholder', false);
       node.data('typeFill', colors.fill);
       node.data('typeBorder', colors.labelColor);
+      if (Array.isArray(sourceTextUnitIds)) {
+        node.data('sourceTextUnitIds', sourceTextUnitIds.slice());
+      }
       node.toggleClass('type-colored', entityTypeColoringEnabled);
     } else {
       node = cy.add({
@@ -852,7 +859,8 @@
           type: type,
           placeholder: false,
           typeFill: colors.fill,
-          typeBorder: colors.labelColor
+          typeBorder: colors.labelColor,
+          sourceTextUnitIds: Array.isArray(sourceTextUnitIds) ? sourceTextUnitIds.slice() : []
         }
       });
       node.toggleClass('type-colored', entityTypeColoringEnabled);
@@ -877,14 +885,17 @@
     queueLayout();
   }
 
-  function retypeEntity(previousIdentity, identity, name, type) {
+  function retypeEntity(previousIdentity, identity, name, type, sourceTextUnitIds) {
     if (!cy || !previousIdentity || !identity || previousIdentity === identity) {
       if (identity) {
-        addEntity(identity, name, type);
+        addEntity(identity, name, type, sourceTextUnitIds);
       }
       return;
     }
     var oldNode = cy.getElementById(previousIdentity);
+    if (!Array.isArray(sourceTextUnitIds) && oldNode && oldNode.length > 0) {
+      sourceTextUnitIds = oldNode.data('sourceTextUnitIds');
+    }
     var position = oldNode && oldNode.length > 0 ? oldNode.position() : null;
     var parent = oldNode && oldNode.length > 0 ? oldNode.parent().id() : null;
     var incidentEdges = [];
@@ -899,7 +910,7 @@
       oldNode.connectedEdges().remove();
       oldNode.remove();
     }
-    addEntity(identity, name, type);
+    addEntity(identity, name, type, sourceTextUnitIds);
     var newNode = cy.getElementById(identity);
     if (newNode && newNode.length > 0) {
       if (position) {
@@ -1138,6 +1149,15 @@
       highlightRetrievalStep(previous, 'step-previous');
     }
 
+    // A citing Entity of the current passage step reads as current even when
+    // it was also the previous step's node (`.step-previous` would otherwise
+    // win by style order).
+    if (current && current.kind === 'TEXT_UNIT') {
+      citingEntityNodes(current.identifier).forEach(function (node) {
+        node.removeClass('step-previous');
+      });
+    }
+
     var previousStepId = stepNodeId(previous);
     var currentStepId = stepNodeId(current);
     if (previous && current && previous.kind !== 'RELATIONSHIP' && current.kind !== 'RELATIONSHIP'
@@ -1158,7 +1178,19 @@
     if (!cy || !step) {
       return;
     }
-    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS' || step.kind === 'TEXT_UNIT') {
+    // Story 15.4: a passage is not a node, but the current passage step
+    // lights up every Entity that cites it (its `sourceTextUnitIds`). Only
+    // the current step does this; a passage as the previous step leaves no
+    // trailing ring.
+    if (step.kind === 'TEXT_UNIT') {
+      if (nodeClass === 'step-active') {
+        citingEntityNodes(step.identifier).forEach(function (node) {
+          node.addClass(nodeClass);
+        });
+      }
+      return;
+    }
+    if (step.kind === 'SUB_QUESTION_SPAWNED' || step.kind === 'SYNTHESIS') {
       return;
     }
     if (step.kind === 'RELATIONSHIP') {
@@ -1183,6 +1215,21 @@
     if (node && node.length > 0) {
       node.addClass(nodeClass);
     }
+  }
+
+  function citingEntityNodes(textUnitId) {
+    if (!cy || !textUnitId) {
+      return [];
+    }
+    return cy.nodes().filter(function (node) {
+      var ids = node.data('sourceTextUnitIds');
+      return Array.isArray(ids) && ids.indexOf(textUnitId) !== -1;
+    }).toArray();
+  }
+
+  // The ids of the Entity nodes citing `textUnitId` (test support).
+  function citingEntityIds(textUnitId) {
+    return citingEntityNodes(textUnitId).map(function (node) { return node.id(); });
   }
 
   // The `cose` layout's options, shared by `queueLayout` (the real,
@@ -1729,6 +1776,7 @@
     communityHullLabel: communityHullLabel,
     communityIdForEntity: communityIdForEntity,
     elementHasClass: elementHasClass,
+    citingEntityIds: citingEntityIds,
     entityNodeFillColor: entityNodeFillColor,
     entityNodeBorderColor: entityNodeBorderColor,
     dimensions: dimensions,

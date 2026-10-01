@@ -81,8 +81,11 @@
   var selectedEntityType = null;
   var activeRelationships = [];
   var activeEntityDetails = {};
-  var sourcePassageCache = {};
-  var sourcePassageCacheIdentity = null;
+  // Story 15.4: one passage cache shared by the entity detail panel, the
+  // chat's citation panels and Replay's passage captions, keyed by corpus
+  // and then by text unit id. Each entry holds the in-flight promise and,
+  // once resolved, the passage itself so a cached open needs no "Loading…".
+  var passageCache = {};
 
   if (!fileInput || !corpusChip || !errorBanner) {
     return;
@@ -504,8 +507,6 @@
     selectedEntityIdentity = null;
     selectedEntityType = null;
     selectedCommunityId = null;
-    sourcePassageCache = {};
-    sourcePassageCacheIdentity = null;
     if (!entityDetailPanel) {
       return;
     }
@@ -515,9 +516,70 @@
 
   function resetActiveEntityDetails() {
     activeEntityDetails = {};
-    sourcePassageCache = {};
-    sourcePassageCacheIdentity = null;
+    passageCache = {};
   }
+
+  function passageEntry(corpusId, textUnitId) {
+    var byCorpus = passageCache[corpusId];
+    return byCorpus && Object.prototype.hasOwnProperty.call(byCorpus, textUnitId) ? byCorpus[textUnitId] : null;
+  }
+
+  // The passage for `textUnitId` in `corpusId`, if it has already been
+  // fetched: `{documentName, ordinal, text}`, else null.
+  function cachedPassage(corpusId, textUnitId) {
+    var entry = passageEntry(corpusId, textUnitId);
+    return entry && entry.passage ? entry.passage : null;
+  }
+
+  // Fetches one passage from Story 13.4's text-unit endpoint, once per
+  // corpus and id. Resolves to `{documentName, ordinal, text}`; rejects when
+  // the passage is not available (a failed fetch is not cached, so a later
+  // open retries it).
+  function loadPassage(corpusId, textUnitId) {
+    if (!corpusId || !textUnitId) {
+      return Promise.reject(new Error('Passage not available'));
+    }
+    var existing = passageEntry(corpusId, textUnitId);
+    if (existing) {
+      return existing.promise;
+    }
+    var byCorpus = passageCache[corpusId] || (passageCache[corpusId] = {});
+    var entry = {};
+    entry.promise = fetch('/api/corpora/' + encodeURIComponent(corpusId) + '/text-units/'
+        + encodeURIComponent(textUnitId))
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Passage not available');
+        }
+        return response.json();
+      })
+      .then(function (body) {
+        var rawOrdinal = body ? body.ordinal : null;
+        var ordinal = rawOrdinal !== null && rawOrdinal !== undefined && rawOrdinal !== ''
+            && Number.isFinite(Number(rawOrdinal)) ? Number(rawOrdinal) : null;
+        entry.passage = {
+          documentName: (body && body.documentName) || '',
+          ordinal: ordinal,
+          text: (body && body.text) || ''
+        };
+        return entry.passage;
+      })
+      .catch(function (error) {
+        if (passageCache[corpusId] === byCorpus && byCorpus[textUnitId] === entry) {
+          delete byCorpus[textUnitId];
+        }
+        throw error;
+      });
+    byCorpus[textUnitId] = entry;
+    return entry.promise;
+  }
+
+  // replay.js reads passages (for its TEXT_UNIT captions) through the same
+  // cache rather than fetching on its own.
+  window.Passages = {
+    load: loadPassage,
+    cached: cachedPassage
+  };
 
   function normalizeSources(sources) {
     return Array.isArray(sources) ? sources.filter(function (source) {
@@ -529,6 +591,16 @@
         ordinal: Number.isFinite(Number(source.ordinal)) ? Number(source.ordinal) : 0
       };
     }) : [];
+  }
+
+  // Story 15.4: the text unit ids an Entity cites, handed to the canvas so
+  // Replay can light up the Entities citing a passage step. Undefined when
+  // the payload carries no `sources` at all, so the canvas keeps what it has.
+  function sourceTextUnitIds(entity) {
+    if (!entity || !Array.isArray(entity.sources)) {
+      return undefined;
+    }
+    return normalizeSources(entity.sources).map(function (source) { return source.textUnitId; });
   }
 
   function updateActiveEntityDetails(entity) {
@@ -574,10 +646,7 @@
     if (entityDetailSourcesSection.hidden) {
       return;
     }
-    if (sourcePassageCacheIdentity !== identity) {
-      sourcePassageCache = {};
-      sourcePassageCacheIdentity = identity;
-    }
+    var corpusId = activeCorpusId;
     sources.forEach(function (source) {
       var item = document.createElement('li');
       item.className = 'node-detail-source';
@@ -599,33 +668,36 @@
         if (expanded) {
           return;
         }
-        if (Object.prototype.hasOwnProperty.call(sourcePassageCache, source.textUnitId)) {
-          passage.textContent = sourcePassageCache[source.textUnitId];
-          return;
-        }
-        passage.textContent = 'Loading…';
-        fetch('/api/corpora/' + encodeURIComponent(activeCorpusId) + '/text-units/'
-            + encodeURIComponent(source.textUnitId))
-          .then(function (response) {
-            if (!response.ok) {
-              throw new Error('Passage not available');
-            }
-            return response.json();
-          })
-          .then(function (body) {
-            sourcePassageCache[source.textUnitId] = body && body.text ? body.text : '';
-            passage.textContent = sourcePassageCache[source.textUnitId];
-          })
-          .catch(function () {
-            sourcePassageCache[source.textUnitId] = 'Passage not available';
-            passage.textContent = 'Passage not available';
-          });
+        fillPassageText(passage, corpusId, source.textUnitId);
       });
 
       item.appendChild(button);
       item.appendChild(passage);
       entityDetailSources.appendChild(item);
     });
+  }
+
+  // Writes a passage's full text into `element` (textContent only), from the
+  // shared cache when it is there, else "Loading…" until the fetch settles.
+  function fillPassageText(element, corpusId, textUnitId) {
+    element.dataset.textUnitId = textUnitId;
+    var cached = cachedPassage(corpusId, textUnitId);
+    if (cached) {
+      element.textContent = cached.text;
+      return;
+    }
+    element.textContent = 'Loading…';
+    loadPassage(corpusId, textUnitId)
+      .then(function (passage) {
+        if (element.dataset.textUnitId === textUnitId) {
+          element.textContent = passage.text;
+        }
+      })
+      .catch(function () {
+        if (element.dataset.textUnitId === textUnitId) {
+          element.textContent = 'Passage not available';
+        }
+      });
   }
 
   // Builds one line per Relationship involving `identity`, matching on
@@ -907,7 +979,8 @@
                 result.body.traceStepCount,
                 question,
                 undefined,
-                !!result.body.noAnswer);
+                !!result.body.noAnswer,
+                result.body.citations);
           } else {
             showErrorBanner(errorMessage(result.body));
           }
@@ -1419,7 +1492,143 @@
     chatThread.scrollTop = chatThread.scrollHeight;
   }
 
-  function appendAnswer(text, mode, traceId, traceStepCount, question, queryProjection, noAnswer) {
+  // Story 15.4: `[1]` / `[1, 2]` markers in a cited answer. Each number in a
+  // group becomes its own button; brackets and separators stay plain text so
+  // the span's textContent still reads exactly as the answer text.
+  var answerPassageSeq = 0;
+  var CITATION_MARKER = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
+
+  // `[i]` refers to `citations[i-1]`, so the array keeps its positions; an
+  // entry without a text unit id simply never matches a marker.
+  function citationAt(citations, n) {
+    var citation = n >= 1 && n <= citations.length ? citations[n - 1] : null;
+    return citation && citation.textUnitId ? citation : null;
+  }
+
+  function hasCitations(citations) {
+    return Array.isArray(citations) && citations.some(function (citation) {
+      return citation && citation.textUnitId;
+    });
+  }
+
+  // Fills `content` with the answer text, turning every `[i]` that has a
+  // matching `citations[i-1]` into a marker button. Text goes in through
+  // text nodes only, never as markup.
+  function renderCitedAnswerText(content, answerText, citations, openCitation, panelId) {
+    var cursor = 0;
+    var match;
+    CITATION_MARKER.lastIndex = 0;
+    while ((match = CITATION_MARKER.exec(answerText)) !== null) {
+      content.appendChild(document.createTextNode(answerText.slice(cursor, match.index) + '['));
+      var group = match[1];
+      var numberPattern = /\d+/g;
+      var groupCursor = 0;
+      var number;
+      while ((number = numberPattern.exec(group)) !== null) {
+        if (number.index > groupCursor) {
+          content.appendChild(document.createTextNode(group.slice(groupCursor, number.index)));
+        }
+        var n = parseInt(number[0], 10);
+        var citation = citationAt(citations, n);
+        if (citation) {
+          var marker = document.createElement('button');
+          marker.type = 'button';
+          marker.className = 'citation-marker';
+          marker.dataset.citation = String(n);
+          marker.setAttribute('aria-expanded', 'false');
+          marker.setAttribute('aria-controls', panelId);
+          marker.setAttribute('aria-label', 'Source ' + n + ': ' + (citation.documentName || 'Unknown document'));
+          marker.textContent = number[0];
+          marker.addEventListener('click', openCitation.bind(null, n));
+          content.appendChild(marker);
+        } else {
+          content.appendChild(document.createTextNode(number[0]));
+        }
+        groupCursor = number.index + number[0].length;
+      }
+      content.appendChild(document.createTextNode(group.slice(groupCursor) + ']'));
+      cursor = match.index + match[0].length;
+    }
+    content.appendChild(document.createTextNode(answerText.slice(cursor)));
+  }
+
+  // The "Sources" list under a cited answer plus its one inline passage
+  // panel. Activating a marker or a row toggles that citation's full passage
+  // in the panel (fetched once per text unit through the shared cache).
+  function buildCitationSources(message, content, answerText, citations, corpusId) {
+    var openNumber = null;
+
+    var sources = document.createElement('div');
+    sources.className = 'answer-sources';
+    var heading = document.createElement('p');
+    heading.className = 'answer-sources-heading';
+    heading.textContent = 'Sources';
+    sources.appendChild(heading);
+    var list = document.createElement('ul');
+    list.className = 'answer-sources-list';
+    sources.appendChild(list);
+
+    var panel = document.createElement('div');
+    panel.className = 'answer-passage';
+    panel.id = 'answer-passage-' + (++answerPassageSeq);
+    panel.hidden = true;
+    var panelTitle = document.createElement('p');
+    panelTitle.className = 'answer-passage-title';
+    var panelText = document.createElement('p');
+    panelText.className = 'answer-passage-text';
+    panelText.setAttribute('aria-live', 'polite');
+    panel.appendChild(panelTitle);
+    panel.appendChild(panelText);
+
+    function syncExpanded() {
+      Array.prototype.forEach.call(
+          message.querySelectorAll('.citation-marker, .answer-source-toggle'), function (trigger) {
+            trigger.setAttribute('aria-expanded',
+                String(openNumber !== null && trigger.dataset.citation === String(openNumber)));
+          });
+    }
+
+    function openCitation(n) {
+      if (openNumber === n) {
+        openNumber = null;
+        panel.hidden = true;
+        syncExpanded();
+        return;
+      }
+      openNumber = n;
+      var citation = citations[n - 1];
+      panelTitle.textContent = n + '. ' + (citation.documentName || 'Unknown document');
+      panel.hidden = false;
+      fillPassageText(panelText, corpusId, citation.textUnitId);
+      syncExpanded();
+    }
+
+    renderCitedAnswerText(content, answerText, citations, openCitation, panel.id);
+
+    citations.forEach(function (citation, index) {
+      var n = index + 1;
+      if (!citationAt(citations, n)) {
+        return;
+      }
+      var item = document.createElement('li');
+      item.className = 'answer-source';
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'answer-source-toggle';
+      row.dataset.citation = String(n);
+      row.setAttribute('aria-expanded', 'false');
+      row.setAttribute('aria-controls', panel.id);
+      row.textContent = n + '. ' + (citation.documentName || 'Unknown document')
+          + (citation.excerpt ? ' · ' + citation.excerpt : '');
+      row.addEventListener('click', function () { openCitation(n); });
+      item.appendChild(row);
+      list.appendChild(item);
+    });
+
+    return { sources: sources, panel: panel };
+  }
+
+  function appendAnswer(text, mode, traceId, traceStepCount, question, queryProjection, noAnswer, citations) {
     var activeMode = mode || currentSearchMode;
     var answerText = text || 'No answer was returned.';
     if (!chatThread) {
@@ -1443,8 +1652,15 @@
     message.appendChild(tag);
 
     var content = document.createElement('span');
-    content.textContent = answerText;
-    message.appendChild(content);
+    if (noAnswer || !text || !hasCitations(citations)) {
+      content.textContent = answerText;
+      message.appendChild(content);
+    } else {
+      var citationParts = buildCitationSources(message, content, answerText, citations, activeCorpusId);
+      message.appendChild(content);
+      message.appendChild(citationParts.sources);
+      message.appendChild(citationParts.panel);
+    }
 
     // Story 3.3's own AC required this CTA on every answer message; it was
     // never shipped until Story 5.2 gave Replay something to open (Story
@@ -1574,7 +1790,7 @@
         var data = payload && payload.data;
         if (data && window.GraphCanvas) {
           updateActiveEntityDetails(data);
-          window.GraphCanvas.addEntity(data.identity, data.name, data.type);
+          window.GraphCanvas.addEntity(data.identity, data.name, data.type, sourceTextUnitIds(data));
         }
       } catch (e) {
         console.warn('Invalid SSE entity-extracted payload', e);
@@ -1587,7 +1803,8 @@
         var data = payload && payload.data;
         if (data && window.GraphCanvas) {
           moveActiveEntityDetails(data.previousIdentity, data);
-          window.GraphCanvas.retypeEntity(data.previousIdentity, data.identity, data.name, data.type);
+          window.GraphCanvas.retypeEntity(data.previousIdentity, data.identity, data.name, data.type,
+              sourceTextUnitIds(data));
           activeRelationships.forEach(function (relationship) {
             if (relationship.sourceIdentity === data.previousIdentity) {
               relationship.sourceIdentity = data.identity;
@@ -1956,7 +2173,7 @@
           if (window.GraphCanvas) {
             (body.entities || []).forEach(function (entity) {
               updateActiveEntityDetails(entity);
-              window.GraphCanvas.addEntity(entity.identity, entity.name, entity.type);
+              window.GraphCanvas.addEntity(entity.identity, entity.name, entity.type, sourceTextUnitIds(entity));
             });
             (body.relationships || []).forEach(function (relationship) {
               window.GraphCanvas.addRelationship(

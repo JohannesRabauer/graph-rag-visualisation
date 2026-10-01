@@ -142,7 +142,7 @@ class DriftTreeReplayUiTest extends UiTestSupport {
 
         Locator caption = page.locator("#replay-caption");
         Locator stepForward = page.locator("#replay-step-forward");
-        advanceUntilCaptionContains(caption, stepForward, "read passage", traceSteps.size());
+        advanceUntilCaptionContains(caption, stepForward, "Read passage", traceSteps.size());
         Map<String, Object> passageState = readDriftTreeState();
         org.assertj.core.api.Assertions.assertThat(passageState.get("currentBranch")).isEqualTo(0);
         org.assertj.core.api.Assertions.assertThat(passageState.get("finalCurrent")).isEqualTo(false);

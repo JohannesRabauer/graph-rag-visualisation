@@ -67,7 +67,8 @@ class PassageProgressStatusUiTest extends UiTestSupport {
     void entityRetypedEventMigratesTheNodeAndPreservesItsEdges() {
         String body = "event: entity-extracted\n"
                 + "data: {\"type\":\"entity-extracted\",\"data\":"
-                + "{\"identity\":\"jaguar::animal\",\"name\":\"Jaguar\",\"type\":\"Animal\"}}\n\n"
+                + "{\"identity\":\"jaguar::animal\",\"name\":\"Jaguar\",\"type\":\"Animal\","
+                + "\"sources\":[{\"textUnitId\":\"tu-jaguar\",\"documentName\":\"cats.txt\",\"ordinal\":0}]}}\n\n"
                 + "event: entity-extracted\n"
                 + "data: {\"type\":\"entity-extracted\",\"data\":"
                 + "{\"identity\":\"market::concept\",\"name\":\"Market\",\"type\":\"Concept\"}}\n\n"
@@ -96,5 +97,9 @@ class PassageProgressStatusUiTest extends UiTestSupport {
                 page.evaluate("() => window.GraphCanvas.entityNodeFillColor('jaguar::animal')")).isNull();
         org.assertj.core.api.Assertions.assertThat(
                 page.evaluate("() => window.GraphCanvas.entityNodeFillColor('jaguar::organization')")).isNotNull();
+        // Story 15.4: a retype without `sources` keeps the node's cited passages.
+        org.assertj.core.api.Assertions.assertThat(
+                page.evaluate("() => window.GraphCanvas.citingEntityIds('tu-jaguar')"))
+                .isEqualTo(java.util.List.of("jaguar::organization"));
     }
 }

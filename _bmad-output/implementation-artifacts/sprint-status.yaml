@@ -138,9 +138,9 @@ development_status:
   14-2-write-community-summaries-from-their-content: done
   epic-14-retrospective: optional
 
-  epic-15: in-progress
+  epic-15: done
   15-1-match-questions-to-entities-and-communities-by-meaning: done
   15-2-synthesize-cited-local-search-answers: done
   15-3-synthesize-cited-global-and-drift-answers: done
-  15-4-show-citations-in-chat-and-source-passages-in-replay: backlog
+  15-4-show-citations-in-chat-and-source-passages-in-replay: done
   epic-15-retrospective: optional
