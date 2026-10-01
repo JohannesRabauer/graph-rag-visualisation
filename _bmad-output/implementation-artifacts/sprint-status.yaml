@@ -116,14 +116,14 @@ development_status:
   11-7-make-the-community-formation-and-color-code-entity-types-tog: done
   epic-11-retrospective: optional
 
-  epic-12: in-progress
-  12-1-wire-a-real-neo4j-adapter-for-the-knowledge-graph: review
-  12-2-wire-a-real-neo4j-adapter-for-the-vector-index: review
-  12-3-add-neo4j-connection-configuration-with-a-fail-fast-startup: review
-  12-4-replace-corpusstore-with-a-durable-neo4j-backed-corpus-regis: review
-  12-5-reconcile-interrupted-corpora-to-failed-on-startup: review
-  12-6-add-explicit-corpus-activation-and-history-list-endpoints: review
-  12-7-build-the-corpus-history-switcher-and-auto-restore-on-load: review
+  epic-12: done
+  12-1-wire-a-real-neo4j-adapter-for-the-knowledge-graph: done
+  12-2-wire-a-real-neo4j-adapter-for-the-vector-index: done
+  12-3-add-neo4j-connection-configuration-with-a-fail-fast-startup: done
+  12-4-replace-corpusstore-with-a-durable-neo4j-backed-corpus-regis: done
+  12-5-reconcile-interrupted-corpora-to-failed-on-startup: done
+  12-6-add-explicit-corpus-activation-and-history-list-endpoints: done
+  12-7-build-the-corpus-history-switcher-and-auto-restore-on-load: done
   epic-12-retrospective: optional
 
   epic-13: done
