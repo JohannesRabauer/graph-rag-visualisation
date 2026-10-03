@@ -72,6 +72,11 @@ public class AnswerVectorBaseline {
         this.llmPort = llmPort == null ? DEFAULT_LLM_PORT : llmPort;
     }
 
+    /** This baseline with its embedding and LLM calls timed by {@code clock}. */
+    AnswerVectorBaseline timed(StageClock clock) {
+        return new AnswerVectorBaseline(clock.embedding(embeddingPort), vectorStorePort, clock.llm(llmPort));
+    }
+
     public VectorBaselineAnswer answer(String question, String corpusId) {
         Collection<EmbeddedChunk> allChunks = vectorStorePort.chunks(corpusId);
         if (allChunks == null || allChunks.isEmpty()) {

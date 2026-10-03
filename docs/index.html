@@ -511,6 +511,8 @@
           <p style="margin-top:18px">The verdict is one or two sentences naming the concrete difference and its reason. With an OpenAI key the model writes it from both answers and the measured figures. Without one, a fixed rule over the figures reports which side retrieved more and how many passages overlap, without judging correctness.</p>
           <p>The vector side also shows a <b>similarity ranking</b>: the chunks with the highest cosine scores, each with rank, score bar, document and excerpt, the five used for the answer marked and a cut-off line below them. There is deliberately no 2-D embedding map, because distances in such a projection do not reflect real similarity.</p>
           <p>"Replay GraphRAG" starts the usual trace replay on the Knowledge Graph tab. "Replay Vector" stays on the Compare tab and fills the similarity ranking hit by hit, so the two retrieval paths can be watched one after the other.</p>
+          <h3>All four methods at once</h3>
+          <p>"Compare all four retrieval methods" runs Local, Global, DRIFT and Vector Search one after the other on the same question. Each gets a column with its answer, its time split into retrieval, embedding and LLM, and its traversal footprint. Below them, one evidence table shows how far every passage got in every method: never retrieved, ranked below the vector cut-off, in the context, or cited. Mark the passage that holds the right answer as expected, and each column names where it got lost: retrieval, ranking or generation. "Download log (JSON)" saves all of it, every traversal step included.</p>
         </div>
       </div>
     </div>
@@ -753,6 +755,7 @@ OPENAI_API_KEY=sk-... docker compose up"><pre><span class="c"># clone and start 
                 <tr><td>AnswerDriftSearch</td><td>Communities, sub-questions, Local-style context per branch, one synthesis.</td></tr>
                 <tr><td>AnswerVectorBaseline</td><td>Top-5 chunks by cosine similarity, synthesized and cited the same way.</td></tr>
                 <tr><td>CompareAnswers</td><td>Runs a GraphRAG mode and the baseline fresh, measures both, produces a verdict.</td></tr>
+                <tr><td>CompareAllModes</td><td>Runs all four methods, times each by stage and builds one evidence table across them.</td></tr>
               </tbody>
             </table>
           </div>

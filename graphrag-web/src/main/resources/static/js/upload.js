@@ -46,6 +46,14 @@
   var compareVerdictText = document.getElementById('compare-verdict-text');
   var compareReplayRow = document.getElementById('compare-replay-row');
   var compareRunAgain = document.getElementById('compare-run-again');
+  var comparePair = document.getElementById('compare-pair');
+  var compareAll = document.getElementById('compare-all');
+  var compareAllQuestion = document.getElementById('compare-all-question');
+  var compareAllSummary = document.getElementById('compare-all-summary');
+  var compareAllGrid = document.getElementById('compare-all-grid');
+  var compareAllEvidence = document.getElementById('compare-evidence');
+  var compareAllRunAgain = document.getElementById('compare-all-run-again');
+  var compareAllDownload = document.getElementById('compare-all-download');
   var activeProgressSource = null;
   var activeCorpusId = null;
   var activeCorpusReady = false;
@@ -606,6 +614,7 @@
       return;
     }
     closeCompareReplay();
+    showCompareSection('pair');
     shownComparison = request || null;
     var corpusId = request ? request.corpusId : activeCorpusId;
     var graph = comparison.graph || {};
@@ -655,6 +664,636 @@
       compareReplayRow.appendChild(compareReplayButton('Replay GraphRAG', graph, corpusId, 'knowledge-graph'));
       compareReplayRow.appendChild(compareReplayButton('Replay Vector', vector, corpusId, 'compare'));
     }
+  }
+
+  // ---- Four-way comparison: all four retrieval methods ----
+  // One POST /compare-all runs Local, Global, DRIFT and Vector Search fresh,
+  // one after the other on the same corpus. The Compare tab then shows four
+  // columns (answer, where the time went, the traversal footprint, a replay)
+  // over one evidence table that says how far each passage got in each
+  // method. Marking a passage as the expected evidence turns on a diagnosis
+  // per column: was that passage lost in retrieval, ranking or generation?
+  // Nothing is appended to the chat. Text goes in via textContent.
+  var COMPARE_ALL_CTA_LABEL = '⇉ Compare all four retrieval methods';
+  var COMPARE_ALL_READY_LABEL = 'Four-way comparison ready — open Compare';
+  // What the four-way view shows: {request, body, expectedId}.
+  var shownCompareAll = null;
+
+  var FOOTPRINT_LABELS = {
+    ENTITY: ['entity', 'entities'],
+    RELATIONSHIP: ['relationship', 'relationships'],
+    COMMUNITY: ['community', 'communities'],
+    TEXT_UNIT: ['passage read', 'passages read'],
+    SUB_QUESTION_SPAWNED: ['sub-question', 'sub-questions'],
+    VECTOR_QUERY_EMBEDDED: ['query embedded', 'queries embedded'],
+    VECTOR_CHUNK: ['chunk retrieved', 'chunks retrieved'],
+    SYNTHESIS: ['synthesis step', 'synthesis steps']
+  };
+
+  var OUTCOME_LABELS = { ANSWERED: 'Answered', NO_ANSWER: 'No answer', FAILED: 'Failed' };
+
+  function formatMs(ms) {
+    return (Number(ms) || 0).toLocaleString('en-US') + ' ms';
+  }
+
+  function markCompareAllCtaReady(cta) {
+    if (!cta) {
+      return;
+    }
+    cta.classList.add('compare-cta--ready');
+    cta.textContent = COMPARE_ALL_READY_LABEL;
+    cta.title = 'Opens the Compare tab with this question’s four-way comparison.';
+    cta.setAttribute('aria-label', COMPARE_ALL_READY_LABEL);
+  }
+
+  // Runs POST /compare-all for `request` ({question, corpusId, answerMsg,
+  // cta}). It shares compareRequestSeq with the two-way comparison, so only
+  // the newest comparison of either kind renders.
+  function runCompareAll(request, busyButton, idleLabel) {
+    var thisRequest = ++compareRequestSeq;
+    if (busyButton) {
+      busyButton.disabled = true;
+      busyButton.setAttribute('aria-busy', 'true');
+      busyButton.textContent = 'Running all four methods, one after the other…';
+    }
+    var settledLabel = idleLabel;
+
+    fetch('/api/corpora/' + encodeURIComponent(request.corpusId) + '/compare-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: request.question })
+    })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { ok: response.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        if (thisRequest !== compareRequestSeq || request.corpusId !== activeCorpusId) {
+          return;
+        }
+        if (!result.ok || !result.body || !Array.isArray(result.body.runs)) {
+          showErrorBanner(result.body && result.body.error ? result.body.error
+              : 'The four-way comparison could not be run. Please try again.');
+          return;
+        }
+        if (request.answerMsg) {
+          request.answerMsg.graphragCompareAll = { body: result.body, request: request };
+        }
+        if (busyButton === request.cta) {
+          settledLabel = null;
+        }
+        markCompareAllCtaReady(request.cta);
+        renderCompareAll(result.body, request);
+        openCompareTab();
+      })
+      .catch(function () {
+        if (thisRequest === compareRequestSeq) {
+          showErrorBanner('The four-way comparison could not be run. Please try again.');
+        }
+      })
+      .finally(function () {
+        if (!busyButton) {
+          return;
+        }
+        busyButton.disabled = false;
+        busyButton.removeAttribute('aria-busy');
+        if (settledLabel !== null) {
+          busyButton.textContent = busyButton.classList.contains('compare-cta--ready')
+              ? COMPARE_ALL_READY_LABEL : settledLabel;
+        }
+      });
+  }
+
+  // Four-way CTA, delegated so it works for every .compare-all-cta appended later.
+  document.addEventListener('click', function (event) {
+    var cta = event.target && event.target.closest ? event.target.closest('.compare-all-cta') : null;
+    if (!cta) {
+      return;
+    }
+    var answerMsg = cta.closest('.message.answer');
+    if (!answerMsg) {
+      return;
+    }
+    if (answerMsg.graphragCompareAll) {
+      renderCompareAll(answerMsg.graphragCompareAll.body, answerMsg.graphragCompareAll.request);
+      openCompareTab();
+      return;
+    }
+    var question = answerMsg.dataset.question;
+    var corpusId = answerMsg.dataset.corpusId;
+    if (!question || !corpusId) {
+      return;
+    }
+    runCompareAll({ question: question, corpusId: corpusId, answerMsg: answerMsg, cta: cta },
+        cta, COMPARE_ALL_CTA_LABEL);
+  });
+
+  if (compareAllRunAgain) {
+    compareAllRunAgain.addEventListener('click', function () {
+      if (shownCompareAll) {
+        runCompareAll(shownCompareAll.request, compareAllRunAgain, 'Run again');
+      }
+    });
+  }
+
+  if (compareAllDownload) {
+    compareAllDownload.addEventListener('click', downloadCompareAllLog);
+  }
+
+  // The Compare tab shows either the two-way or the four-way comparison.
+  // The hidden one's columns are emptied: the vector replay looks up the
+  // two-way ranking rows, and must never find stale ones.
+  function showCompareSection(which) {
+    if (comparePair) {
+      comparePair.hidden = which !== 'pair';
+    }
+    if (compareAll) {
+      compareAll.hidden = which !== 'all';
+    }
+    if (which === 'pair') {
+      shownCompareAll = null;
+      [compareAllQuestion, compareAllSummary, compareAllGrid, compareAllEvidence].forEach(function (el) {
+        if (el) {
+          el.textContent = '';
+        }
+      });
+    } else if (compareGrid) {
+      compareGrid.textContent = '';
+    }
+  }
+
+  function compareAllSection(label) {
+    var section = document.createElement('div');
+    section.className = 'compare-all-section';
+    var heading = document.createElement('p');
+    heading.className = 'answer-sources-heading';
+    heading.textContent = label;
+    section.appendChild(heading);
+    return section;
+  }
+
+  // Total time as a bar relative to the slowest run, split into retrieval,
+  // embedding and LLM time, with the figures spelled out underneath.
+  function compareAllTime(timing, maxTotal) {
+    var section = compareAllSection('Time');
+    var total = Number(timing.totalMs) || 0;
+    var totalEl = document.createElement('p');
+    totalEl.className = 'compare-all-total';
+    totalEl.textContent = formatMs(total);
+    section.appendChild(totalEl);
+
+    var bar = document.createElement('div');
+    bar.className = 'compare-all-bar';
+    bar.setAttribute('aria-hidden', 'true');
+    bar.style.width = (maxTotal > 0 ? Math.max(2, total / maxTotal * 100) : 0).toFixed(1) + '%';
+    [['retrieval', timing.retrievalMs], ['embedding', timing.embeddingMs], ['llm', timing.llmMs]]
+      .forEach(function (part) {
+        var segment = document.createElement('span');
+        segment.className = 'compare-all-bar-seg compare-all-bar-seg--' + part[0];
+        segment.style.width = (total > 0 ? (Number(part[1]) || 0) / total * 100 : 0).toFixed(1) + '%';
+        bar.appendChild(segment);
+      });
+    section.appendChild(bar);
+
+    var detail = document.createElement('p');
+    detail.className = 'compare-all-time-detail';
+    detail.textContent = 'retrieval ' + formatMs(timing.retrievalMs)
+        + ' · embedding ' + formatMs(timing.embeddingMs) + ' (' + plural(timing.embeddingCalls || 0, 'call') + ')'
+        + ' · LLM ' + formatMs(timing.llmMs) + ' (' + plural(timing.llmCalls || 0, 'call') + ')';
+    section.appendChild(detail);
+    return section;
+  }
+
+  // The traversal footprint: how many steps of each kind the trace has.
+  function compareAllFootprint(run) {
+    var section = compareAllSection('Traversal');
+    var footprint = run.footprint || {};
+    var list = document.createElement('ul');
+    list.className = 'compare-all-footprint';
+    Object.keys(FOOTPRINT_LABELS).forEach(function (kind) {
+      var count = footprint[kind];
+      if (!count) {
+        return;
+      }
+      var item = document.createElement('li');
+      item.dataset.kind = kind;
+      item.textContent = count + ' ' + FOOTPRINT_LABELS[kind][count === 1 ? 0 : 1];
+      list.appendChild(item);
+    });
+    if (!list.children.length) {
+      var empty = document.createElement('li');
+      empty.className = 'compare-all-footprint-empty';
+      empty.textContent = 'no steps';
+      list.appendChild(empty);
+    }
+    section.appendChild(list);
+    return section;
+  }
+
+  function compareAllColumn(run, maxTotal, corpusId) {
+    var method = run.method || '';
+    var label = run.label || method;
+    var isVector = method === 'VECTOR';
+    var column = document.createElement('section');
+    column.className = 'compare-col compare-all-col compare-all-col--' + method.toLowerCase();
+    column.dataset.method = method;
+    column.setAttribute('aria-label', label);
+
+    var head = document.createElement('div');
+    head.className = 'compare-all-col-head';
+    var heading = document.createElement('h3');
+    heading.className = 'compare-col-title';
+    heading.textContent = label;
+    var outcome = document.createElement('span');
+    outcome.className = 'compare-all-outcome';
+    outcome.dataset.outcome = run.outcome || '';
+    outcome.textContent = OUTCOME_LABELS[run.outcome] || run.outcome || '';
+    head.appendChild(heading);
+    head.appendChild(outcome);
+    column.appendChild(head);
+
+    // A vector citation names its chunk as `chunkId`; the citation renderer reads `textUnitId`.
+    var citations = (run.citations || []).map(function (citation) {
+      return citation ? {
+        textUnitId: (isVector ? citation.chunkId : citation.textUnitId) || '',
+        documentName: citation.documentName || '',
+        excerpt: citation.excerpt || ''
+      } : null;
+    });
+    var answerBox = document.createElement('div');
+    answerBox.className = 'compare-all-answer';
+    var content = document.createElement('p');
+    content.className = 'compare-col-answer';
+    if (run.outcome !== 'ANSWERED') {
+      content.classList.add('compare-col-answer--none');
+      content.textContent = run.reason || 'No answer was returned.';
+      answerBox.appendChild(content);
+    } else if (!run.answer || !hasCitations(citations)) {
+      content.textContent = run.answer || 'No answer was returned.';
+      answerBox.appendChild(content);
+    } else {
+      var parts = buildCitationSources(answerBox, content, run.answer, citations, corpusId,
+          { kind: isVector ? 'chunk' : 'text-unit' });
+      answerBox.appendChild(content);
+      answerBox.appendChild(parts.sources);
+      answerBox.appendChild(parts.panel);
+    }
+    column.appendChild(answerBox);
+
+    column.appendChild(compareAllTime(run.timing || {}, maxTotal));
+    column.appendChild(compareAllFootprint(run));
+
+    var diagnosis = document.createElement('div');
+    diagnosis.className = 'compare-all-diagnosis';
+    diagnosis.setAttribute('aria-live', 'polite');
+    diagnosis.hidden = true;
+    column.appendChild(diagnosis);
+
+    var replay = compareReplayButton('Replay ' + label, {
+      traceId: run.traceId,
+      traceStepCount: run.traceStepCount,
+      mode: method,
+      scoredChunkCount: run.scoredChunkCount
+    }, corpusId, isVector ? 'compare' : 'knowledge-graph');
+    column.appendChild(replay);
+    return column;
+  }
+
+  function evidenceMarkText(mark) {
+    var use = mark && mark.use;
+    var rank = mark && mark.rank ? ' · #' + mark.rank : '';
+    if (use === 'CITED') {
+      return 'cited [' + (mark.citations || []).join(', ') + ']' + rank;
+    }
+    if (use === 'IN_CONTEXT') {
+      return 'in context' + rank;
+    }
+    if (use === 'RANKED_BELOW_CUTOFF') {
+      return 'ranked #' + mark.rank + ' · below cut-off';
+    }
+    return null;
+  }
+
+  // The evidence table: one row per passage any method ranked, read or
+  // cited; one column per method; a radio to mark the expected evidence.
+  // Clicking a passage opens its full text below the table.
+  function renderCompareEvidence(body, corpusId) {
+    if (!compareAllEvidence) {
+      return;
+    }
+    compareAllEvidence.textContent = '';
+    var rows = (Array.isArray(body.evidence) ? body.evidence : []).filter(function (row) {
+      return row && row.id;
+    });
+    var runs = body.runs || [];
+    if (!rows.length) {
+      var empty = document.createElement('p');
+      empty.className = 'compare-retrieved-empty';
+      empty.textContent = 'No method ranked, read or cited a passage.';
+      compareAllEvidence.appendChild(empty);
+      return;
+    }
+
+    var scroll = document.createElement('div');
+    scroll.className = 'compare-evidence-scroll';
+    var table = document.createElement('table');
+    table.className = 'compare-evidence-table';
+    table.setAttribute('aria-labelledby', 'compare-evidence-title');
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    var headers = ['Passage'].concat(runs.map(function (run) { return run.label || run.method; }), ['Expected']);
+    headers.forEach(function (text) {
+      var th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = text;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var panel = document.createElement('div');
+    panel.className = 'answer-passage compare-evidence-passage';
+    panel.id = 'answer-passage-' + (++answerPassageSeq);
+    panel.hidden = true;
+    var panelTitle = document.createElement('p');
+    panelTitle.className = 'answer-passage-title';
+    var panelText = document.createElement('p');
+    panelText.className = 'answer-passage-text';
+    panelText.setAttribute('aria-live', 'polite');
+    panel.appendChild(panelTitle);
+    panel.appendChild(panelText);
+    var openId = null;
+    var toggles = [];
+
+    var tbody = document.createElement('tbody');
+    rows.forEach(function (row) {
+      var documentName = row.documentName || 'Unknown document';
+      var tr = document.createElement('tr');
+      tr.dataset.passageId = row.id;
+
+      var passageCell = document.createElement('th');
+      passageCell.scope = 'row';
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'compare-evidence-toggle';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-controls', panel.id);
+      var docEl = document.createElement('span');
+      docEl.className = 'compare-evidence-doc';
+      docEl.textContent = documentName;
+      var excerptEl = document.createElement('span');
+      excerptEl.className = 'compare-evidence-excerpt';
+      excerptEl.textContent = row.excerpt || '';
+      toggle.appendChild(docEl);
+      toggle.appendChild(excerptEl);
+      toggle.addEventListener('click', function () {
+        openId = openId === row.id ? null : row.id;
+        panel.hidden = openId === null;
+        if (openId !== null) {
+          panelTitle.textContent = documentName;
+          fillPassageText(panelText, corpusId, row.id, row.kind === 'chunk' ? 'chunk' : 'text-unit',
+              row.kind === 'chunk' && row.excerpt ? row.excerpt : null);
+        }
+        toggles.forEach(function (other) {
+          other.button.setAttribute('aria-expanded', String(openId === other.id));
+        });
+      });
+      toggles.push({ id: row.id, button: toggle });
+      passageCell.appendChild(toggle);
+      tr.appendChild(passageCell);
+
+      runs.forEach(function (run) {
+        var mark = (row.marks || {})[run.method] || { use: 'NOT_RETRIEVED' };
+        var td = document.createElement('td');
+        td.dataset.method = run.method;
+        var markEl = document.createElement('span');
+        markEl.className = 'compare-evidence-mark';
+        markEl.dataset.use = mark.use || 'NOT_RETRIEVED';
+        var text = evidenceMarkText(mark);
+        if (text) {
+          markEl.textContent = text;
+        } else {
+          var dash = document.createElement('span');
+          dash.setAttribute('aria-hidden', 'true');
+          dash.textContent = '—';
+          var spoken = document.createElement('span');
+          spoken.className = 'compare-sr-only';
+          spoken.textContent = 'not retrieved';
+          markEl.appendChild(dash);
+          markEl.appendChild(spoken);
+        }
+        td.appendChild(markEl);
+        tr.appendChild(td);
+      });
+
+      var expectedCell = document.createElement('td');
+      expectedCell.className = 'compare-evidence-expected';
+      var radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'compare-expected-evidence';
+      radio.value = row.id;
+      radio.setAttribute('aria-label', 'Mark as expected evidence: ' + documentName
+          + (row.excerpt ? ' — ' + row.excerpt : ''));
+      radio.addEventListener('change', function () {
+        if (radio.checked && shownCompareAll) {
+          shownCompareAll.expectedId = row.id;
+          updateCompareAllDiagnoses();
+        }
+      });
+      expectedCell.appendChild(radio);
+      tr.appendChild(expectedCell);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    compareAllEvidence.appendChild(scroll);
+    compareAllEvidence.appendChild(panel);
+
+    var clear = document.createElement('button');
+    clear.type = 'button';
+    clear.id = 'compare-evidence-clear';
+    clear.className = 'compare-run-again compare-evidence-clear';
+    clear.textContent = 'Clear expected evidence';
+    clear.disabled = true;
+    clear.addEventListener('click', function () {
+      if (!shownCompareAll) {
+        return;
+      }
+      shownCompareAll.expectedId = null;
+      Array.prototype.forEach.call(table.querySelectorAll('input[type="radio"]'), function (input) {
+        input.checked = false;
+      });
+      updateCompareAllDiagnoses();
+    });
+    compareAllEvidence.appendChild(clear);
+  }
+
+  function expectedEvidenceRow() {
+    if (!shownCompareAll || !shownCompareAll.expectedId) {
+      return null;
+    }
+    var rows = shownCompareAll.body.evidence || [];
+    for (var i = 0; i < rows.length; i += 1) {
+      if (rows[i] && rows[i].id === shownCompareAll.expectedId) {
+        return rows[i];
+      }
+    }
+    return null;
+  }
+
+  // Where the expected passage got lost in `run`: {stage, label, text}.
+  // stage is 'cited', 'generation', 'ranking', 'retrieval' or 'failed'.
+  function compareAllDiagnosis(run, row) {
+    if (run.outcome === 'FAILED') {
+      return { stage: 'failed', label: 'Run failed', text: 'This run failed, so there is nothing to diagnose.' };
+    }
+    var mark = (row.marks || {})[run.method] || { use: 'NOT_RETRIEVED' };
+    if (mark.use === 'CITED') {
+      return { stage: 'cited', label: 'Evidence cited',
+        text: 'The answer cites it as [' + (mark.citations || []).join(', ') + ']. If the answer is still '
+            + 'wrong, the model misread its own evidence: a generation problem.' };
+    }
+    if (mark.use === 'IN_CONTEXT') {
+      return { stage: 'generation', label: 'Generation',
+        text: run.outcome === 'NO_ANSWER'
+            ? 'The passage was in the context, yet the model said the context does not answer the question.'
+            : 'The passage was in the context, but the answer does not cite it.' };
+    }
+    var ranking = Array.isArray(run.ranking) ? run.ranking : [];
+    if (mark.use === 'RANKED_BELOW_CUTOFF') {
+      var used = ranking.filter(function (entry) { return entry && entry.used; }).length;
+      return { stage: 'ranking', label: 'Ranking',
+        text: 'Scored #' + mark.rank + ', below the top-' + used + ' cut-off, so the model never saw it.' };
+    }
+    if (run.method === 'VECTOR') {
+      return { stage: 'retrieval', label: 'Retrieval',
+        text: ranking.length
+            ? 'Not among the ' + plural(ranking.length, 'highest-scoring chunk') + ' of '
+                + plural(run.scoredChunkCount || ranking.length, 'chunk') + '.'
+            : 'Vector Search scored no chunks (is the vector index built?).' };
+    }
+    if (!(run.footprint && run.footprint.TEXT_UNIT)) {
+      return { stage: 'retrieval', label: 'Retrieval',
+        text: 'This run read no source passages at all (without an OpenAI key the graph modes match '
+            + 'keywords and read none).' };
+    }
+    return { stage: 'retrieval', label: 'Retrieval', text: 'The traversal never reached this passage.' };
+  }
+
+  function updateCompareAllDiagnoses() {
+    if (!shownCompareAll || !compareAllGrid) {
+      return;
+    }
+    var row = expectedEvidenceRow();
+    var runs = shownCompareAll.body.runs || [];
+    Array.prototype.forEach.call(compareAllGrid.querySelectorAll('.compare-all-col'), function (column) {
+      var box = column.querySelector('.compare-all-diagnosis');
+      if (!box) {
+        return;
+      }
+      box.textContent = '';
+      var run = null;
+      for (var i = 0; i < runs.length; i += 1) {
+        if (runs[i] && runs[i].method === column.dataset.method) {
+          run = runs[i];
+        }
+      }
+      if (!row || !run) {
+        box.hidden = true;
+        delete box.dataset.stage;
+        return;
+      }
+      var diagnosis = compareAllDiagnosis(run, row);
+      box.dataset.stage = diagnosis.stage;
+      var stage = document.createElement('p');
+      stage.className = 'compare-all-diagnosis-stage';
+      stage.textContent = diagnosis.label;
+      var text = document.createElement('p');
+      text.className = 'compare-all-diagnosis-text';
+      text.textContent = diagnosis.text;
+      box.appendChild(stage);
+      box.appendChild(text);
+      box.hidden = false;
+    });
+    if (compareAllEvidence) {
+      Array.prototype.forEach.call(compareAllEvidence.querySelectorAll('tbody tr'), function (tr) {
+        tr.classList.toggle('is-expected', !!row && tr.dataset.passageId === row.id);
+      });
+      var clear = compareAllEvidence.querySelector('#compare-evidence-clear');
+      if (clear) {
+        clear.disabled = !row;
+      }
+    }
+  }
+
+  function renderCompareAll(body, request) {
+    if (!comparePanel || !compareAll || !body) {
+      return;
+    }
+    closeCompareReplay();
+    showCompareSection('all');
+    shownCompareAll = { request: request, body: body, expectedId: null };
+    var corpusId = request ? request.corpusId : activeCorpusId;
+    var runs = Array.isArray(body.runs) ? body.runs : [];
+    var maxTotal = runs.reduce(function (max, run) {
+      return Math.max(max, Number(run && run.timing && run.timing.totalMs) || 0);
+    }, 0);
+    if (compareAllQuestion) {
+      compareAllQuestion.textContent = body.question || '';
+    }
+    if (compareAllSummary) {
+      compareAllSummary.textContent = body.summary || '';
+    }
+    if (compareAllGrid) {
+      compareAllGrid.textContent = '';
+      runs.forEach(function (run) {
+        if (run && run.method) {
+          compareAllGrid.appendChild(compareAllColumn(run, maxTotal, corpusId));
+        }
+      });
+    }
+    renderCompareEvidence(body, corpusId);
+    updateCompareAllDiagnoses();
+  }
+
+  // Saves everything the four-way view shows as one JSON file: per method
+  // the answer, citations, every traversal step and the time split, the
+  // evidence table, and (when one is marked) the expected evidence with
+  // each method's diagnosis.
+  function downloadCompareAllLog() {
+    if (!shownCompareAll) {
+      return;
+    }
+    var body = shownCompareAll.body;
+    var expected = expectedEvidenceRow();
+    var log = {
+      exportedAt: new Date().toISOString(),
+      corpusId: shownCompareAll.request ? shownCompareAll.request.corpusId : activeCorpusId,
+      question: body.question || '',
+      summary: body.summary || '',
+      expectedEvidence: expected ? {
+        id: expected.id,
+        kind: expected.kind,
+        documentName: expected.documentName,
+        excerpt: expected.excerpt
+      } : null,
+      runs: (body.runs || []).map(function (run) {
+        return Object.assign({}, run, { diagnosis: expected ? compareAllDiagnosis(run, expected) : null });
+      }),
+      evidence: body.evidence || []
+    };
+    var blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = 'graphrag-compare-' + log.exportedAt.replace(/[:.]/g, '-') + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 0);
   }
 
   // The vector replay's view onto the Compare tab (replay.js calls it).
@@ -785,6 +1424,7 @@
   function resetCompareView() {
     closeCompareReplay();
     shownComparison = null;
+    shownCompareAll = null;
     compareRequestSeq++;
     if (tabCompare) {
       tabCompare.setAttribute('hidden', '');
@@ -792,7 +1432,8 @@
     if (comparePanel) {
       comparePanel.hidden = true;
     }
-    [compareQuestion, compareGrid, compareOverlap, compareVerdictLabel, compareVerdictText, compareReplayRow]
+    [compareQuestion, compareGrid, compareOverlap, compareVerdictLabel, compareVerdictText, compareReplayRow,
+      compareAllQuestion, compareAllSummary, compareAllGrid, compareAllEvidence]
       .forEach(function (el) {
         if (el) {
           el.textContent = '';
@@ -2315,6 +2956,28 @@
       compareHelp.textContent = '?';
       compareRow.appendChild(compareHelp);
       message.appendChild(compareRow);
+
+      var compareAllCta = document.createElement('button');
+      compareAllCta.type = 'button';
+      compareAllCta.className = 'compare-all-cta';
+      var compareAllExplanation = 'Re-runs this question through all four retrieval methods (Local, Global, ' +
+          'DRIFT and Vector Search), one after the other, and opens the Compare tab with four columns: each ' +
+          'answer, where its time went, its traversal footprint, and one evidence table that traces a wrong ' +
+          'answer to retrieval, ranking or generation.';
+      compareAllCta.title = compareAllExplanation;
+      compareAllCta.setAttribute('aria-label', compareAllExplanation);
+      compareAllCta.textContent = COMPARE_ALL_CTA_LABEL;
+      var compareAllRow = document.createElement('div');
+      compareAllRow.className = 'compare-row';
+      compareAllRow.appendChild(compareAllCta);
+      var compareAllHelp = document.createElement('button');
+      compareAllHelp.type = 'button';
+      compareAllHelp.className = 'help-btn';
+      compareAllHelp.dataset.help = 'compare-all';
+      compareAllHelp.setAttribute('aria-label', 'Help: comparing all four retrieval methods');
+      compareAllHelp.textContent = '?';
+      compareAllRow.appendChild(compareAllHelp);
+      message.appendChild(compareAllRow);
     }
 
     // Help pane hooks: a "?" beside the answer (reading-an-answer) and, on

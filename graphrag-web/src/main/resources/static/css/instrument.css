@@ -2754,7 +2754,8 @@ body {
    Appears below the Replay CTA (or below answer text when no Replay CTA)
    on every LOCAL / GLOBAL / DRIFT answer. Uses a dashed border to signal
    "optional action" consistent with the existing .replay-cta. */
-.compare-cta {
+.compare-cta,
+.compare-all-cta {
   display: block;
   width: 100%;
   margin-top: var(--space-1);
@@ -2769,18 +2770,22 @@ body {
   cursor: pointer;
 }
 
-.compare-cta:hover {
+.compare-cta:hover,
+.compare-all-cta:hover {
   color: var(--ink-900);
   border-color: var(--ink-600);
 }
 
-.compare-cta:focus-visible {
+.compare-cta:focus-visible,
+.compare-all-cta:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .compare-cta:disabled,
-.compare-cta[aria-busy="true"] {
+.compare-cta[aria-busy="true"],
+.compare-all-cta:disabled,
+.compare-all-cta[aria-busy="true"] {
   color: var(--ink-400);
   border-color: var(--line);
   cursor: not-allowed;
@@ -2849,7 +2854,8 @@ body {
   gap: var(--space-2);
 }
 
-.compare-row .compare-cta {
+.compare-row .compare-cta,
+.compare-row .compare-all-cta {
   flex: 1;
   width: auto;
 }
@@ -3616,7 +3622,8 @@ body {
   margin-top: 0;
 }
 
-.compare-cta.compare-cta--ready {
+.compare-cta.compare-cta--ready,
+.compare-all-cta.compare-cta--ready {
   border-color: transparent;
   background: transparent;
   color: var(--accent);
@@ -3630,6 +3637,371 @@ body {
 
   .compare-figures {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ---- Four-way comparison (all four retrieval methods) ----
+   Four columns (answer, time split, traversal footprint, diagnosis, replay)
+   over one evidence table. Mode colors as in the mode chooser; Vector
+   Search, which has no mode color, is ink. */
+.compare-all-summary {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  line-height: var(--font-body-line-height);
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+
+.compare-all-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  color: var(--ink-600);
+}
+
+.compare-all-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.compare-all-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.compare-all-swatch--retrieval,
+.compare-all-bar-seg--retrieval {
+  background: var(--ink-400);
+}
+
+.compare-all-swatch--embedding,
+.compare-all-bar-seg--embedding {
+  background: var(--global);
+}
+
+.compare-all-swatch--llm,
+.compare-all-bar-seg--llm {
+  background: var(--accent);
+}
+
+.compare-all-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.compare-all-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.compare-all-col--global {
+  border-top-color: var(--global);
+}
+
+.compare-all-col--drift {
+  border-top-color: var(--drift);
+}
+
+.compare-all-col--vector {
+  border-top-color: var(--ink-600);
+}
+
+.compare-all-col-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.compare-all-col-head .compare-col-title {
+  margin: 0;
+}
+
+.compare-all-outcome {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--global-soft);
+  color: var(--global);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.compare-all-outcome[data-outcome="NO_ANSWER"] {
+  background: var(--chrome);
+  color: var(--ink-600);
+}
+
+.compare-all-outcome[data-outcome="FAILED"] {
+  background: var(--active-soft);
+  color: var(--active);
+}
+
+/* Long answers scroll inside their column, so the four time bars and
+   footprints below stay level enough to compare. */
+.compare-all-answer {
+  max-height: 18em;
+  overflow-y: auto;
+}
+
+.compare-all-section {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.compare-all-total {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.compare-all-bar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--chrome);
+}
+
+.compare-all-bar-seg {
+  display: block;
+  height: 100%;
+}
+
+.compare-all-time-detail {
+  margin: var(--space-1) 0 0;
+  font-size: 11px;
+  color: var(--ink-600);
+}
+
+.compare-all-footprint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compare-all-footprint li {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--ink-600);
+}
+
+.compare-all-footprint .compare-all-footprint-empty {
+  border-style: dashed;
+  font-style: italic;
+}
+
+.compare-all-diagnosis {
+  padding: var(--space-2);
+  border: 1px solid var(--active);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--active-soft);
+}
+
+.compare-all-diagnosis[hidden] {
+  display: none;
+}
+
+.compare-all-diagnosis[data-stage="cited"] {
+  border-color: var(--global);
+  background: var(--global-soft);
+}
+
+.compare-all-diagnosis[data-stage="failed"] {
+  border-color: var(--line-strong);
+  background: var(--chrome);
+}
+
+.compare-all-diagnosis-stage {
+  margin: 0;
+  font-size: var(--font-tag-size);
+  font-weight: 700;
+  letter-spacing: var(--font-tag-tracking);
+  text-transform: uppercase;
+  color: var(--ink-900);
+}
+
+.compare-all-diagnosis-text {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ink-900);
+}
+
+.compare-all-col .replay-cta {
+  margin-top: auto;
+}
+
+.compare-evidence {
+  margin-top: var(--space-4);
+}
+
+.compare-evidence-title {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ink-600);
+}
+
+.compare-evidence-hint {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  color: var(--ink-600);
+}
+
+.compare-evidence-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.compare-evidence-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.compare-evidence-table th,
+.compare-evidence-table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.compare-evidence-table thead th {
+  font-size: var(--font-tag-size);
+  font-weight: var(--font-tag-weight);
+  letter-spacing: var(--font-tag-tracking);
+  text-transform: uppercase;
+  color: var(--ink-600);
+  white-space: nowrap;
+}
+
+.compare-evidence-table tbody tr:last-child th,
+.compare-evidence-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.compare-evidence-table tbody tr.is-expected {
+  background: var(--active-soft);
+}
+
+.compare-evidence-toggle {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 34em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-900);
+  cursor: pointer;
+}
+
+.compare-evidence-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.compare-evidence-doc {
+  font-weight: 600;
+}
+
+.compare-evidence-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-weight: 400;
+  color: var(--ink-600);
+}
+
+.compare-evidence-mark {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  color: var(--ink-400);
+}
+
+.compare-evidence-mark[data-use="CITED"] {
+  background: var(--global-soft);
+  color: var(--global);
+  font-weight: 700;
+}
+
+.compare-evidence-mark[data-use="IN_CONTEXT"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.compare-evidence-mark[data-use="RANKED_BELOW_CUTOFF"] {
+  border: 1px dashed var(--line-strong);
+  color: var(--ink-600);
+}
+
+.compare-evidence-expected {
+  text-align: center;
+}
+
+.compare-evidence-expected input {
+  accent-color: var(--active);
+  cursor: pointer;
+}
+
+.compare-evidence-clear {
+  margin-top: var(--space-2);
+}
+
+.compare-evidence-clear:disabled {
+  cursor: default;
+}
+
+.compare-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1280px) {
+  .compare-all-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .compare-all-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -3668,6 +4040,7 @@ body {
 
 .replay-cta,
 .compare-cta,
+.compare-all-cta,
 .replay-transport-button,
 .graph-legend-item {
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
@@ -3675,7 +4048,8 @@ body {
 
 .replay-transport-button:not(:disabled):hover,
 .replay-cta:hover,
-.compare-cta:not(:disabled):hover {
+.compare-cta:not(:disabled):hover,
+.compare-all-cta:not(:disabled):hover {
   transform: translateY(-1px);
 }
 

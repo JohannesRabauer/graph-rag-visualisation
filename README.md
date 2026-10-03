@@ -8,7 +8,7 @@ GraphRAG Lens is a teaching and demo tool that shows **how GraphRAG works** rath
 
 [![GraphRAG Lens video](https://img.youtube.com/vi/fWOptSc7wpk/maxresdefault.jpg)](https://youtube.com/live/fWOptSc7wpk)
 
-You upload a corpus (plain text or PDF), watch it turn into a knowledge graph passage by passage, see communities form, and ask questions in three GraphRAG modes: **Local**, **Global** and **DRIFT**. Each answer is LLM-written and cites the exact source passages it used. A step-by-step **Retrieval Trace Replay** shows on the graph which entities, relationships, communities and passages each answer touched. A **Compare** view sets every GraphRAG answer against a plain vector-RAG baseline and explains where each approach does better, and why.
+You upload a corpus (plain text or PDF), watch it turn into a knowledge graph passage by passage, see communities form, and ask questions in three GraphRAG modes: **Local**, **Global** and **DRIFT**. Each answer is LLM-written and cites the exact source passages it used. A step-by-step **Retrieval Trace Replay** shows on the graph which entities, relationships, communities and passages each answer touched. A **Compare** view sets every GraphRAG answer against a plain vector-RAG baseline and explains where each approach does better, and why. A **four-way comparison** runs Local, Global, DRIFT and Vector Search on the same question and lines up their answers, traversal steps, latency (retrieval, embedding and LLM time) and evidence, so a wrong answer can be traced to retrieval, ranking or generation.
 
 The heart of the project is [`graphrag-core`](graphrag-core/README.md), a framework-free GraphRAG library behind a hexagonal (ports and adapters) boundary. The web app and the adapters are one way of plugging it in.
 
@@ -142,6 +142,7 @@ flowchart TB
             R["AnswerDriftSearch"]
             B["AnswerVectorBaseline"]
             C["CompareAnswers"]
+            CA["CompareAllModes"]
         end
         subgraph Support["Building blocks"]
             direction LR
@@ -213,6 +214,7 @@ Design rules that keep the core reusable:
 | `AnswerDriftSearch` | Starts from communities, spawns sub-questions, gathers Local-style context for each branch, and synthesizes once over the union. |
 | `AnswerVectorBaseline` | Plain vector RAG: top-5 chunks by cosine similarity, synthesized and cited the same way. It also returns the similarity ranking (the top 12 scored chunks, the top 5 marked as used) and how many chunks it scored. |
 | `CompareAnswers` | Runs a GraphRAG mode and the vector baseline fresh, then measures context, documents, overlap and latency, and produces a verdict. |
+| `CompareAllModes` | Runs all four methods (Local, Global, DRIFT, Vector Search) one after the other on the same question. Per method: the answer, citations, traversal steps with a count per kind, and the time split into retrieval, embedding and LLM (`StageTiming`, measured by wrapping the ports). Across methods: an evidence table saying how far each passage got in each method (not retrieved, ranked below the vector cut-off, in context, cited). A failing method is reported, not thrown. |
 
 ### Ingestion pipeline
 
@@ -447,7 +449,7 @@ Offline mode is fully deterministic, which is why CI and every test run with the
 
 The frontend is plain JavaScript modules on one page:
 
-- **`upload.js`**: corpus upload and history, the chat with citation markers and a Sources list, and the Compare view with the vector side's similarity ranking (the top 12 chunks by cosine score, the 5 used for the answer marked above a cut-off line).
+- **`upload.js`**: corpus upload and history, the chat with citation markers and a Sources list, and the Compare view with the vector side's similarity ranking (the top 12 chunks by cosine score, the 5 used for the answer marked above a cut-off line). The same tab holds the four-way comparison: one column per method (answer, time bar split into retrieval / embedding / LLM, traversal footprint, replay), the evidence table where a passage can be marked as the expected evidence to diagnose each method's miss, and a JSON log download.
 - **`graph-canvas.js`**: the Cytoscape knowledge graph, community hulls, and a one-line legend with an "All communities" side-panel list.
 - **`replay.js` / `trace-pane.js` / `drift-tree.js`**: step-by-step Retrieval Trace Replay on the graph, the Retrieval Trace pane that lists every step by phase with the reason it was taken, the branching DRIFT tree inside that pane, and, for the vector baseline, a replay on the Compare tab that lights up the similarity ranking hit by hit.
 - **`help.js`**: contextual help topics (`static/help/*.html`), each with a live "in your data" view.
@@ -462,6 +464,7 @@ The main endpoints:
 | `GET /api/corpora/{id}/graph` | Entities, relationships and communities for the canvas |
 | `POST /api/corpora/{id}/query` | Ask a question (`LOCAL`, `GLOBAL`, `DRIFT`, `VECTOR`) |
 | `POST /api/corpora/{id}/compare` | GraphRAG vs vector comparison |
+| `POST /api/corpora/{id}/compare-all` | All four retrieval methods side by side: answers, steps, timing and the evidence table |
 | `GET /api/traces/{traceId}` | A Retrieval Trace for Replay |
 | `GET /api/corpora/{id}/text-units/{tuId}` · `…/chunks/{chunkId}` | Passage text for citations |
 

@@ -162,6 +162,7 @@
         <button type="button" class="help-btn help-btn--float help-btn--legend" data-help="communities" aria-label="Help: communities">?</button>
 
         <div id="compare-panel" class="compare-view" role="tabpanel" aria-labelledby="tab-compare" hidden>
+          <div id="compare-pair" class="compare-pair">
           <p class="graph-eyebrow">Compare — GraphRAG vs Vector Search</p>
           <button type="button" class="help-btn help-btn--panel" data-help="vector-vs-graphrag" aria-label="Help: vector search versus GraphRAG">?</button>
           <p class="compare-question-label">Question</p>
@@ -177,6 +178,31 @@
             <p id="compare-verdict-text" class="compare-verdict-text"></p>
           </section>
           <div id="compare-replay-row" class="compare-replay-row"></div>
+          </div>
+
+          <div id="compare-all" class="compare-all" hidden>
+            <p class="graph-eyebrow">Compare — all four retrieval methods</p>
+            <button type="button" class="help-btn help-btn--panel" data-help="compare-all" aria-label="Help: comparing all four retrieval methods">?</button>
+            <p class="compare-question-label">Question</p>
+            <p id="compare-all-question" class="compare-question"></p>
+            <div class="compare-fresh-row">
+              <p class="compare-fresh-note">All four methods were answered fresh, one after the other, on the same corpus.</p>
+              <button type="button" id="compare-all-run-again" class="compare-run-again">Run again</button>
+              <button type="button" id="compare-all-download" class="compare-run-again">Download log (JSON)</button>
+            </div>
+            <p id="compare-all-summary" class="compare-all-summary"></p>
+            <ul class="compare-all-legend" aria-label="Time bar legend">
+              <li><span class="compare-all-swatch compare-all-swatch--retrieval" aria-hidden="true"></span>retrieval</li>
+              <li><span class="compare-all-swatch compare-all-swatch--embedding" aria-hidden="true"></span>embedding</li>
+              <li><span class="compare-all-swatch compare-all-swatch--llm" aria-hidden="true"></span>LLM</li>
+            </ul>
+            <div id="compare-all-grid" class="compare-all-grid"></div>
+            <section class="compare-evidence" aria-labelledby="compare-evidence-title">
+              <h3 id="compare-evidence-title" class="compare-evidence-title">Evidence</h3>
+              <p class="compare-evidence-hint">How far each passage got in each method. Mark the passage that holds the right answer as <strong>expected</strong>, and every column says whether its miss came from retrieval, ranking or generation.</p>
+              <div id="compare-evidence" class="compare-evidence-body"></div>
+            </section>
+          </div>
         </div>
 
         <div class="replay-scrubber" id="replay-scrubber" role="group" aria-label="Retrieval Trace replay controls" hidden>

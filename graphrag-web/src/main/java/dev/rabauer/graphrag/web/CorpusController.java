@@ -16,6 +16,7 @@ import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.RetrievalTrace;
+import dev.rabauer.graphrag.core.domain.StageTiming;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 import dev.rabauer.graphrag.core.domain.UnreadableDocumentException;
 import dev.rabauer.graphrag.core.domain.UnsupportedFileTypeException;
@@ -30,6 +31,7 @@ import dev.rabauer.graphrag.core.usecase.AnswerGlobalSearch;
 import dev.rabauer.graphrag.core.usecase.AnswerLocalSearch;
 import dev.rabauer.graphrag.core.usecase.AnswerDriftSearch;
 import dev.rabauer.graphrag.core.usecase.BuildKnowledgeGraph;
+import dev.rabauer.graphrag.core.usecase.CompareAllModes;
 import dev.rabauer.graphrag.core.usecase.CompareAnswers;
 import dev.rabauer.graphrag.core.usecase.ConstructVectorIndex;
 import dev.rabauer.graphrag.core.usecase.DetectCommunities;
@@ -455,6 +457,137 @@ public class CorpusController {
         CompareAnswers.Comparison comparison = new CompareAnswers(graphStorePort, embeddingPort, llmPort,
                 vectorStorePort, answerVectorBaseline).compare(question, corpus.id(), mode.get());
         return ResponseEntity.ok(comparisonPayload(comparison));
+    }
+
+    /**
+     * Answers {@code question} fresh with all four retrieval methods (Local,
+     * Global, DRIFT and Vector Search) and returns them side by side: per
+     * method the answer, citations, traversal steps and a step count per kind,
+     * and where the time went (retrieval, embedding, LLM); across methods an
+     * evidence table saying how far each passage got in each method (see
+     * {@link CompareAllModes}). A method that fails is reported in its own
+     * column ({@code outcome: FAILED}) instead of failing the request. One log
+     * line per method records the same figures.
+     */
+    @PostMapping("/api/corpora/{corpusId}/compare-all")
+    public ResponseEntity<Map<String, Object>> compareAll(
+            @PathVariable("corpusId") String corpusId,
+            @org.springframework.web.bind.annotation.RequestBody(required = false) Map<String, String> request) {
+
+        String question = Optional.ofNullable(request).map(body -> body.get("question")).orElse("").trim();
+        if (question.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Please enter a question first."));
+        }
+
+        Corpus corpus = corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        ResponseEntity<Map<String, Object>> blocked = queryBlocked(corpus);
+        if (blocked != null) {
+            return blocked;
+        }
+
+        CompareAllModes.Comparison comparison = new CompareAllModes(graphStorePort, embeddingPort, llmPort,
+                vectorStorePort, answerVectorBaseline).compare(question, corpus.id());
+        comparison.runs().forEach(run -> logRun(corpus.id(), run));
+        return ResponseEntity.ok(compareAllPayload(comparison));
+    }
+
+    private static void logRun(String corpusId, CompareAllModes.MethodRun run) {
+        StageTiming timing = run.timing();
+        LOG.info("compare-all corpus={} method={} outcome={} totalMs={} retrievalMs={} embeddingMs={} "
+                        + "embeddingCalls={} llmMs={} llmCalls={} steps={} footprint={} citations={}",
+                corpusId, run.method(), run.outcome(), timing.totalMs(), timing.retrievalMs(), timing.embeddingMs(),
+                timing.embeddingCalls(), timing.llmMs(), timing.llmCalls(), run.steps().size(), run.footprint(),
+                run.citations().size());
+    }
+
+    private Map<String, Object> compareAllPayload(CompareAllModes.Comparison comparison) {
+        List<Map<String, Object>> runs = comparison.runs().stream().map(this::methodRunPayload).toList();
+        List<Map<String, Object>> evidence = comparison.evidence().stream()
+                .map(CorpusController::evidencePayload).toList();
+        return Map.of(
+                "question", comparison.question(),
+                "summary", comparison.summary(),
+                "runs", runs,
+                "evidence", evidence);
+    }
+
+    private Map<String, Object> methodRunPayload(CompareAllModes.MethodRun run) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("method", run.method().name());
+        payload.put("label", run.method().label());
+        payload.put("outcome", run.outcome().name());
+        if (run.outcome() == CompareAllModes.Outcome.ANSWERED) {
+            payload.put("answer", run.answer());
+        } else if (run.outcome() == CompareAllModes.Outcome.FAILED) {
+            payload.put("reason", failureMessage(run.failure()));
+        } else {
+            payload.put("reason", run.reason() == null ? "" : run.reason());
+        }
+        boolean vector = run.method() == CompareAllModes.Method.VECTOR;
+        payload.put("citations", run.citations().stream()
+                .map(vector ? CorpusController::chunkCitationPayload : CorpusController::citationPayload)
+                .toList());
+        payload.put("traceId", captureTrace(run.steps()));
+        payload.put("traceStepCount", run.steps().size());
+        payload.put("steps", run.steps().stream()
+                .map(step -> Map.of("kind", step.kind().name(), "identifier", step.identifier(),
+                        "label", step.label()))
+                .toList());
+        Map<String, Integer> footprint = new java.util.LinkedHashMap<>();
+        run.footprint().forEach((kind, count) -> footprint.put(kind.name(), count));
+        payload.put("footprint", footprint);
+        StageTiming timing = run.timing();
+        payload.put("timing", Map.of(
+                "totalMs", timing.totalMs(),
+                "retrievalMs", timing.retrievalMs(),
+                "embeddingMs", timing.embeddingMs(),
+                "embeddingCalls", timing.embeddingCalls(),
+                "llmMs", timing.llmMs(),
+                "llmCalls", timing.llmCalls()));
+        if (vector) {
+            payload.put("ranking", run.ranking().stream()
+                    .map(row -> Map.<String, Object>of(
+                            "rank", row.rank(),
+                            "chunkId", row.chunkId(),
+                            "documentName", row.documentName(),
+                            "excerpt", row.excerpt(),
+                            "score", row.score(),
+                            "used", row.used()))
+                    .toList());
+            payload.put("scoredChunkCount", run.scoredChunkCount());
+        }
+        return payload;
+    }
+
+    /** What a person reads about a failed run; the exception itself is logged by {@link CompareAllModes}. */
+    private static String failureMessage(RuntimeException failure) {
+        if (failure instanceof SemanticMatchingException) {
+            return SEMANTIC_MATCHING_FAILURE_MESSAGE;
+        }
+        if (failure instanceof OpenAiLlmPort.LlmCallFailedException) {
+            return ANSWER_SYNTHESIS_FAILURE_MESSAGE;
+        }
+        return "This method failed unexpectedly; the other methods are unaffected. See the server log.";
+    }
+
+    private static Map<String, Object> evidencePayload(CompareAllModes.EvidenceRow row) {
+        Map<String, Object> marks = new java.util.LinkedHashMap<>();
+        row.marks().forEach((method, mark) -> {
+            Map<String, Object> markPayload = new java.util.LinkedHashMap<>();
+            markPayload.put("use", mark.use().name());
+            markPayload.put("citations", mark.citationNumbers());
+            if (mark.rank() > 0) {
+                markPayload.put("rank", mark.rank());
+            }
+            marks.put(method.name(), markPayload);
+        });
+        return Map.of(
+                "id", row.id(),
+                "kind", row.kind() == CompareAllModes.PassageKind.CHUNK ? "chunk" : "text-unit",
+                "documentName", row.documentName(),
+                "excerpt", row.excerpt(),
+                "marks", marks);
     }
 
     private Map<String, Object> comparisonPayload(CompareAnswers.Comparison comparison) {
