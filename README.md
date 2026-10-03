@@ -4,6 +4,10 @@ GraphRAG Lens is a teaching and demo tool that shows **how GraphRAG works** rath
 
 **Website:** <https://johannesrabauer.github.io/graph-rag-visualisation/> — an illustrated walk through the whole application, built from the `docs/` folder and published by the [Website workflow](.github/workflows/pages.yml) on every push to `main`.
 
+**Video:** <https://youtube.com/live/fWOptSc7wpk>
+
+[![GraphRAG Lens video](https://img.youtube.com/vi/fWOptSc7wpk/maxresdefault.jpg)](https://youtube.com/live/fWOptSc7wpk)
+
 You upload a corpus (plain text or PDF), watch it turn into a knowledge graph passage by passage, see communities form, and ask questions in three GraphRAG modes: **Local**, **Global** and **DRIFT**. Each answer is LLM-written and cites the exact source passages it used. A step-by-step **Retrieval Trace Replay** shows on the graph which entities, relationships, communities and passages each answer touched. A **Compare** view sets every GraphRAG answer against a plain vector-RAG baseline and explains where each approach does better, and why.
 
 The heart of the project is [`graphrag-core`](graphrag-core/README.md), a framework-free GraphRAG library behind a hexagonal (ports and adapters) boundary. The web app and the adapters are one way of plugging it in.
