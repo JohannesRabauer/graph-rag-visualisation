@@ -38,4 +38,15 @@ public interface VectorStorePort {
     default Optional<ProjectionModel> projectionModel(String corpusId) {
         return Optional.empty();
     }
+
+    /**
+     * Deletes the chunks of {@code corpusId} cut from {@code documentName}
+     * (for incremental updates; the projection model is kept and goes stale
+     * until the next full index).
+     *
+     * @throws UnsupportedOperationException by default
+     */
+    default void deleteChunksOf(String corpusId, String documentName) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete chunks");
+    }
 }

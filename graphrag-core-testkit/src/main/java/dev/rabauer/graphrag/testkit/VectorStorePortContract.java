@@ -90,6 +90,26 @@ public abstract class VectorStorePortContract {
     }
 
     @Test
+    void deletingADocumentsChunksKeepsTheOthers() {
+        if (!supportsDeletion()) {
+            return;
+        }
+        store.persistChunks(corpusId, List.of(chunk(corpusId, 0, "alpha", 1f, 0f),
+                new EmbeddedChunk(new Chunk(corpusId + "::chunk-1", corpusId, 1, "beta", "other.txt"),
+                        new float[] {0f, 1f}, new double[] {1, -1})));
+
+        store.deleteChunksOf(corpusId, "doc.txt");
+
+        assertEquals(List.of(corpusId + "::chunk-1"),
+                store.chunks(corpusId).stream().map(chunk -> chunk.chunk().id()).toList());
+    }
+
+    /** Whether the store deletes chunks by document; the default is {@code true}. */
+    protected boolean supportsDeletion() {
+        return true;
+    }
+
+    @Test
     void theProjectionModelRoundTripsWhenSupported() {
         ProjectionModel model = new ProjectionModel(new double[] {0.1, 0.2}, new double[] {1, 0}, new double[] {0, 1});
 

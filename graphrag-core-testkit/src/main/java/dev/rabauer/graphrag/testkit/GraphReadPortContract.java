@@ -45,6 +45,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public abstract class GraphReadPortContract {
 
+    /** Every vector the contracts use has this many dimensions (a store's vector index may fix one). */
+    public static final int VECTOR_DIMENSIONS = 3;
+
     /** The fixture of the current test (fresh corpus ids per test). */
     protected ContractGraph graph;
     /** The port under test, loaded with {@link #graph}. */
@@ -120,8 +123,8 @@ public abstract class GraphReadPortContract {
         assertTrue(port.textUnit(unknown, "tu-alpha").isEmpty());
         assertTrue(port.entity(unknown, identity(ALPHA, "Class")).isEmpty());
         assertEmpty(port.relationshipsTouching(unknown, List.of(identity(ALPHA, "Class"))));
-        assertEmpty(port.similarEntities(unknown, new float[] {1f, 0f}, 3));
-        assertEmpty(port.similarCommunities(unknown, new float[] {1f, 0f}, 3));
+        assertEmpty(port.similarEntities(unknown, new float[] {1f, 0f, 0f}, 3));
+        assertEmpty(port.similarCommunities(unknown, new float[] {1f, 0f, 0f}, 3));
     }
 
     @Test

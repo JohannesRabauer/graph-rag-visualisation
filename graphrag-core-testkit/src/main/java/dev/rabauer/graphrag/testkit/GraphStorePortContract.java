@@ -4,6 +4,8 @@ import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.usecase.SourceRemoval;
+import dev.rabauer.graphrag.core.usecase.UpdateSources;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -98,6 +100,65 @@ public abstract class GraphStorePortContract extends GraphReadPortContract {
                     store.similarCommunities(graph.corpusId(), new float[] {1f, 0f, 0f}, 1).getFirst().id());
             assertTrue(store.similarEntities(graph.otherCorpusId(), new float[] {1f, 0f, 0f}, 3).isEmpty());
         }
+    }
+
+    @Test
+    void deletingAnEntityCascadesToItsRelationshipsAndMemberships() {
+        if (!supportsDeletion()) {
+            return;
+        }
+        store.deleteEntities(graph.corpusId(), List.of(identity(BETA, "Interface")));
+
+        assertEquals(Set.of(ALPHA, RUN, ContractGraph.GAMMA), names(store.entities(graph.corpusId())));
+        assertTrue(store.relationships(graph.corpusId()).stream().noneMatch(relationship ->
+                relationship.targetIdentity().equals(identity(BETA, "Interface"))));
+        assertEquals(2, store.relationships(graph.corpusId()).size());
+        assertTrue(store.communityMemberships(graph.corpusId()).stream()
+                .noneMatch(membership -> membership.entityIdentity().equals(identity(BETA, "Interface"))));
+        assertEquals(1, store.entities(graph.otherCorpusId()).size());
+    }
+
+    @Test
+    void deletesTextUnitsRelationshipsAndCommunitiesByKey() {
+        if (!supportsDeletion()) {
+            return;
+        }
+        store.deleteTextUnits(graph.corpusId(), List.of("tu-beta", "tu-unknown"));
+        store.deleteRelationships(graph.corpusId(), List.of(new Relationship(ContractGraph.GAMMA, "Class", "USES",
+                ALPHA, "Class")));
+        store.deleteCommunities(graph.corpusId());
+
+        assertTrue(store.textUnit(graph.corpusId(), "tu-beta").isEmpty());
+        assertTrue(store.textUnit(graph.corpusId(), "tu-alpha").isPresent());
+        assertEquals(3, store.relationships(graph.corpusId()).size());
+        assertTrue(store.relationships(graph.corpusId()).stream()
+                .noneMatch(relationship -> relationship.type().equals("USES")));
+        assertTrue(store.communities(graph.corpusId()).isEmpty());
+        assertTrue(store.communityMemberships(graph.corpusId()).isEmpty());
+        assertEquals(1, store.textUnits(graph.otherCorpusId()).size());
+    }
+
+    @Test
+    void removingASourceDeletesItsElementsAndReportsStaleCommunities() {
+        if (!supportsDeletion()) {
+            return;
+        }
+        SourceRemoval removal = new UpdateSources(store).removeBySource(graph.corpusId(), ContractGraph.BETA_AT.path());
+
+        assertEquals(List.of(identity(BETA, "Interface")), removal.removedEntities());
+        assertEquals(1, removal.removedTextUnits());
+        assertEquals(2, removal.removedRelationships());
+        assertEquals(List.of(ContractGraph.COMMUNITY_ID), removal.staleCommunityIds());
+        assertEquals(Set.of(ALPHA, RUN, ContractGraph.GAMMA), names(store.entities(graph.corpusId())));
+        assertTrue(store.textUnit(graph.corpusId(), "tu-beta").isEmpty());
+    }
+
+    /**
+     * Whether the store implements the delete methods (then they must be
+     * correct). The default is {@code true}.
+     */
+    protected boolean supportsDeletion() {
+        return true;
     }
 
     /**

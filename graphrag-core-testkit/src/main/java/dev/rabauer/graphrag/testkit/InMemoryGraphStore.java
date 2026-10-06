@@ -142,6 +142,42 @@ public class InMemoryGraphStore implements GraphStorePort {
     }
 
     @Override
+    public synchronized void deleteTextUnits(String corpusId, Collection<String> textUnitIds) {
+        if (textUnitIds != null) {
+            readable(corpusId).textUnits.keySet().removeAll(textUnitIds);
+        }
+    }
+
+    @Override
+    public synchronized void deleteEntities(String corpusId, Collection<String> identities) {
+        if (identities == null) {
+            return;
+        }
+        Corpus corpus = readable(corpusId);
+        corpus.entities.keySet().removeAll(identities);
+        corpus.entityEmbeddings.keySet().removeAll(identities);
+        corpus.relationships.values().removeIf(relationship -> identities.contains(relationship.sourceIdentity())
+                || identities.contains(relationship.targetIdentity()));
+        corpus.memberships.values().removeIf(membership -> identities.contains(membership.entityIdentity()));
+    }
+
+    @Override
+    public synchronized void deleteRelationships(String corpusId, Collection<Relationship> relationships) {
+        Corpus corpus = readable(corpusId);
+        for (Relationship relationship : nonNull(relationships)) {
+            corpus.relationships.remove(relationshipKey(relationship));
+        }
+    }
+
+    @Override
+    public synchronized void deleteCommunities(String corpusId) {
+        Corpus corpus = readable(corpusId);
+        corpus.communities.clear();
+        corpus.memberships.clear();
+        corpus.communityEmbeddings.clear();
+    }
+
+    @Override
     public synchronized List<List<String>> detectCommunities(String corpusId) {
         return GraphCommunities.detect(communityDetector, entities(corpusId), relationships(corpusId));
     }

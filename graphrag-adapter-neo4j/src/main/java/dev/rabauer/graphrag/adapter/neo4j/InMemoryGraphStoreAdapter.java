@@ -230,6 +230,48 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
     }
 
     @Override
+    public void deleteTextUnits(String corpusId, Collection<String> textUnitIds) {
+        if (corpusId == null || textUnitIds == null) {
+            return;
+        }
+        readScopedMap(textUnitsByCorpusId, corpusId).keySet().removeAll(textUnitIds);
+    }
+
+    @Override
+    public void deleteEntities(String corpusId, Collection<String> identities) {
+        if (corpusId == null || identities == null) {
+            return;
+        }
+        readScopedMap(entitiesByCorpusId, corpusId).keySet().removeAll(identities);
+        readScopedMap(relationshipsByCorpusId, corpusId).values().removeIf(relationship ->
+                identities.contains(relationship.sourceIdentity()) || identities.contains(relationship.targetIdentity()));
+        readScopedMap(communityMembershipsByCorpusId, corpusId).values()
+                .removeIf(membership -> identities.contains(membership.entityIdentity()));
+    }
+
+    @Override
+    public void deleteRelationships(String corpusId, Collection<Relationship> input) {
+        if (corpusId == null || input == null) {
+            return;
+        }
+        Map<String, Relationship> scoped = readScopedMap(relationshipsByCorpusId, corpusId);
+        for (Relationship relationship : input) {
+            if (relationship != null) {
+                scoped.remove(relationship.source() + "::" + relationship.type() + "::" + relationship.target());
+            }
+        }
+    }
+
+    @Override
+    public void deleteCommunities(String corpusId) {
+        if (corpusId == null) {
+            return;
+        }
+        readScopedMap(communitiesByCorpusId, corpusId).clear();
+        readScopedMap(communityMembershipsByCorpusId, corpusId).clear();
+    }
+
+    @Override
     public List<Entity> entities() {
         return new ArrayList<>(entities.values());
     }

@@ -161,6 +161,34 @@ public class DetectCommunities {
      */
     public CommunityDetectionResult run(String corpusId, ProgressListener progress,
                                         BiConsumer<Community, List<String>> onCommunityDetected) {
+        return run(corpusId, progress, onCommunityDetected,
+                options.reuseSummaries() ? reusableSummaries(corpusId) : Map.of());
+    }
+
+    /** {@link #recompute(String, ProgressListener, BiConsumer)} without callbacks. */
+    public CommunityDetectionResult recompute(String corpusId) {
+        return recompute(corpusId, null, null);
+    }
+
+    /**
+     * Re-detects from scratch: reads the stored Communities' reusable
+     * summaries (with {@link Options#reuseSummaries()}), deletes every
+     * Community of the corpus ({@code GraphWritePort.deleteCommunities}), then
+     * runs. Use it after incremental changes, so no stale Community or
+     * membership survives and unchanged Communities keep their summaries.
+     *
+     * @throws UnsupportedOperationException if the store cannot delete Communities
+     */
+    public CommunityDetectionResult recompute(String corpusId, ProgressListener progress,
+                                              BiConsumer<Community, List<String>> onCommunityDetected) {
+        Map<String, Community> reusable = options.reuseSummaries() ? reusableSummaries(corpusId) : Map.of();
+        graphStorePort.deleteCommunities(corpusId);
+        return run(corpusId, progress, onCommunityDetected, reusable);
+    }
+
+    private CommunityDetectionResult run(String corpusId, ProgressListener progress,
+                                         BiConsumer<Community, List<String>> onCommunityDetected,
+                                         Map<String, Community> reusable) {
         long started = System.nanoTime();
         Collection<Entity> stored = graphStorePort.entities(corpusId);
         List<Entity> entities = stored == null ? List.of() : stored.stream().filter(Objects::nonNull).toList();
@@ -187,7 +215,7 @@ public class DetectCommunities {
                     internalRelationships(capped, allRelationships)));
         }
 
-        List<Summarized> summarized = summarizeAll(corpusId, drafts, started, progress);
+        List<Summarized> summarized = summarizeAll(drafts, started, progress, reusable);
 
         List<Community> communities = new ArrayList<>();
         List<CommunityMembership> memberships = new ArrayList<>();
@@ -251,9 +279,8 @@ public class DetectCommunities {
     private record Summarized(CommunitySummary summary, SummaryStatus status, String error) {
     }
 
-    private List<Summarized> summarizeAll(String corpusId, List<Draft> drafts, long started,
-                                          ProgressListener progress) {
-        Map<String, Community> reusable = options.reuseSummaries() ? reusableSummaries(corpusId) : Map.of();
+    private List<Summarized> summarizeAll(List<Draft> drafts, long started, ProgressListener progress,
+                                          Map<String, Community> reusable) {
         long deadline = options.maxWallTime() == null ? Long.MAX_VALUE
                 : started + options.maxWallTime().toNanos();
         Summarized[] results = new Summarized[drafts.size()];

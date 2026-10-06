@@ -73,6 +73,41 @@ public class EmbedGraphElements {
         }
     }
 
+    /** Embeds only the Communities of {@code corpusId}; nothing without a semantic port. */
+    public void embedCommunities(String corpusId) {
+        if (corpusId == null || !isSemantic(embeddingPort)) {
+            return;
+        }
+        Map<String, float[]> communityEmbeddings = new LinkedHashMap<>();
+        for (Community community : orEmpty(graphStorePort.communities(corpusId))) {
+            if (community != null) {
+                communityEmbeddings.put(community.id(), embeddingPort.embed(community.summary()));
+            }
+        }
+        if (!communityEmbeddings.isEmpty()) {
+            graphStorePort.persistCommunityEmbeddings(corpusId, communityEmbeddings);
+        }
+    }
+
+    /**
+     * Embeds only {@code entities} of {@code corpusId} (for example the ones an
+     * incremental update imported); nothing without a semantic port.
+     */
+    public void embedEntities(String corpusId, Collection<Entity> entities) {
+        if (corpusId == null || entities == null || !isSemantic(embeddingPort)) {
+            return;
+        }
+        Map<String, float[]> embeddings = new LinkedHashMap<>();
+        for (Entity entity : entities) {
+            if (entity != null) {
+                embeddings.put(entity.normalizedIdentity(), embeddingPort.embed(entityText(entity)));
+            }
+        }
+        if (!embeddings.isEmpty()) {
+            graphStorePort.persistEntityEmbeddings(corpusId, embeddings);
+        }
+    }
+
     static String entityText(Entity entity) {
         return entity.name() + ": " + entity.description();
     }

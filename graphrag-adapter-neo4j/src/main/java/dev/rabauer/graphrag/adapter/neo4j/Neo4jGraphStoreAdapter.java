@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Real Neo4j-backed implementation of {@link GraphStorePort}, using the
@@ -50,6 +51,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * native Neo4j label/relationship-type; this is a deliberate tradeoff that
  * keeps the uniqueness constraints in {@link #ensureConstraints()} fixed and
  * declarable up front instead of created dynamically per observed type.</p>
+ *
+ * <p>Namespacing: with {@link Neo4jGraphStoreOptions#labelPrefix()} (for
+ * example {@code GraphRag}) and {@link Neo4jGraphStoreOptions#relationshipTypePrefix()}
+ * (for example {@code GRAPHRAG_}) every label, relationship type, constraint,
+ * vector index and GDS projection the adapter creates is prefixed
+ * ({@code :GraphRagEntity}, {@code :GRAPHRAG_RELATIONSHIP},
+ * {@code graphrag_entity_embedding}), so it can share a database with another
+ * tool's graph (for example {@code :Java:Type} / {@code INVOKES}) without
+ * touching it. Every node and relationship is also scoped by {@code corpusId}.
+ * Sessions come from an injected supplier, so the caller owns the driver.</p>
  *
  * <p>Free-form {@code attributes} (Entities, Relationships, Text Units,
  * Communities) are stored as two parallel list properties,
@@ -79,9 +90,20 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
 
     private static final long INDEX_ONLINE_TIMEOUT_SECONDS = 300L;
 
-    private final Driver driver;
+    private final Supplier<Session> sessions;
 
     private final Neo4jGraphStoreOptions options;
+
+    private final String entityLabel;
+    private final String communityLabel;
+    private final String textUnitLabel;
+    private final String relationshipType;
+    private final String belongsToType;
+    private final String mentionedInType;
+    /** Prefix of constraint, vector index and projection names ({@code ""} or e.g. {@code "graphrag_"}). */
+    private final String namePrefix;
+    private final String entityVectorIndex;
+    private final String communityVectorIndex;
 
     /** Vector indexes known to exist, so each is created/checked at most once per adapter. */
     private final Set<String> knownVectorIndexes = ConcurrentHashMap.newKeySet();
@@ -95,29 +117,52 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
 
     /** An adapter configured by {@code options} (null means {@link Neo4jGraphStoreOptions#defaults()}). */
     public Neo4jGraphStoreAdapter(Driver driver, Neo4jGraphStoreOptions options) {
-        this.driver = Objects.requireNonNull(driver, "driver");
+        this(Objects.requireNonNull(driver, "driver")::session, options);
+    }
+
+    /**
+     * An adapter on sessions the caller provides, for example
+     * {@code () -> driver.session(SessionConfig.forDatabase("atlas"))} or a
+     * framework-managed driver. The adapter opens one session per operation
+     * and always closes it; it never closes the driver.
+     */
+    public Neo4jGraphStoreAdapter(Supplier<Session> sessions, Neo4jGraphStoreOptions options) {
+        this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.options = options == null ? Neo4jGraphStoreOptions.defaults() : options;
-        ensureConstraints();
+        String labelPrefix = this.options.labelPrefix();
+        String typePrefix = this.options.relationshipTypePrefix();
+        this.entityLabel = labelPrefix + "Entity";
+        this.communityLabel = labelPrefix + "Community";
+        this.textUnitLabel = labelPrefix + "TextUnit";
+        this.relationshipType = typePrefix + RELATIONSHIP_TYPE;
+        this.belongsToType = typePrefix + "BELONGS_TO";
+        this.mentionedInType = typePrefix + "MENTIONED_IN";
+        this.namePrefix = labelPrefix.isEmpty() ? "" : labelPrefix.toLowerCase(java.util.Locale.ROOT) + "_";
+        this.entityVectorIndex = namePrefix + ENTITY_VECTOR_INDEX;
+        this.communityVectorIndex = namePrefix + COMMUNITY_VECTOR_INDEX;
+        if (this.options.createConstraints()) {
+            ensureConstraints();
+        }
     }
 
     private void ensureConstraints() {
         ensureConstraint(
-                "CREATE CONSTRAINT entity_corpus_identity IF NOT EXISTS "
-                        + "FOR (e:Entity) REQUIRE (e.corpusId, e.normalizedIdentity) IS UNIQUE");
+                "CREATE CONSTRAINT " + namePrefix + "entity_corpus_identity IF NOT EXISTS "
+                        + "FOR (e:" + entityLabel + ") REQUIRE (e.corpusId, e.normalizedIdentity) IS UNIQUE");
         ensureConstraint(
-                "CREATE CONSTRAINT community_corpus_id IF NOT EXISTS "
-                        + "FOR (c:Community) REQUIRE (c.corpusId, c.id) IS UNIQUE");
+                "CREATE CONSTRAINT " + namePrefix + "community_corpus_id IF NOT EXISTS "
+                        + "FOR (c:" + communityLabel + ") REQUIRE (c.corpusId, c.id) IS UNIQUE");
         ensureConstraint(
-                "CREATE CONSTRAINT relationship_corpus_key IF NOT EXISTS "
-                        + "FOR ()-[r:" + RELATIONSHIP_TYPE + "]-() "
+                "CREATE CONSTRAINT " + namePrefix + "relationship_corpus_key IF NOT EXISTS "
+                        + "FOR ()-[r:" + relationshipType + "]-() "
                         + "REQUIRE (r.corpusId, r.source, r.type, r.target) IS UNIQUE");
         ensureConstraint(
-                "CREATE CONSTRAINT community_membership_corpus_key IF NOT EXISTS "
-                        + "FOR ()-[m:BELONGS_TO]-() "
+                "CREATE CONSTRAINT " + namePrefix + "community_membership_corpus_key IF NOT EXISTS "
+                        + "FOR ()-[m:" + belongsToType + "]-() "
                         + "REQUIRE (m.corpusId, m.communityId, m.entityIdentity) IS UNIQUE");
         ensureConstraint(
-                "CREATE CONSTRAINT text_unit_corpus_id IF NOT EXISTS "
-                        + "FOR (t:TextUnit) REQUIRE (t.corpusId, t.id) IS UNIQUE");
+                "CREATE CONSTRAINT " + namePrefix + "text_unit_corpus_id IF NOT EXISTS "
+                        + "FOR (t:" + textUnitLabel + ") REQUIRE (t.corpusId, t.id) IS UNIQUE");
     }
 
     /**
@@ -128,7 +173,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
      * unconstrained, so failures here are logged rather than fatal.
      */
     private void ensureConstraint(String cypher) {
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> tx.run(cypher).consume());
         } catch (Neo4jException e) {
             LOG.log(Level.WARNING, () -> "Could not create constraint (continuing unconstrained): " + cypher
@@ -193,17 +238,17 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (rows.isEmpty()) {
             return;
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> tx.run(
                     "UNWIND $rows AS row "
-                            + "MERGE (e:Entity {corpusId: $corpusId, normalizedIdentity: row.normalizedIdentity}) "
+                            + "MERGE (e:" + entityLabel + " {corpusId: $corpusId, normalizedIdentity: row.normalizedIdentity}) "
                             + "SET e.name = row.name, e.type = row.type, "
                             + "e.description = row.description, e.sourceTextUnitIds = row.sourceTextUnitIds, "
                             + SET_ATTRIBUTES_AND_LOCATOR.formatted("e", "e", "e", "e", "e") + " "
                             + "WITH e, row "
                             + "UNWIND row.sourceTextUnitIds AS sourceTextUnitId "
-                            + "MATCH (t:TextUnit {corpusId: $corpusId, id: sourceTextUnitId}) "
-                            + "MERGE (e)-[:MENTIONED_IN {corpusId: $corpusId}]->(t)",
+                            + "MATCH (t:" + textUnitLabel + " {corpusId: $corpusId, id: sourceTextUnitId}) "
+                            + "MERGE (e)-[:" + mentionedInType + " {corpusId: $corpusId}]->(t)",
                     Map.of("corpusId", corpusId, "rows", rows)).consume());
         }
     }
@@ -235,14 +280,14 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (rows.isEmpty()) {
             return;
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> tx.run(
                     "UNWIND $rows AS row "
-                            + "MERGE (s:Entity {corpusId: $corpusId, normalizedIdentity: row.sourceIdentity}) "
+                            + "MERGE (s:" + entityLabel + " {corpusId: $corpusId, normalizedIdentity: row.sourceIdentity}) "
                             + "ON CREATE SET s.name = row.source, s.type = row.sourceType "
-                            + "MERGE (t:Entity {corpusId: $corpusId, normalizedIdentity: row.targetIdentity}) "
+                            + "MERGE (t:" + entityLabel + " {corpusId: $corpusId, normalizedIdentity: row.targetIdentity}) "
                             + "ON CREATE SET t.name = row.target, t.type = row.targetType "
-                            + "MERGE (s)-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId, "
+                            + "MERGE (s)-[r:" + relationshipType + " {corpusId: $corpusId, "
                             + "source: row.source, type: row.type, target: row.target}]->(t) "
                             + "SET r.sourceType = row.sourceType, r.targetType = row.targetType, "
                             + "r.description = row.description, r.sourceTextUnitIds = row.sourceTextUnitIds, "
@@ -258,16 +303,16 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (previousIdentity == null || previousIdentity.isBlank() || resolved == null) {
             return;
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> tx.run(
-                    "MATCH (e:Entity {corpusId: $corpusId, normalizedIdentity: $previousIdentity}) "
+                    "MATCH (e:" + entityLabel + " {corpusId: $corpusId, normalizedIdentity: $previousIdentity}) "
                             + "SET e.normalizedIdentity = $normalizedIdentity, e.name = $name, e.type = $type, "
                             + "e.description = $description, e.sourceTextUnitIds = $sourceTextUnitIds "
                             + "WITH e "
-                            + "OPTIONAL MATCH (e)-[out:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->() "
+                            + "OPTIONAL MATCH (e)-[out:" + relationshipType + " {corpusId: $corpusId}]->() "
                             + "SET out.source = $name, out.sourceType = $type "
                             + "WITH e "
-                            + "OPTIONAL MATCH ()-[in:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->(e) "
+                            + "OPTIONAL MATCH ()-[in:" + relationshipType + " {corpusId: $corpusId}]->(e) "
                             + "SET in.target = $name, in.targetType = $type",
                     Map.of(
                             "corpusId", corpusId,
@@ -286,7 +331,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (textUnits == null || textUnits.isEmpty()) {
             return;
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> {
                 for (TextUnit textUnit : textUnits) {
                     if (textUnit == null) {
@@ -299,7 +344,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                     row.put("ordinal", textUnit.ordinal());
                     row.put("text", textUnit.text() == null ? "" : textUnit.text());
                     putAttributesAndLocator(row, textUnit.attributes(), textUnit.locator());
-                    tx.run("WITH $row AS row MERGE (t:TextUnit {corpusId: row.corpusId, id: row.id}) "
+                    tx.run("WITH $row AS row MERGE (t:" + textUnitLabel + " {corpusId: row.corpusId, id: row.id}) "
                                     + "SET t.documentName = row.documentName, t.ordinal = row.ordinal, t.text = row.text, "
                                     + SET_ATTRIBUTES_AND_LOCATOR.formatted("t", "t", "t", "t", "t"),
                             Map.of("row", row));
@@ -315,13 +360,13 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (communities == null || communities.isEmpty()) {
             return;
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> {
                 for (Community community : communities) {
                     if (community == null) {
                         continue;
                     }
-                    tx.run("MERGE (c:Community {corpusId: $corpusId, id: $id}) SET c.title = $title, "
+                    tx.run("MERGE (c:" + communityLabel + " {corpusId: $corpusId, id: $id}) SET c.title = $title, "
                                     + "c.summary = $summary, c.attributeKeys = $attributeKeys, "
                                     + "c.attributeValues = $attributeValues",
                             Map.of(
@@ -343,17 +388,17 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (memberships == null || memberships.isEmpty()) {
             return;
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> {
                 for (CommunityMembership membership : memberships) {
                     if (membership == null) {
                         continue;
                     }
-                    tx.run("MERGE (c:Community {corpusId: $corpusId, id: $communityId}) "
+                    tx.run("MERGE (c:" + communityLabel + " {corpusId: $corpusId, id: $communityId}) "
                                     + "ON CREATE SET c.summary = 'Community cluster' "
-                                    + "MERGE (e:Entity {corpusId: $corpusId, normalizedIdentity: $entityIdentity}) "
+                                    + "MERGE (e:" + entityLabel + " {corpusId: $corpusId, normalizedIdentity: $entityIdentity}) "
                                     + "ON CREATE SET e.name = '', e.type = 'Unknown' "
-                                    + "MERGE (e)-[m:BELONGS_TO {corpusId: $corpusId, communityId: $communityId, "
+                                    + "MERGE (e)-[m:" + belongsToType + " {corpusId: $corpusId, communityId: $communityId, "
                                     + "entityIdentity: $entityIdentity}]->(c)",
                             Map.of(
                                     "corpusId", corpusId,
@@ -372,10 +417,10 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return List.of();
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> {
                 List<Entity> result = new ArrayList<>();
-                for (Record record : tx.run("MATCH (e:Entity {corpusId: $corpusId}) RETURN e.name AS name, "
+                for (Record record : tx.run("MATCH (e:" + entityLabel + " {corpusId: $corpusId}) RETURN e.name AS name, "
                         + "e.type AS type, coalesce(e.description, '') AS description, "
                         + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds, "
                         + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("e", "e", "e", "e", "e"),
@@ -392,11 +437,11 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return List.of();
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> {
                 List<Relationship> result = new ArrayList<>();
                 for (Record record : tx.run(
-                        "MATCH ()-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->() "
+                        "MATCH ()-[r:" + relationshipType + " {corpusId: $corpusId}]->() "
                                 + "RETURN r.source AS source, r.sourceType AS sourceType, r.type AS type, "
                                 + "r.target AS target, r.targetType AS targetType, "
                                 + "coalesce(r.description, '') AS description, "
@@ -416,10 +461,10 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return List.of();
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> {
                 List<TextUnit> result = new ArrayList<>();
-                for (Record record : tx.run("MATCH (t:TextUnit {corpusId: $corpusId}) "
+                for (Record record : tx.run("MATCH (t:" + textUnitLabel + " {corpusId: $corpusId}) "
                                 + "RETURN t.id AS id, t.documentName AS documentName, t.ordinal AS ordinal, "
                                 + "t.text AS text, " + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("t", "t", "t", "t", "t")
                                 + " ORDER BY t.documentName, t.ordinal, t.id",
@@ -436,8 +481,8 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank() || textUnitId == null || textUnitId.isBlank()) {
             return Optional.empty();
         }
-        try (Session session = driver.session()) {
-            return session.executeRead(tx -> tx.run("MATCH (t:TextUnit {corpusId: $corpusId, id: $id}) "
+        try (Session session = sessions.get()) {
+            return session.executeRead(tx -> tx.run("MATCH (t:" + textUnitLabel + " {corpusId: $corpusId, id: $id}) "
                             + "RETURN t.id AS id, t.documentName AS documentName, t.ordinal AS ordinal, t.text AS text, "
                             + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("t", "t", "t", "t", "t"),
                     Map.of("corpusId", corpusId, "id", textUnitId)).list().stream()
@@ -451,10 +496,10 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return List.of();
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> {
                 List<Community> result = new ArrayList<>();
-                for (Record record : tx.run("MATCH (c:Community {corpusId: $corpusId}) RETURN c.id AS id, "
+                for (Record record : tx.run("MATCH (c:" + communityLabel + " {corpusId: $corpusId}) RETURN c.id AS id, "
                         + "coalesce(c.title, '') AS title, c.summary AS summary, "
                         + "coalesce(c.attributeKeys, []) AS attributeKeys, "
                         + "coalesce(c.attributeValues, []) AS attributeValues", Map.of("corpusId", corpusId)).list()) {
@@ -470,11 +515,11 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return List.of();
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> {
                 List<CommunityMembership> result = new ArrayList<>();
                 for (Record record : tx.run(
-                        "MATCH ()-[m:BELONGS_TO {corpusId: $corpusId}]->() "
+                        "MATCH ()-[m:" + belongsToType + " {corpusId: $corpusId}]->() "
                                 + "RETURN m.communityId AS communityId, m.entityIdentity AS entityIdentity",
                         Map.of("corpusId", corpusId)).list()) {
                     result.add(new CommunityMembership(
@@ -482,6 +527,121 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 }
                 return result;
             });
+        }
+    }
+
+    // -- Indexed lookups (Local expansion calls these once per hop) ----------------
+
+    @Override
+    public Optional<Entity> entity(String corpusId, String identity) {
+        if (corpusId == null || corpusId.isBlank() || identity == null) {
+            return Optional.empty();
+        }
+        return entities(corpusId, List.of(identity)).stream().findFirst();
+    }
+
+    @Override
+    public List<Entity> entities(String corpusId, Collection<String> identities) {
+        if (corpusId == null || corpusId.isBlank() || identities == null || identities.isEmpty()) {
+            return List.of();
+        }
+        try (Session session = sessions.get()) {
+            return session.executeRead(tx -> {
+                List<Entity> result = new ArrayList<>();
+                for (Record record : tx.run("MATCH (e:" + entityLabel + " {corpusId: $corpusId}) "
+                                + "WHERE e.normalizedIdentity IN $identities RETURN e.name AS name, "
+                                + "e.type AS type, coalesce(e.description, '') AS description, "
+                                + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds, "
+                                + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("e", "e", "e", "e", "e"),
+                        Map.of("corpusId", corpusId, "identities", List.copyOf(identities))).list()) {
+                    result.add(entity(record));
+                }
+                return result;
+            });
+        }
+    }
+
+    @Override
+    public List<Relationship> relationshipsTouching(String corpusId, Collection<String> identities) {
+        if (corpusId == null || corpusId.isBlank() || identities == null || identities.isEmpty()) {
+            return List.of();
+        }
+        try (Session session = sessions.get()) {
+            return session.executeRead(tx -> {
+                List<Relationship> result = new ArrayList<>();
+                for (Record record : tx.run(
+                        "MATCH (s:" + entityLabel + " {corpusId: $corpusId})-[r:" + relationshipType
+                                + " {corpusId: $corpusId}]->(t:" + entityLabel + " {corpusId: $corpusId}) "
+                                + "WHERE s.normalizedIdentity IN $identities OR t.normalizedIdentity IN $identities "
+                                + "RETURN r.source AS source, r.sourceType AS sourceType, r.type AS type, "
+                                + "r.target AS target, r.targetType AS targetType, "
+                                + "coalesce(r.description, '') AS description, "
+                                + "coalesce(r.sourceTextUnitIds, []) AS sourceTextUnitIds, "
+                                + "coalesce(r.weight, 1) AS weight, "
+                                + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("r", "r", "r", "r", "r"),
+                        Map.of("corpusId", corpusId, "identities", List.copyOf(identities))).list()) {
+                    result.add(relationship(record));
+                }
+                return result;
+            });
+        }
+    }
+
+    // -- Deletes (incremental updates) ---------------------------------------------
+
+    @Override
+    public void deleteTextUnits(String corpusId, Collection<String> textUnitIds) {
+        requireCorpusId(corpusId);
+        if (textUnitIds == null || textUnitIds.isEmpty()) {
+            return;
+        }
+        write("MATCH (t:" + textUnitLabel + " {corpusId: $corpusId}) WHERE t.id IN $ids DETACH DELETE t",
+                Map.of("corpusId", corpusId, "ids", List.copyOf(textUnitIds)));
+    }
+
+    /** Deletes the Entity nodes with all their relationships (Relationships, memberships, mentions) and embeddings. */
+    @Override
+    public void deleteEntities(String corpusId, Collection<String> identities) {
+        requireCorpusId(corpusId);
+        if (identities == null || identities.isEmpty()) {
+            return;
+        }
+        write("MATCH (e:" + entityLabel + " {corpusId: $corpusId}) WHERE e.normalizedIdentity IN $identities "
+                        + "DETACH DELETE e",
+                Map.of("corpusId", corpusId, "identities", List.copyOf(identities)));
+    }
+
+    @Override
+    public void deleteRelationships(String corpusId, Collection<Relationship> relationships) {
+        requireCorpusId(corpusId);
+        if (relationships == null || relationships.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> rows = relationships.stream()
+                .filter(Objects::nonNull)
+                .map(relationship -> Map.<String, Object>of(
+                        "sourceIdentity", relationship.sourceIdentity(),
+                        "targetIdentity", relationship.targetIdentity(),
+                        "type", relationship.type()))
+                .toList();
+        write("UNWIND $rows AS row "
+                        + "MATCH (:" + entityLabel + " {corpusId: $corpusId, normalizedIdentity: row.sourceIdentity})"
+                        + "-[r:" + relationshipType + " {corpusId: $corpusId}]->"
+                        + "(:" + entityLabel + " {corpusId: $corpusId, normalizedIdentity: row.targetIdentity}) "
+                        + "WHERE toLower(r.type) = toLower(row.type) DELETE r",
+                Map.of("corpusId", corpusId, "rows", rows));
+    }
+
+    /** Deletes the corpus's Community nodes with their memberships and embeddings. */
+    @Override
+    public void deleteCommunities(String corpusId) {
+        requireCorpusId(corpusId);
+        write("MATCH (c:" + communityLabel + " {corpusId: $corpusId}) DETACH DELETE c", Map.of("corpusId", corpusId));
+    }
+
+    private void write(String cypher, Map<String, Object> parameters) {
+        try (Session session = sessions.get()) {
+            session.executeWrite(tx -> tx.run(cypher, parameters).consume());
         }
     }
 
@@ -495,7 +655,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
      */
     @Override
     public void persistEntityEmbeddings(String corpusId, Map<String, float[]> byIdentity) {
-        persistEmbeddings(corpusId, byIdentity, "Entity", "normalizedIdentity", ENTITY_VECTOR_INDEX);
+        persistEmbeddings(corpusId, byIdentity, entityLabel, "normalizedIdentity", entityVectorIndex);
     }
 
     /**
@@ -506,7 +666,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
      */
     @Override
     public void persistCommunityEmbeddings(String corpusId, Map<String, float[]> byCommunityId) {
-        persistEmbeddings(corpusId, byCommunityId, "Community", "id", COMMUNITY_VECTOR_INDEX);
+        persistEmbeddings(corpusId, byCommunityId, communityLabel, "id", communityVectorIndex);
     }
 
     private void persistEmbeddings(String corpusId, Map<String, float[]> byKey, String label, String keyProperty,
@@ -534,7 +694,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
             return;
         }
         ensureVectorIndex(indexName, label, dimensions);
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> tx.run(
                     "UNWIND $rows AS row "
                             + "MATCH (n:" + label + " {corpusId: $corpusId, " + keyProperty + ": row.key}) "
@@ -569,7 +729,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     }
 
     private long vectorIndexDimension(String indexName) {
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> tx.run(
                     "SHOW VECTOR INDEXES YIELD name, options WHERE name = $name "
                             + "RETURN options.indexConfig['vector.dimensions'] AS dimensions",
@@ -578,7 +738,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     }
 
     private void createVectorIndex(String indexName, String label, int dimensions) {
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             session.executeWrite(tx -> tx.run(
                     "CREATE VECTOR INDEX " + indexName + " IF NOT EXISTS "
                             + "FOR (n:" + label + ") ON (n.embedding) WITH [n.corpusId] "
@@ -594,7 +754,7 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (knownVectorIndexes.contains(indexName)) {
             return true;
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             boolean exists = session.executeRead(tx -> tx.run(
                     "SHOW VECTOR INDEXES YIELD name WHERE name = $name RETURN count(*) AS count",
                     Map.of("name", indexName)).single().get("count").asLong() > 0);
@@ -614,15 +774,15 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     @Override
     public List<Entity> similarEntities(String corpusId, float[] query, int k) {
         if (corpusId == null || corpusId.isBlank() || query == null || query.length == 0 || k <= 0
-                || !vectorIndexExists(ENTITY_VECTOR_INDEX)) {
+                || !vectorIndexExists(entityVectorIndex)) {
             return List.of();
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> {
                 List<Entity> result = new ArrayList<>();
                 for (Record record : tx.run(
-                        "MATCH (e:Entity) "
-                                + "SEARCH e IN (VECTOR INDEX " + ENTITY_VECTOR_INDEX + " FOR $query "
+                        "MATCH (e:" + entityLabel + ") "
+                                + "SEARCH e IN (VECTOR INDEX " + entityVectorIndex + " FOR $query "
                                 + "WHERE e.corpusId = $corpusId LIMIT $k) SCORE AS score "
                                 + "RETURN e.name AS name, e.type AS type, coalesce(e.description, '') AS description, "
                                 + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds, "
@@ -645,15 +805,15 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     @Override
     public List<Community> similarCommunities(String corpusId, float[] query, int k) {
         if (corpusId == null || corpusId.isBlank() || query == null || query.length == 0 || k <= 0
-                || !vectorIndexExists(COMMUNITY_VECTOR_INDEX)) {
+                || !vectorIndexExists(communityVectorIndex)) {
             return List.of();
         }
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             return session.executeRead(tx -> {
                 List<Community> result = new ArrayList<>();
                 for (Record record : tx.run(
-                        "MATCH (c:Community) "
-                                + "SEARCH c IN (VECTOR INDEX " + COMMUNITY_VECTOR_INDEX + " FOR $query "
+                        "MATCH (c:" + communityLabel + ") "
+                                + "SEARCH c IN (VECTOR INDEX " + communityVectorIndex + " FOR $query "
                                 + "WHERE c.corpusId = $corpusId LIMIT $k) SCORE AS score "
                                 + "RETURN c.id AS id, coalesce(c.title, '') AS title, c.summary AS summary, "
                                 + "coalesce(c.attributeKeys, []) AS attributeKeys, "
@@ -799,29 +959,29 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     }
 
     private List<List<String>> gdsLeidenCommunities(String corpusId) {
-        try (Session session = driver.session()) {
+        try (Session session = sessions.get()) {
             List<String> identities = session.executeRead(tx -> tx.run(
-                    "MATCH (e:Entity {corpusId: $corpusId}) RETURN e.normalizedIdentity AS identity",
+                    "MATCH (e:" + entityLabel + " {corpusId: $corpusId}) RETURN e.normalizedIdentity AS identity",
                     Map.of("corpusId", corpusId)).list(record -> record.get("identity").asString()));
             if (identities.isEmpty()) {
                 return List.of();
             }
             long relationshipCount = session.executeRead(tx -> tx.run(
-                    "MATCH (:Entity {corpusId: $corpusId})-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->"
-                            + "(:Entity {corpusId: $corpusId}) RETURN count(r) AS count",
+                    "MATCH (:" + entityLabel + " {corpusId: $corpusId})-[r:" + relationshipType + " {corpusId: $corpusId}]->"
+                            + "(:" + entityLabel + " {corpusId: $corpusId}) RETURN count(r) AS count",
                     Map.of("corpusId", corpusId)).single().get("count").asLong());
             if (relationshipCount == 0) {
                 return identities.stream().map(List::of).toList();
             }
 
-            String graphName = projectionName(corpusId);
+            String graphName = namePrefix + projectionName(corpusId);
             Map<Long, List<String>> groupsByCommunityId;
             IllegalStateException failure = null;
             try {
                 session.executeWrite(tx -> tx.run(
-                        "MATCH (s:Entity {corpusId: $corpusId}) "
-                                + "OPTIONAL MATCH (s)-[r:" + RELATIONSHIP_TYPE + " {corpusId: $corpusId}]->"
-                                + "(t:Entity {corpusId: $corpusId}) "
+                        "MATCH (s:" + entityLabel + " {corpusId: $corpusId}) "
+                                + "OPTIONAL MATCH (s)-[r:" + relationshipType + " {corpusId: $corpusId}]->"
+                                + "(t:" + entityLabel + " {corpusId: $corpusId}) "
                                 + "WITH gds.graph.project($graphName, s, t, "
                                 + "{relationshipProperties: {weight: toFloat(coalesce(r.weight, 1))}}, "
                                 + "{undirectedRelationshipTypes: ['*']}) AS g "

@@ -50,6 +50,14 @@ public class InMemoryVectorStoreAdapter implements VectorStorePort {
     }
 
     @Override
+    public void deleteChunksOf(String corpusId, String documentName) {
+        Map<String, EmbeddedChunk> scopedChunks = chunksByCorpusId.get(corpusId);
+        if (scopedChunks != null && documentName != null) {
+            scopedChunks.values().removeIf(chunk -> documentName.equals(chunk.chunk().documentName()));
+        }
+    }
+
+    @Override
     public Optional<ProjectionModel> projectionModel(String corpusId) {
         return Optional.ofNullable(projectionModelByCorpusId.get(corpusId));
     }

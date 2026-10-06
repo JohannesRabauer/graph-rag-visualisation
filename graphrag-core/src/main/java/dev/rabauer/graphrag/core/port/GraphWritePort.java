@@ -13,8 +13,14 @@ import java.util.Map;
 
 /**
  * The write side of the knowledge graph: persisting, detecting Communities
- * and (see {@link GraphStorePort}) removing. Used by ingestion, import and
- * community detection; the query use cases never need it.
+ * and deleting. Used by ingestion, import, community detection and
+ * incremental updates ({@code UpdateSources}); the query use cases never
+ * need it.
+ *
+ * <p>The delete methods are optional: their defaults throw
+ * {@link UnsupportedOperationException}, so a store without them fails
+ * loudly instead of silently keeping stale data. Deleting is idempotent:
+ * unknown ids are ignored.
  */
 public interface GraphWritePort {
 
@@ -115,5 +121,44 @@ public interface GraphWritePort {
 
     default void persistEntitiesAndRelationships(String corpusId, GraphExtraction extraction) {
         persist(corpusId, extraction);
+    }
+
+    /**
+     * Deletes the Text Units of {@code corpusId} with these ids.
+     *
+     * @throws UnsupportedOperationException by default
+     */
+    default void deleteTextUnits(String corpusId, Collection<String> textUnitIds) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete Text Units");
+    }
+
+    /**
+     * Deletes the Entities of {@code corpusId} with these identities, together
+     * with their Relationships, Community memberships and embeddings.
+     *
+     * @throws UnsupportedOperationException by default
+     */
+    default void deleteEntities(String corpusId, Collection<String> identities) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete Entities");
+    }
+
+    /**
+     * Deletes the Relationships of {@code corpusId} with the same
+     * {@code (source identity, type, target identity)} as the given ones.
+     *
+     * @throws UnsupportedOperationException by default
+     */
+    default void deleteRelationships(String corpusId, Collection<Relationship> relationships) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete Relationships");
+    }
+
+    /**
+     * Deletes every Community of {@code corpusId}, its memberships and
+     * embeddings (used before re-detecting).
+     *
+     * @throws UnsupportedOperationException by default
+     */
+    default void deleteCommunities(String corpusId) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete Communities");
     }
 }

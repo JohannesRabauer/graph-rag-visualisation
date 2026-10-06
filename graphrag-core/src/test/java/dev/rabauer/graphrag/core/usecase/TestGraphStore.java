@@ -79,6 +79,34 @@ class TestGraphStore implements GraphStorePort {
     }
 
     @Override
+    public void deleteTextUnits(String corpusId, Collection<String> textUnitIds) {
+        scoped(textUnits, corpusId).keySet().removeAll(textUnitIds);
+    }
+
+    @Override
+    public void deleteEntities(String corpusId, Collection<String> identities) {
+        scoped(entities, corpusId).keySet().removeAll(identities);
+        scoped(entityEmbeddings, corpusId).keySet().removeAll(identities);
+        scoped(relationships, corpusId).values().removeIf(relationship ->
+                identities.contains(relationship.sourceIdentity()) || identities.contains(relationship.targetIdentity()));
+        scoped(memberships, corpusId).values().removeIf(membership -> identities.contains(membership.entityIdentity()));
+    }
+
+    @Override
+    public void deleteRelationships(String corpusId, Collection<Relationship> input) {
+        for (Relationship relationship : input) {
+            scoped(relationships, corpusId).remove(ImportKnowledgeGraph.relationshipKey(relationship));
+        }
+    }
+
+    @Override
+    public void deleteCommunities(String corpusId) {
+        scoped(communities, corpusId).clear();
+        scoped(memberships, corpusId).clear();
+        scoped(communityEmbeddings, corpusId).clear();
+    }
+
+    @Override
     public Collection<TextUnit> textUnits(String corpusId) {
         return List.copyOf(scoped(textUnits, corpusId).values());
     }

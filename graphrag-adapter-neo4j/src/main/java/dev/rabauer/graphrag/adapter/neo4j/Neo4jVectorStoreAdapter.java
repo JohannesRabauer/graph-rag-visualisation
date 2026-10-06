@@ -105,6 +105,19 @@ public class Neo4jVectorStoreAdapter implements VectorStorePort {
         }
     }
 
+    /** Deletes the corpus's chunks cut from {@code documentName}; the projection model is kept. */
+    @Override
+    public void deleteChunksOf(String corpusId, String documentName) {
+        if (corpusId == null || corpusId.isBlank() || documentName == null) {
+            return;
+        }
+        try (Session session = driver.session()) {
+            session.executeWrite(tx -> tx.run(
+                    "MATCH (c:Chunk {corpusId: $corpusId, documentName: $documentName}) DETACH DELETE c",
+                    Map.of("corpusId", corpusId, "documentName", documentName)).consume());
+        }
+    }
+
     @Override
     public Collection<EmbeddedChunk> chunks(String corpusId) {
         if (corpusId == null || corpusId.isBlank()) {

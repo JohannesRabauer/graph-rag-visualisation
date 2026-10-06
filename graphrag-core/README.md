@@ -349,6 +349,83 @@ overriding with indexed lookups: `entity(corpusId, identity)`,
 identities)`; Local expansion calls the last two once per hop instead of
 reading the whole graph.
 
+## Incremental updates
+
+`UpdateSources` re-indexes per source (a file or document) instead of the
+whole corpus. A graph element's source (`Sources.of(...)`) is its `source`
+attribute, else its locator's path, else (Text Units) its document name.
+
+```java
+UpdateSources updates = new UpdateSources(graphStore, vectorStoreOrNull, llmPort, embeddingPort);
+updates.replaceSource("repo", "src/main/java/com/shop/OrderService.java", newGraphOfThatFile, null);
+// ... more changed files ...
+updates.recomputeCommunities("repo");   // once per batch
+```
+
+`removeBySource(corpusId, sourceId)` deletes the source's Text Units; its
+Entities and the Entities only its Text Units cited; its Relationships, the
+ones touching a removed Entity and the ones only its Text Units cited;
+orphans (Entities this removal disconnected that have no source, no Text
+Units and no Relationship left, e.g. placeholders for external types); and,
+with a `VectorStorePort`, the source's chunks. Kept elements that also cited
+a removed Text Unit are re-persisted without it. It returns a
+`SourceRemoval` with the counts, the removed identities and the stale
+Community ids. `replaceSource` = remove + `ImportKnowledgeGraph` (detection
+off by default).
+
+What becomes stale:
+
+| Derived data | After a removal | Recompute with |
+| --- | --- | --- |
+| Entity embeddings | deleted with their Entities; new Entities are embedded by the import | — |
+| Community memberships | memberships of deleted Entities are gone; new Entities have none | `recomputeCommunities` |
+| Community summaries, content hashes | stale for every Community in `staleCommunityIds` | `recomputeCommunities` (with summary reuse: unchanged Communities keep their summary, no model call) |
+| Community embeddings | stale | `recomputeCommunities` (re-embeds with a semantic port) |
+| Vector index projection model | kept as is | a full `ConstructVectorIndex` |
+
+`DetectCommunities.recompute(corpusId)` (used by `recomputeCommunities`)
+reads the reusable summaries, deletes every Community of the corpus, then
+detects afresh, so no stale Community or membership survives.
+
+The write port's delete methods (`deleteTextUnits`, `deleteEntities` —
+cascading to the Entity's Relationships, memberships and embedding —,
+`deleteRelationships`, `deleteCommunities`) and
+`VectorStorePort.deleteChunksOf` throw `UnsupportedOperationException` by
+default, so a store without them fails loudly. The in-memory, testkit and
+Neo4j stores implement them.
+
+## Neo4j: sharing a database, injected sessions
+
+`Neo4jGraphStoreAdapter` can live next to another tool's graph in the same
+database:
+
+```java
+Neo4jGraphStoreAdapter store = new Neo4jGraphStoreAdapter(
+        () -> driver.session(SessionConfig.forDatabase("neo4j")),   // the caller owns the driver
+        Neo4jGraphStoreOptions.defaults()
+                .withPrefixes("GraphRag", "GRAPHRAG_")                // :GraphRagEntity, :GRAPHRAG_RELATIONSHIP
+                .withCommunityDetection(Neo4jGraphStoreOptions.CommunityDetection.CORE)); // no GDS plugin
+```
+
+- `withPrefixes(labelPrefix, relationshipTypePrefix)`: every label
+  (`Entity`, `Community`, `TextUnit`) and relationship type
+  (`RELATIONSHIP`, `BELONGS_TO`, `MENTIONED_IN`) is prefixed; constraint,
+  vector index and GDS projection names get the lower-cased label prefix
+  (`graphrag_entity_embedding`). Prefixes must be letters, digits and `_`,
+  starting with a letter. Nothing the adapter runs matches an unprefixed
+  label, so a foreign `:Entity`, `:Java:Type` or `INVOKES` graph is never
+  read, changed or deleted.
+- Every node and relationship is also keyed by `corpusId`.
+- `new Neo4jGraphStoreAdapter(Supplier<Session>, options)`: the adapter opens
+  and closes one session per operation and never closes the driver.
+  `withCreateConstraints(false)` skips declaring constraints when the schema
+  is managed elsewhere.
+- `entity`, `entities(corpusId, identities)` and `relationshipsTouching` are
+  indexed queries.
+
+`Neo4jVectorStoreAdapter` (the plain vector-RAG baseline's `:Chunk` nodes) is
+not namespaced.
+
 ## Testkit: proving an adapter correct
 
 `dev.rabauer.graphrag:graphrag-core-testkit` (test scope) ships JUnit 5
@@ -357,13 +434,14 @@ contract tests an adapter extends, plus fixtures:
 | Class | Extend it with | Checks |
 | --- | --- | --- |
 | `GraphReadPortContract` | `givenGraph(ContractGraph)`: load the fixture your way, return your read port | corpus scoping, fields, attributes and locators of Entities/Relationships/Text Units/Communities, stable reads, empty-not-null for unknown corpora, Text Unit and Entity lookups, `relationshipsTouching`, bounded similarity lookups |
-| `GraphStorePortContract` | `newStore()` | the read contract with the fixture written through your write side, plus: re-persisting replaces, `detectCommunities` covers every Entity once, embeddings make similarity lookups correct (`supportsSimilarity()` hook) |
-| `VectorStorePortContract` | `newStore()` | chunks and embeddings round-trip per corpus, re-persisting replaces, the projection model round-trips (`supportsProjectionModel()` hook) |
+| `GraphStorePortContract` | `newStore()` | the read contract with the fixture written through your write side, plus: re-persisting replaces, `detectCommunities` covers every Entity once, embeddings make similarity lookups correct (`supportsSimilarity()` hook), deletes cascade and `UpdateSources.removeBySource` removes a file (`supportsDeletion()` hook) |
+| `VectorStorePortContract` | `newStore()` | chunks and embeddings round-trip per corpus, re-persisting replaces, deleting a document's chunks keeps the rest (`supportsDeletion()` hook), the projection model round-trips (`supportsProjectionModel()` hook) |
 | `EmbeddingPortContract` | `port()` | finite, non-empty vectors of one dimension (blank text included), determinism (`deterministic()` hook), and for a semantic port nearby meanings closer than unrelated ones (`semanticProbe()` hook) |
 | `CodeGraphRetrievalContract` | `newStore()` | the whole non-text path on your store: import `CodeGraphFixture` (50 classes), detect Communities with the core detector, retrieval-only Local and Global for a camelCase question, with locators |
 
 `ContractGraph` is the small fixture (unique corpus ids per test, so a shared
-database is fine); `CodeGraphFixture` the 50-class code graph;
+database is fine; every contract vector has `VECTOR_DIMENSIONS` = 3
+dimensions); `CodeGraphFixture` the 50-class code graph;
 `InMemoryGraphStore` a complete reference `GraphStorePort` for application
 tests. Example:
 

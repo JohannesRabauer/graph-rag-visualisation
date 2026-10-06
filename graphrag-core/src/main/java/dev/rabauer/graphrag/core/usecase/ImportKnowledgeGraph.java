@@ -41,8 +41,9 @@ import java.util.Set;
  *       (unless {@link Options#detectCommunities()} is off), summarizing with
  *       the optional {@link LlmPort} — the only model calls an import makes.</li>
  *   <li>With a semantic {@link EmbeddingPort}, {@link EmbedGraphElements}
- *       embeds the Entities and Communities (unless {@link Options#embed()}
- *       is off).</li>
+ *       embeds the imported Entities and, when Communities were supplied or
+ *       detected, the corpus's Communities (unless {@link Options#embed()} is
+ *       off).</li>
  * </ol>
  *
  * <p>Store failures propagate unchanged; nothing is retried.
@@ -134,7 +135,12 @@ public class ImportKnowledgeGraph {
 
         boolean embedded = effective.embed() && EmbedGraphElements.isSemantic(embeddingPort);
         if (embedded) {
-            new EmbedGraphElements(graphStorePort, embeddingPort).run(corpusId);
+            // Only what this import wrote: a re-import of one source does not re-embed the whole corpus.
+            EmbedGraphElements embedder = new EmbedGraphElements(graphStorePort, embeddingPort);
+            embedder.embedEntities(corpusId, entities.values());
+            if (!communities.isEmpty()) {
+                embedder.embedCommunities(corpusId);
+            }
         }
 
         return new ImportResult(corpusId, input.textUnits().size(), entities.size(), relationships.size(),
