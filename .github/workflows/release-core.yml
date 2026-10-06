@@ -55,8 +55,15 @@ jobs:
       - name: Set the version
         run: mvn -B -f graphrag-core/pom.xml versions:set -DnewVersion=${{ steps.version.outputs.version }} -DgenerateBackupPoms=false
 
-      - name: Test, sign and upload to Maven Central
-        run: mvn -B -f graphrag-core/pom.xml -Prelease clean deploy
+      - name: Build and test
+        run: mvn -B -f graphrag-core/pom.xml -Prelease clean verify -Dgpg.skip
+
+      # Java 21 consumers must be able to load the artifact.
+      - name: Check the class files are Java 21 (major version 65)
+        run: .github/scripts/check-core-bytecode.sh
+
+      - name: Sign and upload to Maven Central
+        run: mvn -B -f graphrag-core/pom.xml -Prelease deploy -DskipTests
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}

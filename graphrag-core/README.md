@@ -11,9 +11,10 @@ Neo4j Java Driver, or LangChain4j, and the build enforces that ban.
 
 ## Requirements
 
-- **JDK 25** — this module (like the rest of the reactor) is compiled and
-  tested against JDK 25. Point `JAVA_HOME`/`PATH` at a JDK 25 install before
-  building.
+- **JDK 21+** — this module is compiled for Java 21 (class-file major
+  version 65), so Java 21 applications can use it. CI builds and tests it on
+  JDK 21 and JDK 25. Building the whole reactor (web app and adapters) needs
+  JDK 25.
 - Apache Maven 3.9+
 
 ## Maven coordinates
@@ -22,7 +23,7 @@ Neo4j Java Driver, or LangChain4j, and the build enforces that ban.
 <dependency>
     <groupId>dev.rabauer.graphrag</groupId>
     <artifactId>graphrag-core</artifactId>
-    <version>2.0.0</version>
+    <version>2.0.1</version>
 </dependency>
 ```
 

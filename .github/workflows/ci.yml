@@ -8,6 +8,33 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  # graphrag-core targets Java 21 (class-file major version 65) so Java 21
+  # consumers can use the published artifact; build and test it on the
+  # oldest supported JDK as well as on the JDK the rest of the reactor uses.
+  core:
+    name: graphrag-core on JDK ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['21', '25']
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Build and test graphrag-core
+        run: mvn -B -f graphrag-core/pom.xml clean verify
+
+      - name: Check the class files are Java 21 (major version 65)
+        run: .github/scripts/check-core-bytecode.sh
+
   build:
     runs-on: ubuntu-latest
     steps:

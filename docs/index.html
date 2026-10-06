@@ -732,15 +732,15 @@ OPENAI_API_KEY=sk-... docker compose up"><pre><span class="c"># clone and start 
           <div class="codeblock" data-copy="&lt;dependency&gt;
     &lt;groupId&gt;dev.rabauer.graphrag&lt;/groupId&gt;
     &lt;artifactId&gt;graphrag-core&lt;/artifactId&gt;
-    &lt;version&gt;2.0.0&lt;/version&gt;
-&lt;/dependency&gt;"><pre><span class="c">&lt;!-- Maven: pom.xml (JDK 25+) --&gt;</span>
+    &lt;version&gt;2.0.1&lt;/version&gt;
+&lt;/dependency&gt;"><pre><span class="c">&lt;!-- Maven: pom.xml (JDK 21+) --&gt;</span>
 <span class="k">&lt;dependency&gt;</span>
     <span class="k">&lt;groupId&gt;</span>dev.rabauer.graphrag<span class="k">&lt;/groupId&gt;</span>
     <span class="k">&lt;artifactId&gt;</span>graphrag-core<span class="k">&lt;/artifactId&gt;</span>
-    <span class="k">&lt;version&gt;</span><span class="s">2.0.0</span><span class="k">&lt;/version&gt;</span>
+    <span class="k">&lt;version&gt;</span><span class="s">2.0.1</span><span class="k">&lt;/version&gt;</span>
 <span class="k">&lt;/dependency&gt;</span></pre></div>
-          <div class="codeblock" data-copy="implementation(&quot;dev.rabauer.graphrag:graphrag-core:2.0.0&quot;)"><pre><span class="c">// Gradle: build.gradle.kts</span>
-<span class="k">implementation</span>(<span class="s">"dev.rabauer.graphrag:graphrag-core:2.0.0"</span>)</pre></div>
+          <div class="codeblock" data-copy="implementation(&quot;dev.rabauer.graphrag:graphrag-core:2.0.1&quot;)"><pre><span class="c">// Gradle: build.gradle.kts</span>
+<span class="k">implementation</span>(<span class="s">"dev.rabauer.graphrag:graphrag-core:2.0.1"</span>)</pre></div>
           <ul class="checklist" style="margin-top:22px">
             <li>A Maven Enforcer rule fails the build if Spring, the Neo4j driver or LangChain4j leak into the core.</li>
             <li>Implementing a port means implementing its abstract methods only. Defaults cover the rest.</li>
