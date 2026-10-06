@@ -35,6 +35,7 @@ public class ExtractEntitiesAndRelationships {
     private final LlmPort llmPort;
     private final GraphStorePort graphStorePort;
     private final List<String> entityTypes;
+    private final FailurePolicy failurePolicy;
 
     public ExtractEntitiesAndRelationships(LlmPort llmPort, GraphStorePort graphStorePort) {
         this(llmPort, graphStorePort, EntityTypes.ALL);
@@ -48,6 +49,19 @@ public class ExtractEntitiesAndRelationships {
      *                    {@link EntityTypes#ALL}.
      */
     public ExtractEntitiesAndRelationships(LlmPort llmPort, GraphStorePort graphStorePort, List<String> entityTypes) {
+        this(llmPort, graphStorePort, entityTypes, FailurePolicy.FAIL_RUN);
+    }
+
+    /**
+     * @param failurePolicy {@link FailurePolicy#ISOLATE_ITEM}: a unit whose
+     *                      extraction fails is persisted without Entities,
+     *                      recorded in the {@link ExtractionReport} and the run
+     *                      continues; {@link FailurePolicy#FAIL_RUN} (the
+     *                      default): the first failure stops the run
+     */
+    public ExtractEntitiesAndRelationships(LlmPort llmPort, GraphStorePort graphStorePort, List<String> entityTypes,
+                                           FailurePolicy failurePolicy) {
+        this.failurePolicy = failurePolicy == null ? FailurePolicy.FAIL_RUN : failurePolicy;
         this.entityTypes = entityTypes == null || entityTypes.isEmpty() ? EntityTypes.ALL : List.copyOf(entityTypes);
         this.llmPort = llmPort == null ? LlmPort.none() : llmPort;
         this.graphStorePort = graphStorePort;
@@ -62,7 +76,7 @@ public class ExtractEntitiesAndRelationships {
         Map<String, Entity> entities = new LinkedHashMap<>();
         Map<String, Relationship> relationships = new LinkedHashMap<>();
         for (TextUnit unit : TextUnitSplitter.split(corpus)) {
-            GraphExtraction extraction = extractUnit(unit);
+            GraphExtraction extraction = extractUnit(unit, new ArrayList<>());
             accumulateResolved(extraction, resolver, entities, relationships, null,
                     new RetypeSink(relationships, null, null));
         }
@@ -96,6 +110,19 @@ public class ExtractEntitiesAndRelationships {
     public void run(Corpus corpus, Consumer<TextUnitProgress> onTextUnitExtracted,
                     Consumer<Entity> onEntityPersisted, Consumer<Relationship> onRelationshipPersisted,
                     BiConsumer<String, Entity> onEntityRetyped) {
+        runWithReport(corpus, onTextUnitExtracted, onEntityPersisted, onRelationshipPersisted, onEntityRetyped);
+    }
+
+    /**
+     * {@link #run(Corpus, Consumer, Consumer, Consumer, BiConsumer)} that also
+     * returns what happened per unit: with {@link FailurePolicy#ISOLATE_ITEM}
+     * the failed units, each still persisted as a Text Unit without Entities.
+     */
+    public ExtractionReport runWithReport(Corpus corpus, Consumer<TextUnitProgress> onTextUnitExtracted,
+                                          Consumer<Entity> onEntityPersisted,
+                                          Consumer<Relationship> onRelationshipPersisted,
+                                          BiConsumer<String, Entity> onEntityRetyped) {
+        List<ExtractionReport.UnitFailure> failures = new ArrayList<>();
         List<TextUnit> units = TextUnitSplitter.split(corpus);
         int total = units.size();
         EntityResolver resolver = new EntityResolver();
@@ -103,7 +130,7 @@ public class ExtractEntitiesAndRelationships {
         Map<String, Relationship> mergedRelationships = new LinkedHashMap<>();
         for (int i = 0; i < total; i++) {
             TextUnit unit = units.get(i);
-            GraphExtraction extraction = extractUnit(unit);
+            GraphExtraction extraction = extractUnit(unit, failures);
             Map<String, Entity> changedEntities = new LinkedHashMap<>();
             Map<String, Relationship> changedRelationships = new LinkedHashMap<>();
             Map<String, Entity> retypedEntities = new LinkedHashMap<>();
@@ -138,6 +165,7 @@ public class ExtractEntitiesAndRelationships {
                 }
             }
         }
+        return new ExtractionReport(total, failures);
     }
 
     private static void accumulateResolved(GraphExtraction extraction, EntityResolver resolver,
@@ -224,7 +252,7 @@ public class ExtractEntitiesAndRelationships {
                 relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());
     }
 
-    private GraphExtraction extractUnit(TextUnit unit) {
+    private GraphExtraction extractUnit(TextUnit unit, List<ExtractionReport.UnitFailure> failures) {
         if (!llmPort.extractsEntities()) {
             return GraphExtraction.empty();
         }
@@ -232,6 +260,11 @@ public class ExtractEntitiesAndRelationships {
         try {
             raw = llmPort.extract(unit, entityTypes);
         } catch (RuntimeException e) {
+            if (failurePolicy == FailurePolicy.ISOLATE_ITEM) {
+                failures.add(new ExtractionReport.UnitFailure(unit.id(), unit.documentName(), unit.ordinal() + 1,
+                        e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                return GraphExtraction.empty();
+            }
             throw new IllegalStateException("Knowledge graph extraction failed for document '"
                     + unit.documentName() + "', passage " + (unit.ordinal() + 1) + ": " + e.getMessage(), e);
         }

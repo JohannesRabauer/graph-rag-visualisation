@@ -14,10 +14,13 @@ import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.domain.TextUnit;
+import dev.rabauer.graphrag.core.llm.LenientJson;
 import dev.rabauer.graphrag.core.port.LlmPort;
 import dev.rabauer.graphrag.core.usecase.EntityTypes;
 import dev.rabauer.graphrag.core.usecase.GraphElementMerger;
 import dev.rabauer.graphrag.core.usecase.TextUnitSplitter;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -32,6 +35,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,6 +52,12 @@ import java.util.regex.Pattern;
  * <p>Failures are never retried automatically ({@code maxRetries(0)}) so
  * they surface visibly to the caller instead of silently masking a broken
  * or misconfigured integration.
+ *
+ * <p>Replies are parsed leniently ({@link LenientJson}): prose or markdown
+ * around the JSON object no longer fails a call. With the corrective retry
+ * switched on ({@link #OpenAiLlmPort(String, String, boolean)}; off by
+ * default), a reply that still cannot be used is asked once more, with the bad
+ * reply and a correction; a network or API failure is never retried.
  */
 public class OpenAiLlmPort implements LlmPort {
 
@@ -61,8 +72,12 @@ public class OpenAiLlmPort implements LlmPort {
     static final int MAX_VERDICT_SENTENCES = 2;
     static final String NOT_IN_CONTEXT = SynthesizedAnswer.NOT_IN_CONTEXT;
 
+    static final String CORRECTION = "Your reply could not be used. Reply again with only the JSON object in the "
+            + "requested shape: no prose, no markdown.";
+
     private final ChatModel jsonChatModel;
     private final ChatModel textChatModel;
+    private final boolean correctiveRetry;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OpenAiLlmPort(String apiKey) {
@@ -70,6 +85,15 @@ public class OpenAiLlmPort implements LlmPort {
     }
 
     public OpenAiLlmPort(String apiKey, String modelName) {
+        this(apiKey, modelName, false);
+    }
+
+    /**
+     * @param correctiveRetry whether an unusable reply (no JSON object, a
+     *                        required field missing) is asked once more with a
+     *                        correction before failing the call
+     */
+    public OpenAiLlmPort(String apiKey, String modelName, boolean correctiveRetry) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalArgumentException("OpenAI API key must not be blank");
         }
@@ -93,11 +117,71 @@ public class OpenAiLlmPort implements LlmPort {
                 .timeout(Duration.ofSeconds(60))
                 .maxRetries(0)
                 .build();
+        this.correctiveRetry = correctiveRetry;
     }
 
     OpenAiLlmPort(ChatModel jsonChatModel, ChatModel textChatModel) {
+        this(jsonChatModel, textChatModel, false);
+    }
+
+    OpenAiLlmPort(ChatModel jsonChatModel, ChatModel textChatModel, boolean correctiveRetry) {
         this.jsonChatModel = jsonChatModel;
         this.textChatModel = textChatModel;
+        this.correctiveRetry = correctiveRetry;
+    }
+
+    /**
+     * One JSON-mode call: the request, the output-token check, then
+     * {@code parse}; with the corrective retry, an unusable reply
+     * ({@link LlmCallFailedException} from {@code parse}) is asked once more.
+     */
+    private <T> T callJson(String prompt, int maxOutputTokens, String callFailed, String lengthHit,
+                           Function<String, T> parse) {
+        String reply = send(List.of(UserMessage.from(prompt)), maxOutputTokens, callFailed, lengthHit);
+        try {
+            return parse.apply(reply);
+        } catch (LlmCallFailedException unusable) {
+            if (!correctiveRetry) {
+                throw unusable;
+            }
+            String retry = send(List.of(UserMessage.from(prompt), AiMessage.from(reply.isEmpty() ? "(empty)" : reply),
+                    UserMessage.from(CORRECTION)), maxOutputTokens, callFailed, lengthHit);
+            return parse.apply(retry);
+        }
+    }
+
+    private String send(List<ChatMessage> messages, int maxOutputTokens, String callFailed, String lengthHit) {
+        ChatResponse response;
+        try {
+            response = jsonChatModel.chat(ChatRequest.builder()
+                    .messages(messages)
+                    .maxOutputTokens(maxOutputTokens)
+                    .build());
+        } catch (RuntimeException e) {
+            throw new LlmCallFailedException(callFailed, e);
+        }
+        if (response != null && response.finishReason() == FinishReason.LENGTH) {
+            throw new LlmCallFailedException(lengthHit + " (" + maxOutputTokens + ")", null);
+        }
+        return response == null || response.aiMessage() == null || response.aiMessage().text() == null
+                ? "" : response.aiMessage().text();
+    }
+
+    /**
+     * The JSON tree of a reply: strict after stripping markdown fences, else
+     * the first JSON object found leniently in the text (prose around it,
+     * trailing commas, …).
+     */
+    private JsonNode readJson(String response) throws Exception {
+        try {
+            return objectMapper.readTree(stripMarkdownFences(response));
+        } catch (Exception strict) {
+            Optional<String> lenient = LenientJson.extractObjectText(response);
+            if (lenient.isEmpty()) {
+                throw strict;
+            }
+            return objectMapper.readTree(lenient.get());
+        }
     }
 
     /**
@@ -139,22 +223,9 @@ public class OpenAiLlmPort implements LlmPort {
             return new GraphExtraction(List.of(), List.of());
         }
 
-        ChatResponse response;
-        try {
-            response = jsonChatModel.chat(ChatRequest.builder()
-                    .messages(UserMessage.from(extractionPrompt(unit, entityTypes)))
-                    .maxOutputTokens(MAX_EXTRACTION_OUTPUT_TOKENS)
-                    .build());
-        } catch (RuntimeException e) {
-            throw new LlmCallFailedException("OpenAI extraction call failed", e);
-        }
-        if (response != null && response.finishReason() == FinishReason.LENGTH) {
-            throw new LlmCallFailedException("OpenAI extraction response hit the output-token limit ("
-                    + MAX_EXTRACTION_OUTPUT_TOKENS + ")", null);
-        }
-
-        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
-        return parseExtraction(text);
+        return callJson(extractionPrompt(unit, entityTypes), MAX_EXTRACTION_OUTPUT_TOKENS,
+                "OpenAI extraction call failed", "OpenAI extraction response hit the output-token limit",
+                this::parseExtraction);
     }
 
     /**
@@ -227,22 +298,10 @@ public class OpenAiLlmPort implements LlmPort {
             return LlmPort.super.summarizeCommunity(members, relationships);
         }
 
-        ChatResponse response;
-        try {
-            response = jsonChatModel.chat(ChatRequest.builder()
-                    .messages(UserMessage.from(communitySummaryPrompt(members, relationships)))
-                    .maxOutputTokens(MAX_SUMMARY_OUTPUT_TOKENS)
-                    .build());
-        } catch (RuntimeException e) {
-            throw new LlmCallFailedException("OpenAI community summarization call failed", e);
-        }
-        if (response != null && response.finishReason() == FinishReason.LENGTH) {
-            throw new LlmCallFailedException("OpenAI community summary response hit the output-token limit ("
-                    + MAX_SUMMARY_OUTPUT_TOKENS + ")", null);
-        }
-
-        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
-        return parseCommunitySummary(text, members);
+        return callJson(communitySummaryPrompt(members, relationships), MAX_SUMMARY_OUTPUT_TOKENS,
+                "OpenAI community summarization call failed",
+                "OpenAI community summary response hit the output-token limit",
+                text -> parseCommunitySummary(text, members));
     }
 
     /**
@@ -307,7 +366,7 @@ public class OpenAiLlmPort implements LlmPort {
         }
         JsonNode root;
         try {
-            root = objectMapper.readTree(stripMarkdownFences(response));
+            root = readJson(response);
         } catch (Exception e) {
             throw new LlmCallFailedException("OpenAI community summary response was not valid JSON: " + response, e);
         }
@@ -339,22 +398,9 @@ public class OpenAiLlmPort implements LlmPort {
      */
     @Override
     public SynthesizedAnswer synthesizeAnswer(String question, List<ContextItem> context) {
-        ChatResponse response;
-        try {
-            response = jsonChatModel.chat(ChatRequest.builder()
-                    .messages(UserMessage.from(answerPrompt(question, context)))
-                    .maxOutputTokens(MAX_ANSWER_OUTPUT_TOKENS)
-                    .build());
-        } catch (RuntimeException e) {
-            throw new LlmCallFailedException("OpenAI answer synthesis call failed", e);
-        }
-        if (response != null && response.finishReason() == FinishReason.LENGTH) {
-            throw new LlmCallFailedException("OpenAI answer response hit the output-token limit ("
-                    + MAX_ANSWER_OUTPUT_TOKENS + ")", null);
-        }
-
-        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
-        return parseAnswer(text);
+        return callJson(answerPrompt(question, context), MAX_ANSWER_OUTPUT_TOKENS,
+                "OpenAI answer synthesis call failed", "OpenAI answer response hit the output-token limit",
+                this::parseAnswer);
     }
 
     /**
@@ -407,7 +453,7 @@ public class OpenAiLlmPort implements LlmPort {
         }
         JsonNode root;
         try {
-            root = objectMapper.readTree(stripMarkdownFences(response));
+            root = readJson(response);
         } catch (Exception e) {
             throw new LlmCallFailedException("OpenAI answer response was not valid JSON: " + response, e);
         }
@@ -431,21 +477,9 @@ public class OpenAiLlmPort implements LlmPort {
     @Override
     public ComparisonVerdict compareAnswers(String question, String graphAnswer, String vectorAnswer,
                                             ComparisonFacts facts) {
-        ChatResponse response;
-        try {
-            response = jsonChatModel.chat(ChatRequest.builder()
-                    .messages(UserMessage.from(verdictPrompt(question, graphAnswer, vectorAnswer, facts)))
-                    .maxOutputTokens(MAX_VERDICT_OUTPUT_TOKENS)
-                    .build());
-        } catch (RuntimeException e) {
-            throw new LlmCallFailedException("OpenAI comparison verdict call failed", e);
-        }
-        if (response != null && response.finishReason() == FinishReason.LENGTH) {
-            throw new LlmCallFailedException("OpenAI comparison verdict hit the output-token limit ("
-                    + MAX_VERDICT_OUTPUT_TOKENS + ")", null);
-        }
-        String text = response == null || response.aiMessage() == null ? "" : response.aiMessage().text();
-        return parseVerdict(text);
+        return callJson(verdictPrompt(question, graphAnswer, vectorAnswer, facts), MAX_VERDICT_OUTPUT_TOKENS,
+                "OpenAI comparison verdict call failed", "OpenAI comparison verdict hit the output-token limit",
+                this::parseVerdict);
     }
 
     /**
@@ -496,7 +530,7 @@ public class OpenAiLlmPort implements LlmPort {
         }
         JsonNode root;
         try {
-            root = objectMapper.readTree(stripMarkdownFences(response));
+            root = readJson(response);
         } catch (Exception e) {
             throw new LlmCallFailedException("OpenAI comparison verdict was not valid JSON: " + response, e);
         }
@@ -582,11 +616,9 @@ public class OpenAiLlmPort implements LlmPort {
             return new GraphExtraction(List.of(), List.of());
         }
 
-        String json = stripMarkdownFences(response);
-
         JsonNode root;
         try {
-            root = objectMapper.readTree(json);
+            root = readJson(response);
         } catch (Exception e) {
             throw new LlmCallFailedException("OpenAI response was not valid JSON: " + response, e);
         }

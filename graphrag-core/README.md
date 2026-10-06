@@ -349,6 +349,57 @@ overriding with indexed lookups: `entity(corpusId, identity)`,
 identities)`; Local expansion calls the last two once per hop instead of
 reading the whole graph.
 
+## Small local models
+
+Small models (for example Ollama `llama3.2`) often wrap JSON in prose, add
+trailing commas or run into the token limit. Three pieces keep them usable,
+with failures still visible:
+
+1. **`LenientJson`** (`dev.rabauer.graphrag.core.llm`, JDK only) finds the
+   first JSON object in a reply and repairs it: markdown fences and prose
+   around it, trailing or missing commas, single quotes, unquoted keys, and
+   JSON cut off mid-string are tolerated; `Result.repaired()` tells whether
+   anything was fixed. `extractObjectText` hands strict JSON to an adapter's
+   own JSON library.
+2. **`PromptedLlmPort`** — an abstract `LlmPort` with the prompts, the JSON
+   Schemas (`PromptedLlmPort.Schemas`) and the parsing for Community
+   summaries, DRIFT sub-questions and (opt-in) extraction and answer
+   synthesis. Implement only `complete(CompletionRequest)`:
+
+   ```java
+   class OllamaLlmPort extends PromptedLlmPort {
+       private final ChatClient chat;   // e.g. Spring AI
+       OllamaLlmPort(ChatClient chat) { this.chat = chat; }
+
+       @Override
+       protected String complete(CompletionRequest request) {
+           // request.messages(): the prompt (and, on the retry, the bad reply plus a correction)
+           // request.jsonSchema(): pass to Ollama's `format` for schema-constrained output
+           return callOllama(request.messages(), request.jsonSchema(), request.maxOutputTokens());
+       }
+   }
+   ```
+
+   An unusable reply (no object, a required field empty) is asked once more
+   with the bad reply and a corrective message; if that fails too, the item
+   fails with an `LlmReplyException` (purpose, attempts, last reply). A
+   failure of `complete` itself propagates unchanged and is never retried.
+   Fewer DRIFT sub-questions than candidates are filled with the
+   deterministic ones. `Options`: `extraction`, `synthesis` (both off),
+   `correctiveRetry` (on), output-token limits.
+3. **Per-item failure isolation** (`FailurePolicy.ISOLATE_ITEM`): a failed
+   Community summary becomes `FAILED` with its error and the deterministic
+   summary (`DetectCommunities`); a failed Text Unit extraction is recorded in
+   the `ExtractionReport` of `ExtractEntitiesAndRelationships.runWithReport`
+   and persisted without Entities; a failed sub-question derivation in
+   `RetrieveDriftContext` falls back with a warning. The default everywhere
+   except `RetrieveDriftContext` stays `FAIL_RUN`.
+
+`OpenAiLlmPort` parses its replies leniently too and offers the corrective
+retry behind `new OpenAiLlmPort(apiKey, model, true)` (off by default). The
+deterministic offline stand-ins (`LlmPort.none()`, `LangChain4jLlmPort`,
+`LangChain4jEmbeddingPort`) are unchanged.
+
 ## Incremental updates
 
 `UpdateSources` re-indexes per source (a file or document) instead of the
