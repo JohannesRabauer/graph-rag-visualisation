@@ -50,7 +50,8 @@ in the Portal before publishing it.
    **Publish**. It takes a few minutes to an hour to appear on Maven Central.
 4. Bump to the next snapshot: `version` in `graphrag-core/pom.xml` and
    `graphrag-core.version` in the root `pom.xml`, and update the coordinates
-   in `README.md`.
+   in `README.md` and in the Library section of the website
+   (`docs/index.html`, Maven and Gradle snippets).
 
 ## Trying it locally
 
