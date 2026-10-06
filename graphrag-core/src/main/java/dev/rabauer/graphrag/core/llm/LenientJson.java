@@ -89,14 +89,14 @@ public final class LenientJson {
      *
      * @param raw the model reply, may be {@code null}
      * @return the parsed object (a {@link Map}), or empty when the reply contains no
-     *         {@code '{'} or nothing usable; never throws
+     *         <code>'&#123;'</code> or nothing usable; never throws
      */
     public static Optional<Result> parseObject(String raw) {
         return run(raw, true);
     }
 
     /**
-     * Parses the first top-level JSON value starting with {@code '{'} or {@code '['}
+     * Parses the first top-level JSON value starting with <code>'&#123;'</code> or {@code '['}
      * (whichever comes first) found in a raw model reply, with the same tolerance as
      * {@link #parseObject(String)}.
      *
