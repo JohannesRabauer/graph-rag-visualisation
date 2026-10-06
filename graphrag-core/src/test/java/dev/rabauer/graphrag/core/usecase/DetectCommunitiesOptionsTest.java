@@ -103,7 +103,7 @@ class DetectCommunitiesOptionsTest {
 
     @Test
     void theDefaultRunIsCompleteAndReportsEveryGeneratedSummary() {
-        CountingLlm llm = new CountingLlm(false, null, 0);
+        CountingLlm llm = new CountingLlm(true, null, 0);
 
         CommunityDetectionResult result = new DetectCommunities(triangles(3), llm, DetectCommunities.Options.defaults())
                 .run(CORPUS);
@@ -116,6 +116,15 @@ class DetectCommunitiesOptionsTest {
         assertEquals(List.of("T1a", "T2a", "T3a"), llm.summarizedFirstMembers);
         assertEquals("Group T1a", result.communities().getFirst().title());
         assertTrue(result.communities().getFirst().attributes().isEmpty());
+    }
+
+    @Test
+    void aPortWithoutAModelBehindItsSummariesReportsThemAsDeterministic() {
+        CommunityDetectionResult result = new DetectCommunities(triangles(2), new CountingLlm(false, null, 0),
+                DetectCommunities.Options.defaults()).run(CORPUS);
+
+        assertEquals(2, result.count(SummaryStatus.DETERMINISTIC));
+        assertEquals("Group T1a", result.communities().getFirst().title());
     }
 
     @Test
@@ -144,7 +153,7 @@ class DetectCommunitiesOptionsTest {
 
     @Test
     void failFirstPropagatesTheSummaryFailureUnchanged() {
-        CountingLlm llm = new CountingLlm(false, "T2", 0);
+        CountingLlm llm = new CountingLlm(true, "T2", 0);
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> new DetectCommunities(triangles(3), llm, DetectCommunities.Options.defaults()).run(CORPUS));
@@ -155,7 +164,7 @@ class DetectCommunitiesOptionsTest {
     @Test
     void isolatedFailuresFallBackPerItemAndMakeTheRunPartial() {
         TestGraphStore store = triangles(3);
-        CountingLlm llm = new CountingLlm(false, "T2", 0);
+        CountingLlm llm = new CountingLlm(true, "T2", 0);
 
         CommunityDetectionResult result = new DetectCommunities(store, llm,
                 DetectCommunities.Options.defaults().withFailurePolicy(FailurePolicy.ISOLATE_ITEM)).run(CORPUS);
@@ -174,7 +183,7 @@ class DetectCommunitiesOptionsTest {
     @Test
     void theSummaryBudgetSkipsTheRestButPersistsEveryCommunity() {
         TestGraphStore store = triangles(4);
-        CountingLlm llm = new CountingLlm(false, null, 0);
+        CountingLlm llm = new CountingLlm(true, null, 0);
 
         CommunityDetectionResult result = new DetectCommunities(store, llm,
                 DetectCommunities.Options.defaults().withMaxSummaries(2)).run(CORPUS);
@@ -190,7 +199,7 @@ class DetectCommunitiesOptionsTest {
 
     @Test
     void anExhaustedWallTimeSkipsEverySummary() {
-        CountingLlm llm = new CountingLlm(false, null, 0);
+        CountingLlm llm = new CountingLlm(true, null, 0);
 
         CommunityDetectionResult result = new DetectCommunities(triangles(2), llm,
                 DetectCommunities.Options.defaults().withMaxWallTime(Duration.ZERO)).run(CORPUS);
@@ -243,13 +252,13 @@ class DetectCommunitiesOptionsTest {
     void reusesStoredSummariesByContentHashAndRegeneratesChangedCommunities() {
         TestGraphStore store = triangles(2);
         DetectCommunities.Options reuse = DetectCommunities.Options.defaults().withReuseSummaries(true);
-        new DetectCommunities(store, new CountingLlm(false, null, 0), reuse).run(CORPUS);
+        new DetectCommunities(store, new CountingLlm(true, null, 0), reuse).run(CORPUS);
         Community first = store.communities(CORPUS).iterator().next();
         assertEquals(Set.of(DetectCommunities.CONTENT_HASH_ATTRIBUTE, DetectCommunities.SUMMARY_STATUS_ATTRIBUTE),
                 first.attributes().keySet());
 
         store.persistEntities(CORPUS, List.of(new Entity("T2b", "Class", "Now does something else.", List.of())));
-        CountingLlm second = new CountingLlm(false, null, 0);
+        CountingLlm second = new CountingLlm(true, null, 0);
         CommunityDetectionResult rerun = new DetectCommunities(store, second, reuse).run(CORPUS);
 
         assertEquals(List.of(SummaryStatus.REUSED, SummaryStatus.GENERATED), rerun.summaries().stream()
@@ -265,9 +274,9 @@ class DetectCommunitiesOptionsTest {
         TestGraphStore store = triangles(1);
         DetectCommunities.Options reuse = DetectCommunities.Options.defaults().withReuseSummaries(true)
                 .withFailurePolicy(FailurePolicy.ISOLATE_ITEM);
-        new DetectCommunities(store, new CountingLlm(false, "T1", 0), reuse).run(CORPUS);
+        new DetectCommunities(store, new CountingLlm(true, "T1", 0), reuse).run(CORPUS);
 
-        CountingLlm retry = new CountingLlm(false, null, 0);
+        CountingLlm retry = new CountingLlm(true, null, 0);
         CommunityDetectionResult rerun = new DetectCommunities(store, retry, reuse).run(CORPUS);
 
         assertEquals(1, retry.calls.get());

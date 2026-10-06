@@ -69,11 +69,11 @@ class AttributesThroughUseCasesTest {
                 .run(new Corpus(CORPUS, List.of(new UploadedDocument("notes.txt", "OrderService ships."))));
 
         assertEquals(List.of(codeTypes), promptedTypes);
-        Entity service = store.entity(CORPUS, "orderservice::class");
+        Entity service = store.stored(CORPUS, "orderservice::class");
         assertEquals("Class", service.type());
         assertEquals(Map.of("kind", "class"), service.attributes());
         assertEquals(SERVICE_AT, service.locator());
-        assertEquals("Other", store.entity(CORPUS, "shipping::other").type());
+        assertEquals("Other", store.stored(CORPUS, "shipping::other").type());
     }
 
     @Test

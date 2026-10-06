@@ -7,7 +7,7 @@ import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.RetrievalTrace;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.retrieval.GlobalRetrievalOptions;
 import dev.rabauer.graphrag.core.retrieval.RetrievalResult;
 import dev.rabauer.graphrag.core.retrieval.RetrievedItem;
@@ -40,16 +40,16 @@ public class RetrieveGlobalContext {
     static final String NO_MATCH_REASON =
             "No Community summary or member matched the question.";
 
-    private final GraphStorePort graph;
+    private final GraphReadPort graph;
     private final EmbeddingPort embeddingPort;
     private final SeedMatcher memberMatcher;
     private final GlobalRetrievalOptions options;
 
-    public RetrieveGlobalContext(GraphStorePort graph) {
+    public RetrieveGlobalContext(GraphReadPort graph) {
         this(graph, null, null, GlobalRetrievalOptions.defaults());
     }
 
-    public RetrieveGlobalContext(GraphStorePort graph, EmbeddingPort embeddingPort) {
+    public RetrieveGlobalContext(GraphReadPort graph, EmbeddingPort embeddingPort) {
         this(graph, embeddingPort, null, GlobalRetrievalOptions.defaults());
     }
 
@@ -60,7 +60,7 @@ public class RetrieveGlobalContext {
      *                      {@link SeedMatchers#defaultFor(EmbeddingPort)}
      *                      without embeddings, i.e. keywords)
      */
-    public RetrieveGlobalContext(GraphStorePort graph, EmbeddingPort embeddingPort, SeedMatcher memberMatcher,
+    public RetrieveGlobalContext(GraphReadPort graph, EmbeddingPort embeddingPort, SeedMatcher memberMatcher,
                                  GlobalRetrievalOptions options) {
         this.graph = Objects.requireNonNull(graph, "graph");
         this.embeddingPort = embeddingPort;
@@ -136,7 +136,7 @@ public class RetrieveGlobalContext {
      * highest first, id as tiebreak, at most {@code maxCommunities}. Fills
      * {@code memberScores} with the member seed scores it used.
      */
-    static List<Scored> candidates(GraphStorePort graph, EmbeddingPort embeddingPort, SeedMatcher memberMatcher,
+    static List<Scored> candidates(GraphReadPort graph, EmbeddingPort embeddingPort, SeedMatcher memberMatcher,
                                    String question, String corpusId, GlobalRetrievalOptions options,
                                    CommunityContext context, Map<String, Double> memberScores) {
         List<Community> similar = AnswerGlobalSearch.similarCommunities(graph, embeddingPort, question, corpusId,
@@ -205,7 +205,7 @@ public class RetrieveGlobalContext {
     record CommunityContext(List<Community> communities, Map<String, Set<String>> membersByCommunity,
                             Map<String, Entity> entityByIdentity, List<Relationship> relationships) {
 
-        static CommunityContext load(GraphStorePort graph, String corpusId) {
+        static CommunityContext load(GraphReadPort graph, String corpusId) {
             List<Community> communities = nonNull(graph.communities(corpusId));
             if (communities.isEmpty()) {
                 return new CommunityContext(List.of(), Map.of(), Map.of(), List.of());

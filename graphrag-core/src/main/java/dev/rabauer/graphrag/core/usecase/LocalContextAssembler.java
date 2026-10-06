@@ -8,7 +8,7 @@ import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.retrieval.LocalRetrievalOptions;
 
 import java.util.ArrayList;
@@ -47,10 +47,10 @@ final class LocalContextAssembler {
     static final int MAX_CONTEXT_TEXT_UNITS = 5;
     static final int EXCERPT_CHARS = 200;
 
-    private final GraphStorePort graphStorePort;
+    private final GraphReadPort graphStorePort;
     private final EmbeddingPort embeddingPort;
 
-    LocalContextAssembler(GraphStorePort graphStorePort, EmbeddingPort embeddingPort) {
+    LocalContextAssembler(GraphReadPort graphStorePort, EmbeddingPort embeddingPort) {
         this.graphStorePort = graphStorePort;
         this.embeddingPort = embeddingPort;
     }
@@ -102,7 +102,7 @@ final class LocalContextAssembler {
      *
      * @return the loaded unit, or null when it is missing or has no text
      */
-    static TextUnit addTextUnit(GraphStorePort graphStorePort, String corpusId, String unitId,
+    static TextUnit addTextUnit(GraphReadPort graphStorePort, String corpusId, String unitId,
                                 List<RetrievalStep> steps, List<Item> items, Map<String, Citation> citationsByUnit) {
         Optional<TextUnit> loaded = loadTextUnit(graphStorePort, corpusId, unitId);
         if (loaded.isEmpty() || loaded.get().text() == null) {
@@ -137,7 +137,7 @@ final class LocalContextAssembler {
     }
 
     /** A missing Text Unit is skipped; a store failure propagates (FR-5). */
-    static Optional<TextUnit> loadTextUnit(GraphStorePort graphStorePort, String corpusId, String unitId) {
+    static Optional<TextUnit> loadTextUnit(GraphReadPort graphStorePort, String corpusId, String unitId) {
         Optional<TextUnit> loaded = graphStorePort.textUnit(corpusId, unitId);
         return loaded == null ? Optional.empty() : loaded;
     }

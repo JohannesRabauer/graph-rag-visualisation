@@ -25,6 +25,10 @@ The next release is **2.0.0**. It contains breaking changes, including the names
 - **Seed matchers.** `SeedMatcher` / `SeedMatch` with `KeywordSeedMatcher` (the default without a semantic model), `SemanticSeedMatcher`, the code-aware `IdentifierSeedMatcher` (camelCase, snake_case, `.`, `::`, `#`, qualified and simple names, fuzzy) and `HybridSeedMatcher` (reciprocal-rank fusion); `SeedMatchers.defaultFor`, `forCode`, `firstNonEmpty`; `Identifiers` (normalise, split and find code identifiers).
 - Local Search's synthesis context is now assembled by the same expansion engine (with `LocalRetrievalOptions.answerContext()`); its output is unchanged.
 
+- **Read and write ports.** `GraphReadPort` (all query reads, plus the new `entity(corpusId, identity)`, `entities(corpusId, identities)` and `relationshipsTouching(corpusId, identities)` lookups with filtering defaults) and `GraphWritePort` (persist, retype, embeddings, `detectCommunities`); `GraphStorePort` extends both and keeps every method. The query use cases (`Answer*`, `Compare*`, `Retrieve*`) and the seed matchers take a `GraphReadPort`; Local expansion reads hop by hop. Source-compatible for callers; recompile against 2.0.
+- **`graphrag-core-testkit`** (new artifact): `GraphReadPortContract`, `GraphStorePortContract`, `VectorStorePortContract`, `EmbeddingPortContract`, `CodeGraphRetrievalContract`, the fixtures `ContractGraph` and `CodeGraphFixture`, and the reference `InMemoryGraphStore`.
+- `DetectCommunities` reports summaries of a port whose `summarizesCommunities()` is false (for example `LlmPort.none()`) as `DETERMINISTIC`.
+
 ### Changed — default community grouping
 
 - **Behaviour change:** the default `GraphStorePort.detectCommunities` is now the modularity-based `ModularityCommunityDetector` instead of connected components. Two groups joined by a single bridge now become two Communities. Stores that override the method (the Neo4j adapter with GDS Leiden) are unaffected. Use `ConnectedComponentsCommunityDetector` (per store or via `DetectCommunities.Options.withDetector`) for the previous grouping.

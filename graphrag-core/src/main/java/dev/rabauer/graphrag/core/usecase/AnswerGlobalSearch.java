@@ -9,7 +9,7 @@ import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
@@ -27,7 +27,7 @@ import java.util.Set;
  * Answers a Global Search question by aggregating already-persisted
  * Community summaries.
  *
- * <p>This use case only reads {@link GraphStorePort#communities(String)} — it
+ * <p>This use case only reads {@link GraphReadPort#communities(String)} — it
  * never triggers {@link DetectCommunities} or summary generation itself
  * (AD-6). Communities are scored against the question the same
  * keyword-overlap way Local Search already scores sentences, so the demo
@@ -61,15 +61,15 @@ public class AnswerGlobalSearch {
             "The Community summaries and passages retrieved for this question do not answer it. "
                     + "Try asking about a named person, place, or event.";
 
-    private final GraphStorePort graphStorePort;
+    private final GraphReadPort graphStorePort;
     private final EmbeddingPort embeddingPort;
     private final LlmPort llmPort;
 
-    public AnswerGlobalSearch(GraphStorePort graphStorePort) {
+    public AnswerGlobalSearch(GraphReadPort graphStorePort) {
         this(graphStorePort, null, null);
     }
 
-    public AnswerGlobalSearch(GraphStorePort graphStorePort, EmbeddingPort embeddingPort) {
+    public AnswerGlobalSearch(GraphReadPort graphStorePort, EmbeddingPort embeddingPort) {
         this(graphStorePort, embeddingPort, null);
     }
 
@@ -78,7 +78,7 @@ public class AnswerGlobalSearch {
      *                answer is generated from a cited context; null or a
      *                non-synthesizing port keeps the templated answer
      */
-    public AnswerGlobalSearch(GraphStorePort graphStorePort, EmbeddingPort embeddingPort, LlmPort llmPort) {
+    public AnswerGlobalSearch(GraphReadPort graphStorePort, EmbeddingPort embeddingPort, LlmPort llmPort) {
         this.graphStorePort = graphStorePort;
         this.embeddingPort = embeddingPort;
         this.llmPort = llmPort;
@@ -257,7 +257,7 @@ public class AnswerGlobalSearch {
      * The top {@code k} Communities by meaning, most similar first; empty
      * without a semantic port or when the corpus has no embedded Communities.
      */
-    static List<Community> similarCommunities(GraphStorePort graphStorePort, EmbeddingPort embeddingPort,
+    static List<Community> similarCommunities(GraphReadPort graphStorePort, EmbeddingPort embeddingPort,
                                               String question, String corpusId, int k) {
         if (!EmbedGraphElements.isSemantic(embeddingPort)) {
             return List.of();

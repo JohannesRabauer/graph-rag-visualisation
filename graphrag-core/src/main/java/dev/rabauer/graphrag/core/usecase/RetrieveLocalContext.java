@@ -4,7 +4,7 @@ import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.RetrievalTrace;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.retrieval.LocalRetrievalOptions;
 import dev.rabauer.graphrag.core.retrieval.RetrievalResult;
 import dev.rabauer.graphrag.core.retrieval.RetrievedItem;
@@ -34,21 +34,21 @@ public class RetrieveLocalContext {
     static final String NO_MATCH_REASON =
             "No Entity in the graph matched the question. Name a class, method or other element of the graph.";
 
-    private final GraphStorePort graph;
+    private final GraphReadPort graph;
     private final SeedMatcher seedMatcher;
     private final LocalRetrievalOptions options;
 
     /** Keyword seeds, {@link LocalRetrievalOptions#defaults()}. */
-    public RetrieveLocalContext(GraphStorePort graph) {
+    public RetrieveLocalContext(GraphReadPort graph) {
         this(graph, SeedMatchers.defaultFor(null), LocalRetrievalOptions.defaults());
     }
 
     /** {@link SeedMatchers#defaultFor(EmbeddingPort)} seeds, {@link LocalRetrievalOptions#defaults()}. */
-    public RetrieveLocalContext(GraphStorePort graph, EmbeddingPort embeddingPort) {
+    public RetrieveLocalContext(GraphReadPort graph, EmbeddingPort embeddingPort) {
         this(graph, SeedMatchers.defaultFor(embeddingPort), LocalRetrievalOptions.defaults());
     }
 
-    public RetrieveLocalContext(GraphStorePort graph, SeedMatcher seedMatcher, LocalRetrievalOptions options) {
+    public RetrieveLocalContext(GraphReadPort graph, SeedMatcher seedMatcher, LocalRetrievalOptions options) {
         this.graph = Objects.requireNonNull(graph, "graph");
         this.seedMatcher = seedMatcher == null ? SeedMatchers.defaultFor(null) : seedMatcher;
         this.options = options == null ? LocalRetrievalOptions.defaults() : options;
@@ -78,7 +78,7 @@ public class RetrieveLocalContext {
     }
 
     /** Seeds for {@code question} and their expansion; empty when no seed matches. */
-    static List<LocalExpansion.Touch> expand(GraphStorePort graph, SeedMatcher seedMatcher, String question,
+    static List<LocalExpansion.Touch> expand(GraphReadPort graph, SeedMatcher seedMatcher, String question,
                                              String corpusId, LocalRetrievalOptions options) {
         List<SeedMatch> matches = seedMatcher.match(question, corpusId, graph, options.seedLimit());
         if (matches == null || matches.isEmpty()) {

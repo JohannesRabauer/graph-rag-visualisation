@@ -8,7 +8,7 @@ import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.StageTiming;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.port.LlmPort;
 import dev.rabauer.graphrag.core.port.VectorStorePort;
 
@@ -192,7 +192,7 @@ public class CompareAllModes {
         }
     }
 
-    private final GraphStorePort graphStorePort;
+    private final GraphReadPort graphStorePort;
     private final EmbeddingPort embeddingPort;
     private final LlmPort llmPort;
     private final VectorStorePort vectorStorePort;
@@ -206,7 +206,7 @@ public class CompareAllModes {
      *                             for the evidence table
      * @param answerVectorBaseline answers the Vector Search method
      */
-    public CompareAllModes(GraphStorePort graphStorePort, EmbeddingPort embeddingPort, LlmPort llmPort,
+    public CompareAllModes(GraphReadPort graphStorePort, EmbeddingPort embeddingPort, LlmPort llmPort,
                            VectorStorePort vectorStorePort, AnswerVectorBaseline answerVectorBaseline) {
         this.graphStorePort = Objects.requireNonNull(graphStorePort, "graphStorePort must not be null");
         this.embeddingPort = embeddingPort;

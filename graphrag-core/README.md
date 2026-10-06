@@ -43,7 +43,9 @@ usable fallback; only the abstract methods listed below are required.
 | --- | --- | --- |
 | `DocumentParserPort` | Parses source documents (e.g. PDF, text) during ingestion. | `boolean supports(String filename)` |
 | `LlmPort` | LLM-driven knowledge-graph extraction and related generation. Every capability is optional (see [Optional LLM capabilities](#optional-llm-capabilities)). | `GraphExtraction extract(Corpus corpus)` (a port without extraction returns `GraphExtraction.empty()`) |
-| `GraphStorePort` | Persists and queries the knowledge graph. | `void persistEntities(Collection<Entity> entities)`, `void persistRelationships(Collection<Relationship> relationships)` |
+| `GraphReadPort` | Reads the knowledge graph: everything the query use cases need. | none (every method has a default; implement the corpus-scoped reads you have) |
+| `GraphWritePort` | Persists the knowledge graph and detects Communities. | `persistEntities(Collection)`, `persistRelationships(Collection)`, `detectCommunities(String)` |
+| `GraphStorePort` | Both of the above (`extends GraphReadPort, GraphWritePort`), with the default `detectCommunities`. | `void persistEntities(Collection<Entity> entities)`, `void persistRelationships(Collection<Relationship> relationships)` |
 | `EmbeddingPort` | Turns chunk text into a dense embedding vector. | `float[] embed(String text)` |
 | `VectorStorePort` | Persists and queries a corpus's embedded chunks and its fitted 2D projection model. | `void persistChunks(String corpusId, Collection<EmbeddedChunk> chunks)` |
 
@@ -329,6 +331,57 @@ Jackson 2 and 3 write and read them as-is. Example (Local, abridged):
 
 New fields are additive: a consumer that ignores unknown fields keeps
 working when later versions add some.
+
+## Read port, write port
+
+`GraphStorePort` is split into `GraphReadPort` (Text Units, Entities,
+Relationships, Communities, memberships, similarity lookups) and
+`GraphWritePort` (persist, retype, embeddings, detect). `GraphStorePort`
+extends both, so existing implementations and callers are unchanged.
+
+Every query use case — `AnswerLocalSearch`, `AnswerGlobalSearch`,
+`AnswerDriftSearch`, `CompareAnswers`, `CompareAllModes`, the `Retrieve*`
+use cases and the seed matchers — takes only a `GraphReadPort`. An
+application with its own graph can implement just the read side over it.
+Three read methods exist for large graphs and have filtering defaults worth
+overriding with indexed lookups: `entity(corpusId, identity)`,
+`entities(corpusId, identities)` and `relationshipsTouching(corpusId,
+identities)`; Local expansion calls the last two once per hop instead of
+reading the whole graph.
+
+## Testkit: proving an adapter correct
+
+`dev.rabauer.graphrag:graphrag-core-testkit` (test scope) ships JUnit 5
+contract tests an adapter extends, plus fixtures:
+
+| Class | Extend it with | Checks |
+| --- | --- | --- |
+| `GraphReadPortContract` | `givenGraph(ContractGraph)`: load the fixture your way, return your read port | corpus scoping, fields, attributes and locators of Entities/Relationships/Text Units/Communities, stable reads, empty-not-null for unknown corpora, Text Unit and Entity lookups, `relationshipsTouching`, bounded similarity lookups |
+| `GraphStorePortContract` | `newStore()` | the read contract with the fixture written through your write side, plus: re-persisting replaces, `detectCommunities` covers every Entity once, embeddings make similarity lookups correct (`supportsSimilarity()` hook) |
+| `VectorStorePortContract` | `newStore()` | chunks and embeddings round-trip per corpus, re-persisting replaces, the projection model round-trips (`supportsProjectionModel()` hook) |
+| `EmbeddingPortContract` | `port()` | finite, non-empty vectors of one dimension (blank text included), determinism (`deterministic()` hook), and for a semantic port nearby meanings closer than unrelated ones (`semanticProbe()` hook) |
+| `CodeGraphRetrievalContract` | `newStore()` | the whole non-text path on your store: import `CodeGraphFixture` (50 classes), detect Communities with the core detector, retrieval-only Local and Global for a camelCase question, with locators |
+
+`ContractGraph` is the small fixture (unique corpus ids per test, so a shared
+database is fine); `CodeGraphFixture` the 50-class code graph;
+`InMemoryGraphStore` a complete reference `GraphStorePort` for application
+tests. Example:
+
+```java
+class MyNeo4jReadPortTest extends GraphReadPortContract {
+    @Override
+    protected GraphReadPort givenGraph(ContractGraph graph) {
+        writeIntoMySchema(graph);              // e.g. :Java:Type nodes, INVOKES edges
+        return new MyGraphReadPort(driver);
+    }
+}
+```
+
+In this repository the contracts run against `InMemoryGraphStoreAdapter`,
+`InMemoryVectorStoreAdapter`, `Neo4jGraphStoreAdapter` (plain Neo4j, core
+detector), `Neo4jVectorStoreAdapter`, `LangChain4jEmbeddingPort` and the
+testkit's own `InMemoryGraphStore`; `CodeGraphExampleTest` in the testkit
+walks through the code-graph path step by step.
 
 ## Usage: wiring the ports and running the pipeline
 

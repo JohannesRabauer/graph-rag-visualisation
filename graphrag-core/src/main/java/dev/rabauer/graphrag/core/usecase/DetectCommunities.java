@@ -360,7 +360,9 @@ public class DetectCommunities {
         if (generated == null) {
             return new Summarized(deterministic(draft), SummaryStatus.DETERMINISTIC, "");
         }
-        return new Summarized(generated, SummaryStatus.GENERATED, "");
+        // A port without a model behind its summaries (LlmPort.none(), the defaults) writes deterministic ones.
+        return new Summarized(generated,
+                llmPort.summarizesCommunities() ? SummaryStatus.GENERATED : SummaryStatus.DETERMINISTIC, "");
     }
 
     private static Summarized skipped(Draft draft) {

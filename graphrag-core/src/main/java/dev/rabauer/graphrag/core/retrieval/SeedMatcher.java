@@ -1,6 +1,6 @@
 package dev.rabauer.graphrag.core.retrieval;
 
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 
 import java.util.List;
 
@@ -22,5 +22,5 @@ public interface SeedMatcher {
      * @return at most {@code limit} matches, best first; empty when nothing
      *         matches; never null
      */
-    List<SeedMatch> match(String question, String corpusId, GraphStorePort graph, int limit);
+    List<SeedMatch> match(String question, String corpusId, GraphReadPort graph, int limit);
 }

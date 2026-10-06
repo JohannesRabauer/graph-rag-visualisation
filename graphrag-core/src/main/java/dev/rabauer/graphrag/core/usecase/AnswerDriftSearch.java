@@ -7,7 +7,7 @@ import dev.rabauer.graphrag.core.domain.GraphExtraction;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
@@ -55,15 +55,15 @@ public class AnswerDriftSearch {
             "The Community summaries, graph facts and passages DRIFT retrieved for this question do not answer it. "
                     + "Try asking about a named person, place, or event.";
 
-    private final GraphStorePort graphStorePort;
+    private final GraphReadPort graphStorePort;
     private final LlmPort llmPort;
     private final EmbeddingPort embeddingPort;
 
-    public AnswerDriftSearch(GraphStorePort graphStorePort, LlmPort llmPort) {
+    public AnswerDriftSearch(GraphReadPort graphStorePort, LlmPort llmPort) {
         this(graphStorePort, llmPort, null);
     }
 
-    public AnswerDriftSearch(GraphStorePort graphStorePort, LlmPort llmPort, EmbeddingPort embeddingPort) {
+    public AnswerDriftSearch(GraphReadPort graphStorePort, LlmPort llmPort, EmbeddingPort embeddingPort) {
         this.graphStorePort = graphStorePort;
         this.llmPort = llmPort == null ? DEFAULT_LLM_PORT : llmPort;
         this.embeddingPort = embeddingPort;

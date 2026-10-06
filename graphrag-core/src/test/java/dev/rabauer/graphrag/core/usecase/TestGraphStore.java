@@ -109,7 +109,8 @@ class TestGraphStore implements GraphStorePort {
         return List.copyOf(scoped(memberships, corpusId).values());
     }
 
-    Entity entity(String corpusId, String identity) {
+    /** The stored Entity with {@code identity}, or null (a shorthand for tests). */
+    Entity stored(String corpusId, String identity) {
         return scoped(entities, corpusId).get(identity);
     }
 

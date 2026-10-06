@@ -50,6 +50,12 @@
       <version>${graphrag-core.version}</version>
     </dependency>
     <dependency>
+      <groupId>dev.rabauer.graphrag</groupId>
+      <artifactId>graphrag-core-testkit</artifactId>
+      <version>${graphrag-core.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>org.neo4j.driver</groupId>
       <artifactId>neo4j-java-driver</artifactId>
       <version>${neo4j-java-driver.version}</version>

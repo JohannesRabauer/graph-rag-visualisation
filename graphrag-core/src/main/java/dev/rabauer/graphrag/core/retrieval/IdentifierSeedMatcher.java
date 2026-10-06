@@ -1,7 +1,7 @@
 package dev.rabauer.graphrag.core.retrieval;
 
 import dev.rabauer.graphrag.core.domain.Entity;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -77,7 +77,7 @@ public final class IdentifierSeedMatcher implements SeedMatcher {
     }
 
     @Override
-    public List<SeedMatch> match(String question, String corpusId, GraphStorePort graph, int limit) {
+    public List<SeedMatch> match(String question, String corpusId, GraphReadPort graph, int limit) {
         Query query = Query.of(question);
         Collection<Entity> entities = graph.entities(corpusId);
         if (query.isEmpty() || entities == null || limit < 1) {

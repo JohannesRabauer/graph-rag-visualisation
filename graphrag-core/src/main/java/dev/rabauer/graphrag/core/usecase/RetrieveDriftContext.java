@@ -4,7 +4,7 @@ import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.RetrievalTrace;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.port.LlmPort;
 import dev.rabauer.graphrag.core.retrieval.DriftRetrievalOptions;
 import dev.rabauer.graphrag.core.retrieval.RetrievalResult;
@@ -37,13 +37,13 @@ import java.util.Objects;
  */
 public class RetrieveDriftContext {
 
-    private final GraphStorePort graph;
+    private final GraphReadPort graph;
     private final LlmPort llmPort;
     private final EmbeddingPort embeddingPort;
     private final SeedMatcher seedMatcher;
     private final DriftRetrievalOptions options;
 
-    public RetrieveDriftContext(GraphStorePort graph) {
+    public RetrieveDriftContext(GraphReadPort graph) {
         this(graph, null, null, null, DriftRetrievalOptions.defaults());
     }
 
@@ -53,7 +53,7 @@ public class RetrieveDriftContext {
      * @param seedMatcher   seeds each branch and scores Community members;
      *                      null means {@link SeedMatchers#defaultFor(EmbeddingPort)}
      */
-    public RetrieveDriftContext(GraphStorePort graph, LlmPort llmPort, EmbeddingPort embeddingPort,
+    public RetrieveDriftContext(GraphReadPort graph, LlmPort llmPort, EmbeddingPort embeddingPort,
                                 SeedMatcher seedMatcher, DriftRetrievalOptions options) {
         this.graph = Objects.requireNonNull(graph, "graph");
         this.llmPort = llmPort == null ? LlmPort.none() : llmPort;

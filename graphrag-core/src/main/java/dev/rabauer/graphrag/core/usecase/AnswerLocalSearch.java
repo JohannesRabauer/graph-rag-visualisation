@@ -7,7 +7,7 @@ import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
@@ -62,11 +62,11 @@ public class AnswerLocalSearch {
             "The passages and graph facts retrieved for this question do not answer it. "
                     + "Try asking about a named entity or relationship visible in the graph.";
 
-    private final GraphStorePort graphStorePort;
+    private final GraphReadPort graphStorePort;
     private final LlmPort llmPort;
     private final LocalContextAssembler assembler;
 
-    public AnswerLocalSearch(GraphStorePort graphStorePort) {
+    public AnswerLocalSearch(GraphReadPort graphStorePort) {
         this(graphStorePort, null, null);
     }
 
@@ -76,7 +76,7 @@ public class AnswerLocalSearch {
      *                      corpus has no embeddings); null or a non-semantic
      *                      port keeps pure keyword matching
      */
-    public AnswerLocalSearch(GraphStorePort graphStorePort, EmbeddingPort embeddingPort) {
+    public AnswerLocalSearch(GraphReadPort graphStorePort, EmbeddingPort embeddingPort) {
         this(graphStorePort, embeddingPort, null);
     }
 
@@ -85,7 +85,7 @@ public class AnswerLocalSearch {
      *                answer is generated from a cited context; null or a
      *                non-synthesizing port keeps the templated answer
      */
-    public AnswerLocalSearch(GraphStorePort graphStorePort, EmbeddingPort embeddingPort, LlmPort llmPort) {
+    public AnswerLocalSearch(GraphReadPort graphStorePort, EmbeddingPort embeddingPort, LlmPort llmPort) {
         this.graphStorePort = graphStorePort;
         this.llmPort = llmPort;
         this.assembler = new LocalContextAssembler(graphStorePort, embeddingPort);

@@ -87,7 +87,7 @@ class ImportKnowledgeGraphTest {
                 ImportKnowledgeGraph.Options.defaults().withDetectCommunities(false));
 
         assertEquals(2, result.entities());
-        Entity merged = store.entity(CORPUS, "a::class");
+        Entity merged = store.stored(CORPUS, "a::class");
         assertEquals("First. Second.", merged.description());
         assertEquals(List.of("tu-1", "tu-2"), merged.sourceTextUnitIds());
         Relationship relationship = store.relationships(CORPUS).iterator().next();
@@ -105,7 +105,7 @@ class ImportKnowledgeGraphTest {
 
         assertEquals(1, result.placeholderEntities());
         assertEquals(2, result.entities());
-        Entity placeholder = store.entity(CORPUS, "external::class");
+        Entity placeholder = store.stored(CORPUS, "external::class");
         assertNotNull(placeholder);
         assertEquals("", placeholder.description());
     }
@@ -120,7 +120,7 @@ class ImportKnowledgeGraphTest {
                 ImportKnowledgeGraph.Options.defaults().withDetectCommunities(false));
 
         assertEquals(0, result.placeholderEntities());
-        assertEquals("Stored earlier.", store.entity(CORPUS, "b::class").description());
+        assertEquals("Stored earlier.", store.stored(CORPUS, "b::class").description());
     }
 
     @Test
@@ -135,7 +135,7 @@ class ImportKnowledgeGraphTest {
 
         assertEquals(1, result.droppedRelationships());
         assertEquals(1, store.relationships(CORPUS).size());
-        assertNull(store.entity(CORPUS, "external::class"));
+        assertNull(store.stored(CORPUS, "external::class"));
     }
 
     @Test
@@ -150,7 +150,7 @@ class ImportKnowledgeGraphTest {
         assertEquals(0, result.placeholderEntities());
         assertEquals(0, result.droppedRelationships());
         assertEquals(1, store.relationships(CORPUS).size());
-        assertNull(store.entity(CORPUS, "external::class"));
+        assertNull(store.stored(CORPUS, "external::class"));
     }
 
     @Test

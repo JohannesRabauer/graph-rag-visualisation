@@ -5,7 +5,7 @@ import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.TextUnit;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.retrieval.LocalRetrievalOptions;
 import dev.rabauer.graphrag.core.retrieval.RetrievedItem;
 
@@ -31,9 +31,9 @@ import java.util.Set;
  */
 final class LocalExpansion {
 
-    private final GraphStorePort graph;
+    private final GraphReadPort graph;
 
-    LocalExpansion(GraphStorePort graph) {
+    LocalExpansion(GraphReadPort graph) {
         this.graph = graph;
     }
 
@@ -65,21 +65,20 @@ final class LocalExpansion {
             }
         }
 
-        List<Relationship> relationships = options.maxHops() == 0 ? List.of() : storedRelationships(corpusId);
-        Map<String, Entity> entityByIdentity = null;
         Set<String> includedEdges = new LinkedHashSet<>();
         List<Relationship> includedRelationships = new ArrayList<>();
         Set<String> frontier = new LinkedHashSet<>(included.keySet());
         boolean full = false;
         for (int hop = 1; hop <= options.maxHops() && !frontier.isEmpty() && !full; hop++) {
             List<Relationship> candidates = new ArrayList<>();
-            for (Relationship relationship : relationships) {
+            for (Relationship relationship : nonNull(graph.relationshipsTouching(corpusId, frontier))) {
                 if (follows(relationship, frontier, options) && options.accepts(relationship.type(), relationship.weight())
                         && !includedEdges.contains(edgeKey(relationship))) {
                     candidates.add(relationship);
                 }
             }
             sort(candidates, options.ordering());
+            Map<String, Entity> entityByIdentity = null;
 
             Set<String> next = new LinkedHashSet<>();
             for (Relationship relationship : candidates) {
@@ -98,7 +97,7 @@ final class LocalExpansion {
                         continue;
                     }
                     if (entityByIdentity == null) {
-                        entityByIdentity = entitiesByIdentity(corpusId);
+                        entityByIdentity = endpointEntities(corpusId, candidates, included.keySet());
                     }
                     Entity reached = entityByIdentity.get(endpoint);
                     if (reached == null) {
@@ -177,23 +176,23 @@ final class LocalExpansion {
         }
     }
 
-    private List<Relationship> storedRelationships(String corpusId) {
-        Collection<Relationship> stored = graph.relationships(corpusId);
-        if (stored == null) {
-            return List.of();
-        }
-        return stored.stream().filter(java.util.Objects::nonNull).toList();
+    private static <T> List<T> nonNull(Collection<T> values) {
+        return values == null ? List.of() : values.stream().filter(java.util.Objects::nonNull).toList();
     }
 
-    private Map<String, Entity> entitiesByIdentity(String corpusId) {
-        Map<String, Entity> byIdentity = new HashMap<>();
-        Collection<Entity> stored = graph.entities(corpusId);
-        if (stored != null) {
-            for (Entity entity : stored) {
-                if (entity != null) {
-                    byIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
+    /** One lookup per hop: the Entities at the not-yet-included endpoints of {@code candidates}. */
+    private Map<String, Entity> endpointEntities(String corpusId, List<Relationship> candidates, Set<String> included) {
+        Set<String> wanted = new LinkedHashSet<>();
+        for (Relationship relationship : candidates) {
+            for (String endpoint : List.of(relationship.sourceIdentity(), relationship.targetIdentity())) {
+                if (!included.contains(endpoint)) {
+                    wanted.add(endpoint);
                 }
             }
+        }
+        Map<String, Entity> byIdentity = new HashMap<>();
+        for (Entity entity : nonNull(graph.entities(corpusId, wanted))) {
+            byIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
         }
         return byIdentity;
     }
@@ -217,7 +216,7 @@ final class LocalExpansion {
     }
 
     /** The Text Unit's touch, or null when it is missing or has no text (a store failure propagates). */
-    static Touch textUnitTouch(GraphStorePort graph, String corpusId, String unitId, double score) {
+    static Touch textUnitTouch(GraphReadPort graph, String corpusId, String unitId, double score) {
         Optional<TextUnit> loaded = LocalContextAssembler.loadTextUnit(graph, corpusId, unitId);
         if (loaded.isEmpty() || loaded.get().text() == null) {
             return null;

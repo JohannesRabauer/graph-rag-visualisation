@@ -53,11 +53,14 @@ public record CommunityDetectionResult(String corpusId, Status status, List<Comm
 
     /** How one Community's title and summary were obtained. */
     public enum SummaryStatus {
-        /** The {@code LlmPort} wrote it. */
+        /** The {@code LlmPort} wrote it with a model ({@code summarizesCommunities()} is true). */
         GENERATED,
         /** Taken from a stored Community with the same content hash; no port call. */
         REUSED,
-        /** The deterministic title and summary: no port, or the port returned null. */
+        /**
+         * Deterministic: no port, the port returned null, or the port has no
+         * model behind its summaries ({@code summarizesCommunities()} is false).
+         */
         DETERMINISTIC,
         /** The port failed and failures are isolated per item; the deterministic summary was used. */
         FAILED,

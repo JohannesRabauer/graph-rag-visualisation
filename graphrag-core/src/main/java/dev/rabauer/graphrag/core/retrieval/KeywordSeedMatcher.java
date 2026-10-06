@@ -1,7 +1,7 @@
 package dev.rabauer.graphrag.core.retrieval;
 
 import dev.rabauer.graphrag.core.domain.Entity;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.usecase.KeywordMatcher;
 
 import java.util.ArrayList;
@@ -20,7 +20,7 @@ import java.util.Set;
 public final class KeywordSeedMatcher implements SeedMatcher {
 
     @Override
-    public List<SeedMatch> match(String question, String corpusId, GraphStorePort graph, int limit) {
+    public List<SeedMatch> match(String question, String corpusId, GraphReadPort graph, int limit) {
         Set<String> tokens = KeywordMatcher.tokenize(question);
         Collection<Entity> entities = graph.entities(corpusId);
         if (tokens.isEmpty() || entities == null || limit < 1) {

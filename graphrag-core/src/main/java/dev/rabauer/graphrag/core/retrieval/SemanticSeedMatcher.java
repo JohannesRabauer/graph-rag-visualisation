@@ -2,7 +2,7 @@ package dev.rabauer.graphrag.core.retrieval;
 
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
-import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.port.GraphReadPort;
 import dev.rabauer.graphrag.core.usecase.SemanticMatchingException;
 
 import java.util.ArrayList;
@@ -11,7 +11,7 @@ import java.util.Objects;
 
 /**
  * Seeds by meaning: embeds the question and asks the graph for the most
- * similar Entities ({@link GraphStorePort#similarEntities(String, float[], int)},
+ * similar Entities ({@link GraphReadPort#similarEntities(String, float[], int)},
  * which a store may answer from any vector store). Empty without a semantic
  * {@link EmbeddingPort} or when the corpus has no Entity embeddings. A
  * failure while embedding or looking up is a {@link SemanticMatchingException}
@@ -27,7 +27,7 @@ public final class SemanticSeedMatcher implements SeedMatcher {
     }
 
     @Override
-    public List<SeedMatch> match(String question, String corpusId, GraphStorePort graph, int limit) {
+    public List<SeedMatch> match(String question, String corpusId, GraphReadPort graph, int limit) {
         if (embeddingPort == null || !embeddingPort.isSemantic() || limit < 1) {
             return List.of();
         }

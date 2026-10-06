@@ -18,6 +18,7 @@
 
   <modules>
     <module>graphrag-core</module>
+    <module>graphrag-core-testkit</module>
     <module>graphrag-adapter-neo4j</module>
     <module>graphrag-adapter-langchain4j</module>
     <module>graphrag-adapter-parsing</module>

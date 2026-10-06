@@ -197,7 +197,7 @@ Design rules that keep the core reusable:
 | `DocumentParserPort` | Turn an uploaded file into text | `supports(filename)` | `extract(filename, bytes)` |
 | `LlmPort` | Everything a language model does | `extract(Corpus)` | `extract(TextUnit, entityTypes)`, `summarizeCommunity(members, relationships)` → title + summary, `deriveDriftSubQuestions`, `synthesizeAnswer(question, context)` with `[n]` citations, `compareAnswers` → verdict |
 | `EmbeddingPort` | Text → dense vector | `embed(text)` | `isSemantic()` |
-| `GraphStorePort` | The knowledge graph | `persistEntities`, `persistRelationships` | Corpus-scoped CRUD for entities, relationships, Text Units, communities and memberships; `detectCommunities(corpusId)`; `persistEntityEmbeddings` / `similarEntities` and their community counterparts for semantic matching |
+| `GraphStorePort` | The knowledge graph (`GraphReadPort` + `GraphWritePort`; queries need only the read side) | `persistEntities`, `persistRelationships` | Corpus-scoped CRUD for entities, relationships, Text Units, communities and memberships; `detectCommunities(corpusId)`; `persistEntityEmbeddings` / `similarEntities` and their community counterparts for semantic matching |
 | `VectorStorePort` | The plain vector-RAG baseline | `persistChunks` | `chunks`, `persistProjectionModel` / `projectionModel` for a 2-D embedding projection (no longer shown in the UI) |
 
 ### Use cases
