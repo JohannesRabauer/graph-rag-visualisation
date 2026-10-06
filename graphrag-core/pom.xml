@@ -132,9 +132,9 @@
 
   <!--
     Everything Maven Central needs lives behind this opt-in profile, not the
-    default build: routine `mvn install` runs (including CI on every push/
-    PR) must not depend on Javadoc succeeding or on a GPG key being present.
-    The release workflow (.github/workflows/release-core.yml) activates it;
+    default build: a local `mvn install` must not depend on Javadoc
+    succeeding or on a GPG key being present. CI runs this profile with
+    -Dgpg.skip as a separate step. The release workflow (.github/workflows/release-core.yml) activates it;
     see RELEASING.md. `mvn deploy -Prelease` signs the artifacts and uploads
     them to the Central Portal, where the deployment waits for a manual
     "Publish" (autoPublish is off: a published version can never be removed).
