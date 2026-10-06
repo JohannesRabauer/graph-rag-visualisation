@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-06
+
+### Added
+
+- **`graphrag-core-testkit` on Maven Central** (`dev.rabauer.graphrag:graphrag-core-testkit`), released together with `graphrag-core` under the same version. Its POM no longer has a parent.
+
+### Changed
+
+- `graphrag-core` and `graphrag-core-testkit` are now compiled for Java 21 (class-file major version 65) instead of Java 25, so Java 21 applications can use them. The API is unchanged. Building them needs JDK 21 or newer; CI builds and tests them on JDK 21 and 25, and the release workflow fails if any class is not major version 65.
+
 ## [2.0.0] - 2026-10-06
 
 The first release on Maven Central (`dev.rabauer.graphrag:graphrag-core:2.0.0`). It contains breaking changes, including the namespace move below.
@@ -263,5 +273,6 @@ The first release on Maven Central (`dev.rabauer.graphrag:graphrag-core:2.0.0`).
   the tag this release is meant to be cut under once actually released, not
   a live link. Create it (and update this link if needed) at release time.
 -->
+[2.0.1]: https://github.com/JohannesRabauer/graph-rag-visualisation/tree/graphrag-core-v2.0.1
 [2.0.0]: https://github.com/JohannesRabauer/graph-rag-visualisation/tree/graphrag-core-v2.0.0
 [1.0.0]: https://github.com/JohannesRabauer/graph-rag-visualisation/tree/graphrag-core-1.0.0

@@ -8,6 +8,34 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  # graphrag-core and graphrag-core-testkit target Java 21 (class-file major
+  # version 65) so Java 21 consumers can use the published artifacts; build
+  # and test them on the oldest supported JDK as well as on the JDK the rest
+  # of the reactor uses.
+  core:
+    name: graphrag-core + testkit on JDK ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['21', '25']
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Build and test graphrag-core and graphrag-core-testkit
+        run: mvn -B -pl graphrag-core,graphrag-core-testkit clean verify
+
+      - name: Check the class files are Java 21 (major version 65)
+        run: .github/scripts/check-core-bytecode.sh
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -40,11 +68,11 @@ jobs:
       - name: Build and test (all modules, incl. Playwright UI tests)
         run: mvn -B clean install
 
-      # Builds graphrag-core exactly as the Maven Central release does
-      # (sources + Javadoc jars), minus signing, so a broken Javadoc comment
-      # fails here instead of on the release tag.
+      # Builds graphrag-core and graphrag-core-testkit exactly as the Maven
+      # Central release does (sources + Javadoc jars), minus signing, so a
+      # broken Javadoc comment fails here instead of on the release tag.
       - name: Check the graphrag-core release build
-        run: mvn -B -f graphrag-core/pom.xml -Prelease verify -DskipTests -Dgpg.skip
+        run: mvn -B -pl graphrag-core,graphrag-core-testkit -Prelease verify -DskipTests -Dgpg.skip
 
       # Story 9.7: the demo script's own named screenshot moments
       # (SCR-1..SCR-12, DemoScriptScreenshotsUiTest), captured as a build

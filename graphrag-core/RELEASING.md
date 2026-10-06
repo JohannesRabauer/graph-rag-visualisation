@@ -1,9 +1,12 @@
 # Releasing graphrag-core to Maven Central
 
-`graphrag-core` is published as `dev.rabauer.graphrag:graphrag-core` through the
-[Central Portal](https://central.sonatype.com). The workflow
-`.github/workflows/release-core.yml` builds, tests, signs and uploads it; the
-upload then waits in the Portal until someone clicks **Publish**.
+`graphrag-core` and `graphrag-core-testkit` are published as
+`dev.rabauer.graphrag:graphrag-core` and `dev.rabauer.graphrag:graphrag-core-testkit`
+through the [Central Portal](https://central.sonatype.com), always together
+and under the same version. The workflow `.github/workflows/release-core.yml`
+builds and tests both, checks that every class is Java 21 (major version 65),
+signs them and uploads them; the upload then waits in the Portal until someone
+clicks **Publish**.
 
 **A published version can never be deleted or replaced.** Check the deployment
 in the Portal before publishing it.
@@ -37,8 +40,8 @@ in the Portal before publishing it.
 ## Cutting a release
 
 1. In `CHANGELOG.md`, rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` and commit.
-   The POM stays at `X.Y.Z-SNAPSHOT`; the workflow sets the release version
-   itself.
+   The POMs stay at `X.Y.Z-SNAPSHOT`; the workflow sets the release version
+   in both itself.
 2. Tag and push:
    ```bash
    git tag graphrag-core-vX.Y.Z
@@ -46,18 +49,19 @@ in the Portal before publishing it.
    ```
    (Or run the workflow by hand from the *Actions* tab with the version as input.)
 3. When the workflow is green, open *Deployments* in the Portal, check the files
-   (jar, `-sources`, `-javadoc`, POM, each with an `.asc` signature) and click
-   **Publish**. It takes a few minutes to an hour to appear on Maven Central.
+   of both artifacts (jar, `-sources`, `-javadoc`, POM, each with an `.asc`
+   signature) and click **Publish**. If the Portal shows two deployments (one
+   per artifact), publish both. It takes a few minutes to an hour to appear on Maven Central.
 4. Bump to the next snapshot: `version` in `graphrag-core/pom.xml` and
-   `graphrag-core.version` in the root `pom.xml`, and update the coordinates
-   in `README.md`. The website picks up the new version by itself: its
-   workflow checks Maven Central every hour and redeploys when the release
-   appears.
+   `graphrag-core-testkit/pom.xml` and `graphrag-core.version` in the root `pom.xml`,
+   and update the coordinates in `README.md` and `graphrag-core/README.md`. The
+   website picks up the new version by itself: its workflow checks Maven Central
+   every hour and redeploys when the release appears.
 
 ## Trying it locally
 
 Build exactly what would be uploaded, without signing or uploading:
 
 ```bash
-mvn -f graphrag-core/pom.xml -Prelease package -Dgpg.skip
+mvn -pl graphrag-core,graphrag-core-testkit -Prelease package -Dgpg.skip
 ```

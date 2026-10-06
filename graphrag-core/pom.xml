@@ -9,7 +9,8 @@
     on its own, and a published POM must not point to a parent that is not
     published too. The root aggregator still builds it as a module; the few
     settings it used to inherit (Java release, encoding, plugin versions,
-    the JDK 25 check) are repeated here.
+    the JDK check) are repeated here; the core targets Java 21 so Java 21
+    consumers can use it, while the rest of the reactor stays on Java 25.
   -->
   <groupId>dev.rabauer.graphrag</groupId>
   <artifactId>graphrag-core</artifactId>
@@ -50,7 +51,7 @@
   </scm>
 
   <properties>
-    <java.version>25</java.version>
+    <java.version>21</java.version>
     <maven.compiler.release>${java.version}</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -92,7 +93,7 @@
         <version>3.6.3</version>
         <executions>
           <execution>
-            <id>require-java-25</id>
+            <id>require-java-21</id>
             <phase>validate</phase>
             <goals>
               <goal>enforce</goal>
@@ -100,8 +101,8 @@
             <configuration>
               <rules>
                 <requireJavaVersion>
-                  <version>[25,)</version>
-                  <message>graphrag-core requires JDK 25 or newer. Install JDK 25 and make it the active JAVA_HOME/mvn toolchain.</message>
+                  <version>[21,)</version>
+                  <message>graphrag-core requires JDK 21 or newer. Install JDK 21+ and make it the active JAVA_HOME/mvn toolchain.</message>
                 </requireJavaVersion>
               </rules>
             </configuration>

@@ -11,9 +11,10 @@ Neo4j Java Driver, or LangChain4j, and the build enforces that ban.
 
 ## Requirements
 
-- **JDK 25** — this module (like the rest of the reactor) is compiled and
-  tested against JDK 25. Point `JAVA_HOME`/`PATH` at a JDK 25 install before
-  building.
+- **JDK 21+** — this module and the testkit are compiled for Java 21 (class-file major
+  version 65), so Java 21 applications can use it. CI builds and tests it on
+  JDK 21 and JDK 25. Building the whole reactor (web app and adapters) needs
+  JDK 25.
 - Apache Maven 3.9+
 
 ## Maven coordinates
@@ -22,11 +23,15 @@ Neo4j Java Driver, or LangChain4j, and the build enforces that ban.
 <dependency>
     <groupId>dev.rabauer.graphrag</groupId>
     <artifactId>graphrag-core</artifactId>
-    <version>2.0.0</version>
+    <version>2.0.1</version>
 </dependency>
 ```
 
-Released on Maven Central; no extra repository configuration is needed. To
+For the [testkit](#testkit-proving-an-adapter-correct), add
+`dev.rabauer.graphrag:graphrag-core-testkit` with the same version and
+`<scope>test</scope>`.
+
+Both are released on Maven Central; no extra repository configuration is needed. To
 build the current development version (`-SNAPSHOT`) yourself, clone this
 repository and install it into your local Maven repository:
 
@@ -514,8 +519,18 @@ not namespaced.
 
 ## Testkit: proving an adapter correct
 
-`dev.rabauer.graphrag:graphrag-core-testkit` (test scope) ships JUnit 5
-contract tests an adapter extends, plus fixtures:
+`dev.rabauer.graphrag:graphrag-core-testkit` (on Maven Central, released
+together with and versioned like `graphrag-core`; use it with test scope)
+ships JUnit 5 contract tests an adapter extends, plus fixtures:
+
+```xml
+<dependency>
+    <groupId>dev.rabauer.graphrag</groupId>
+    <artifactId>graphrag-core-testkit</artifactId>
+    <version>2.0.1</version>
+    <scope>test</scope>
+</dependency>
+```
 
 | Class | Extend it with | Checks |
 | --- | --- | --- |
