@@ -220,7 +220,7 @@ public class AnswerGlobalSearch {
      * of internal Relationships (both endpoints members) citing each, plus 1
      * per member Entity citing it; ties keep first-seen order (members first).
      */
-    private static List<String> rankedMemberUnits(Set<String> members, Map<String, Entity> entityByIdentity,
+    static List<String> rankedMemberUnits(Set<String> members, Map<String, Entity> entityByIdentity,
                                                   Collection<Relationship> relationships) {
         Map<String, Integer> scoreByUnit = new LinkedHashMap<>();
         for (String identity : members) {

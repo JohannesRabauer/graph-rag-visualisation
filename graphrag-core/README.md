@@ -202,6 +202,134 @@ Communities whose content changed; a fallback summary is never reused, so it
 is retried. A `ProgressListener` is told after each summary, in Community
 order.
 
+## Retrieval-only queries
+
+For consumers that are themselves language models (a coding agent over MCP,
+for example), the retrieval-only use cases return the assembled context and
+the full trace **without** calling `synthesizeAnswer` or any other
+`LlmPort` method (DRIFT only asks the port for sub-questions):
+
+| Use case | Options | Picks |
+| --- | --- | --- |
+| `RetrieveLocalContext(graph, seedMatcher, LocalRetrievalOptions)` | `LocalRetrievalOptions` | seed Entities, then a breadth-first expansion |
+| `RetrieveGlobalContext(graph, embeddingPort, memberMatcher, GlobalRetrievalOptions)` | `GlobalRetrievalOptions` | the best Communities, their best members and member Text Units |
+| `RetrieveDriftContext(graph, llmPort, embeddingPort, seedMatcher, DriftRetrievalOptions)` | `DriftRetrievalOptions` | candidate Communities, one sub-question each, a Local expansion per sub-question |
+
+Each returns a `RetrievalResult`; `toContextItems()` turns it into the
+numbered context `LlmPort.synthesizeAnswer` takes, for callers that
+synthesize themselves. The `Answer*` use cases are unchanged; Local Search's
+answer context is now built by the same expansion engine with
+`LocalRetrievalOptions.answerContext()`.
+
+### Seed matchers
+
+`SeedMatcher` decides which Entities a question is about
+(`dev.rabauer.graphrag.core.retrieval`):
+
+- `KeywordSeedMatcher` — the classic whole-word overlap with a small typo
+  tolerance. The default when the `EmbeddingPort` is not semantic.
+- `SemanticSeedMatcher` — the Entities most similar to the question
+  (`GraphStorePort.similarEntities`, which a store may answer from any vector
+  store); falls back to keywords via `SeedMatchers.defaultFor(embeddings)`.
+- `IdentifierSeedMatcher` — code-aware: splits `camelCase`, `snake_case`,
+  dots, `::`, `#` and `$`, ignores parameter lists, and matches qualified
+  names, qualified suffixes (`OrderService.placeOrder`), simple class and
+  method names, other name segments, near misses (one or two edits) and
+  shared camel-case words, plus plain question words against name words.
+  Besides the Entity name it matches the `qualifiedName`, `simpleName` and
+  `signature` attributes.
+- `HybridSeedMatcher` — reciprocal-rank fusion (`1/(60 + rank)`) of any
+  matchers; `SeedMatchers.forCode(embeddings)` fuses identifiers with
+  semantic seeds.
+
+### Local expansion options
+
+`LocalRetrievalOptions.defaults()` (agent-oriented) /
+`answerContext()` (exactly Local Search's synthesis context):
+
+| Option | `defaults()` | Meaning |
+| --- | --- | --- |
+| `seedLimit` | 3 | Seeds asked from the matcher. |
+| `maxHops` | 1 | Breadth-first depth; 0 = seeds only. |
+| `maxNodes` | 50 | Entities, seeds included. |
+| `maxRelationships` | 25 | Relationships. |
+| `maxTextUnits` | 10 | Text Units (snippets). |
+| `maxItems` | 100 | Items overall. |
+| `includeRelationshipTypes` / `excludeRelationshipTypes` | all / none | Case-insensitive type filters (e.g. only `CALLS`). |
+| `minWeight` | 1 | Weight threshold (e.g. call counts). |
+| `ordering` | `WEIGHT_DESC` | `WEIGHT_DESC`, `WEIGHT_ASC` or `STORED`; ties keep stored order. |
+| `direction` | `BOTH` | `OUTGOING` (what it calls) or `INCOMING` (its callers). |
+| `includeNeighborEntities` | true | Reached Entities become items (with locators). |
+| `includeMemberTextUnits` | true | Every included Entity's own Text Units are ranked, not only the seeds'. |
+
+Text Units are ranked by +1 per seed citing them, +1 per other included
+Entity citing them (with `includeMemberTextUnits`) and +weight per included
+Relationship citing them; a missing Text Unit is skipped.
+
+### Trace schema
+
+`RetrievalResult` and everything in it are plain records (no annotations);
+Jackson 2 and 3 write and read them as-is. Example (Local, abridged):
+
+```json
+{
+  "mode": "LOCAL",
+  "question": "Who calls placeOrder?",
+  "corpusId": "shop",
+  "status": "MATCHED",
+  "reason": "",
+  "items": [
+    {
+      "number": 1,
+      "kind": "ENTITY",
+      "identifier": "com.shop.order.orderservice#placeorder(order)::method",
+      "label": "com.shop.order.OrderService#placeOrder(Order)",
+      "text": "com.shop.order.OrderService#placeOrder(Order) (Method)",
+      "locator": { "path": "src/main/java/com/shop/order/OrderService.java", "startLine": 20, "endLine": 35 },
+      "attributes": { "kind": "method" },
+      "score": 95.0,
+      "hop": 0
+    },
+    {
+      "number": 2,
+      "kind": "RELATIONSHIP",
+      "identifier": "com.shop.web.ordercontroller#create(orderrequest)::method->CALLS->com.shop.order.orderservice#placeorder(order)::method",
+      "label": "com.shop.web.OrderController#create(OrderRequest) —CALLS→ com.shop.order.OrderService#placeOrder(Order)",
+      "text": "com.shop.web.OrderController#create(OrderRequest) -[CALLS]-> com.shop.order.OrderService#placeOrder(Order)",
+      "locator": { "path": "src/main/java/com/shop/web/OrderController.java", "startLine": 22, "endLine": 22 },
+      "attributes": {},
+      "score": 3.0,
+      "hop": 1
+    }
+  ],
+  "trace": {
+    "traceId": "",
+    "steps": [
+      { "kind": "ENTITY", "identifier": "…", "label": "…", "locator": { "…": "…" }, "attributes": { "kind": "method" } }
+    ]
+  },
+  "warnings": []
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `mode` | `LOCAL`, `GLOBAL` or `DRIFT`. |
+| `status` | `MATCHED`; `NO_MATCH` (nothing matched, `reason` says why); `NO_COMMUNITIES` (Global/DRIFT on a corpus without Communities). |
+| `items[].number` | 1-based, in touch order; the trace lists the same elements in the same order (DRIFT adds `SUB_QUESTION_SPAWNED` steps that are not items, and may repeat a step in several branches while items are de-duplicated). |
+| `items[].kind` | `ENTITY`, `RELATIONSHIP`, `TEXT_UNIT` or `COMMUNITY`. |
+| `items[].identifier` | Entity: `name::type` lower-cased (`Entity.normalizedIdentity()`). Relationship: `sourceIdentity->TYPE->targetIdentity`. Text Unit: its id. Community: its id. |
+| `items[].label` / `text` | Short label (name, edge, excerpt of 200 characters, title) / full text (`name (type): description`, `source -[TYPE]-> target: description`, the whole passage, `title: summary`). |
+| `items[].locator` | `{path, startLine, endLine}` (1-based, inclusive; 0 = whole file) or `null`; `SourceLocator.format()` renders `path:start-end`. |
+| `items[].attributes` | The element's attributes, keys sorted. |
+| `items[].score` | Seed score, Relationship weight, Text Unit rank score or Community score; comparable within one kind of one result. |
+| `items[].hop` | 0 for seeds, member Entities and Communities, the expansion depth for reached elements, -1 for Text Units. |
+| `trace.steps[]` | `RetrievalStep(kind, identifier, label, locator, attributes)`, also `SUB_QUESTION_SPAWNED` (identifier: the Community id, label: the sub-question). |
+| `warnings` | Visible, non-fatal problems, e.g. a failed sub-question derivation that fell back. |
+
+New fields are additive: a consumer that ignores unknown fields keeps
+working when later versions add some.
+
 ## Usage: wiring the ports and running the pipeline
 
 The use cases in `dev.rabauer.graphrag.core.usecase` are called in this order: ingest

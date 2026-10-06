@@ -9,6 +9,7 @@ import dev.rabauer.graphrag.core.domain.SynthesizedAnswer;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
 import dev.rabauer.graphrag.core.port.GraphStorePort;
+import dev.rabauer.graphrag.core.retrieval.LocalRetrievalOptions;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -25,7 +26,10 @@ import java.util.Set;
  * Assembles the bounded, Local-style synthesis context of Story 15.2 — the
  * seeds, up to {@value #MAX_CONTEXT_RELATIONSHIPS} Relationships touching
  * them (highest weight first) and up to {@value #MAX_CONTEXT_TEXT_UNITS} Text
- * Units those cite — recording a trace step per item as it is added.
+ * Units those cite — recording a trace step per item as it is added. The
+ * expansion itself is {@link LocalExpansion} with
+ * {@link LocalRetrievalOptions#answerContext()}, the same engine the
+ * retrieval-only use cases run with their own options.
  *
  * <p>Shared by {@link AnswerLocalSearch} (one assembly, one synthesis) and
  * {@link AnswerDriftSearch} (one assembly per sub-question branch, one
@@ -80,57 +84,14 @@ final class LocalContextAssembler {
 
         List<RetrievalStep> steps = new ArrayList<>();
         List<Item> items = new ArrayList<>();
-
-        Set<String> seedIdentities = new LinkedHashSet<>();
-        for (Entity seed : seeds) {
-            seedIdentities.add(seed.normalizedIdentity());
-            steps.add(entityStep(seed));
-            items.add(new Item("ENTITY:" + seed.normalizedIdentity(), RetrievalStep.Kind.ENTITY,
-                    entityText(seed), null));
-        }
-
-        List<Relationship> touching = new ArrayList<>();
-        for (Relationship relationship : orEmpty(graphStorePort.relationships(corpusId))) {
-            if (relationship == null) {
-                continue;
-            }
-            String sourceIdentity = Entity.identityOf(relationship.source(), relationship.sourceType());
-            String targetIdentity = Entity.identityOf(relationship.target(), relationship.targetType());
-            if (seedIdentities.contains(sourceIdentity) || seedIdentities.contains(targetIdentity)) {
-                touching.add(relationship);
-            }
-        }
-        // List.sort is stable, so equal weights keep their stored order.
-        touching.sort(Comparator.comparingInt(Relationship::weight).reversed());
-        List<Relationship> included = touching.subList(0, Math.min(MAX_CONTEXT_RELATIONSHIPS, touching.size()));
-        for (Relationship relationship : included) {
-            RetrievalStep step = relationshipStep(relationship);
-            steps.add(step);
-            items.add(new Item("RELATIONSHIP:" + step.identifier(), RetrievalStep.Kind.RELATIONSHIP,
-                    relationshipText(relationship), null));
-        }
-
-        // Rank cited Text Units: +weight per included Relationship, +1 per seed; ties keep first-seen order.
-        Map<String, Integer> scoreByUnit = new LinkedHashMap<>();
-        for (Entity seed : seeds) {
-            for (String unitId : seed.sourceTextUnitIds()) {
-                scoreByUnit.merge(unitId, 1, Integer::sum);
-            }
-        }
-        for (Relationship relationship : included) {
-            for (String unitId : relationship.sourceTextUnitIds()) {
-                scoreByUnit.merge(unitId, relationship.weight(), Integer::sum);
-            }
-        }
-        List<String> rankedUnits = new ArrayList<>(scoreByUnit.keySet());
-        rankedUnits.sort(Comparator.comparingInt((String unitId) -> scoreByUnit.get(unitId)).reversed());
-
         Map<String, Citation> citationsByUnit = new LinkedHashMap<>();
-        for (String unitId : rankedUnits) {
-            if (citationsByUnit.size() >= MAX_CONTEXT_TEXT_UNITS) {
-                break;
+        for (LocalExpansion.Touch touch : new LocalExpansion(graphStorePort)
+                .expand(seeds, Map.of(), corpusId, LocalRetrievalOptions.answerContext())) {
+            steps.add(touch.step());
+            items.add(touch.item());
+            if (touch.citation() != null) {
+                citationsByUnit.put(touch.step().identifier(), touch.citation());
             }
-            addTextUnit(graphStorePort, corpusId, unitId, steps, items, citationsByUnit);
         }
         return Optional.of(new Assembly(steps, items, citationsByUnit));
     }
@@ -196,12 +157,12 @@ final class LocalContextAssembler {
                 entity.locator(), entity.attributes());
     }
 
-    private static String entityText(Entity entity) {
+    static String entityText(Entity entity) {
         String text = entity.name() + " (" + entity.type() + ")";
         return entity.description().isEmpty() ? text : text + ": " + entity.description();
     }
 
-    private static String relationshipText(Relationship relationship) {
+    static String relationshipText(Relationship relationship) {
         String text = relationship.source() + " -[" + relationship.type() + "]-> " + relationship.target();
         return relationship.description().isEmpty() ? text : text + ": " + relationship.description();
     }
