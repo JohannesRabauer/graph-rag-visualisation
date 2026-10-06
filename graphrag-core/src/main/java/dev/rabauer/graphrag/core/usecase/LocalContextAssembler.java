@@ -84,7 +84,7 @@ final class LocalContextAssembler {
         Set<String> seedIdentities = new LinkedHashSet<>();
         for (Entity seed : seeds) {
             seedIdentities.add(seed.normalizedIdentity());
-            steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, seed.normalizedIdentity(), seed.name()));
+            steps.add(entityStep(seed));
             items.add(new Item("ENTITY:" + seed.normalizedIdentity(), RetrievalStep.Kind.ENTITY,
                     entityText(seed), null));
         }
@@ -149,8 +149,10 @@ final class LocalContextAssembler {
         }
         TextUnit unit = loaded.get();
         String excerpt = excerpt(unit.text());
-        citationsByUnit.put(unitId, new Citation(unitId, unit.documentName(), excerpt));
-        steps.add(new RetrievalStep(RetrievalStep.Kind.TEXT_UNIT, unitId, excerpt));
+        citationsByUnit.put(unitId, new Citation(unitId, unit.documentName(), excerpt, unit.locator(),
+                unit.attributes()));
+        steps.add(new RetrievalStep(RetrievalStep.Kind.TEXT_UNIT, unitId, excerpt, unit.locator(),
+                unit.attributes()));
         items.add(new Item("TEXT_UNIT:" + unitId, RetrievalStep.Kind.TEXT_UNIT, unit.text(), unitId));
         return unit;
     }
@@ -184,7 +186,14 @@ final class LocalContextAssembler {
                 + "->" + relationship.type() + "->"
                 + Entity.identityOf(relationship.target(), relationship.targetType());
         return new RetrievalStep(RetrievalStep.Kind.RELATIONSHIP, edgeId,
-                relationship.source() + " —" + relationship.type().replace('_', ' ') + "→ " + relationship.target());
+                relationship.source() + " —" + relationship.type().replace('_', ' ') + "→ " + relationship.target(),
+                relationship.locator(), relationship.attributes());
+    }
+
+    /** The {@code ENTITY} step for {@code entity}: its identity, name, locator and attributes. */
+    static RetrievalStep entityStep(Entity entity) {
+        return new RetrievalStep(RetrievalStep.Kind.ENTITY, entity.normalizedIdentity(), entity.name(),
+                entity.locator(), entity.attributes());
     }
 
     private static String entityText(Entity entity) {

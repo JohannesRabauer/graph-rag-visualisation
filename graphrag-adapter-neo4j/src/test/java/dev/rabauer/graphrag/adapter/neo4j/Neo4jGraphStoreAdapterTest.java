@@ -5,6 +5,7 @@ import dev.rabauer.graphrag.core.domain.CommunityMembership;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
+import dev.rabauer.graphrag.core.domain.SourceLocator;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 import dev.rabauer.graphrag.core.usecase.DetectCommunities;
 
@@ -629,6 +630,59 @@ class Neo4jGraphStoreAdapterTest {
         assertTrue(communityFailure.getMessage().contains(Neo4jGraphStoreAdapter.COMMUNITY_VECTOR_INDEX));
         assertTrue(communityFailure.getMessage().contains("have 5"));
         assertEquals(List.of("Four"), restarted.similarEntities(corpusId, QUERY, 3).stream().map(Entity::name).toList());
+    }
+
+    @Test
+    void roundTripsAttributesAndLocatorsOfEveryElement() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-attrs-" + System.nanoTime();
+        SourceLocator classLocation = SourceLocator.of("src/main/java/com/acme/OrderService.java", 12, 80);
+        SourceLocator callSite = SourceLocator.of("src/main/java/com/acme/OrderService.java", 42);
+        Map<String, String> classAttributes = Map.of("kind", "class", "module", "orders", "visibility", "public");
+
+        adapter.persistTextUnits(corpusId, List.of(new TextUnit("tu-1", corpusId, "OrderService.java", 0,
+                "class OrderService {}", Map.of("language", "java"), classLocation)));
+        adapter.persistEntities(corpusId, List.of(
+                new Entity("com.acme.OrderService", "Class", "Places orders.", List.of("tu-1"),
+                        classAttributes, classLocation),
+                new Entity("com.acme.OrderRepository", "Interface")));
+        adapter.persistRelationships(corpusId, List.of(new Relationship("com.acme.OrderService", "Class", "CALLS",
+                "com.acme.OrderRepository", "Interface", "", List.of("tu-1"), 7, Map.of("callCount", "7"), callSite)));
+        adapter.persistCommunities(corpusId, List.of(new Community("pkg:com.acme", "com.acme", "The acme package.",
+                Map.of("contentHash", "abc"))));
+
+        Entity service = adapter.entities(corpusId).stream()
+                .filter(entity -> entity.name().equals("com.acme.OrderService")).findFirst().orElseThrow();
+        Entity repository = adapter.entities(corpusId).stream()
+                .filter(entity -> entity.name().equals("com.acme.OrderRepository")).findFirst().orElseThrow();
+        Relationship calls = adapter.relationships(corpusId).getFirst();
+        TextUnit unit = adapter.textUnit(corpusId, "tu-1").orElseThrow();
+
+        assertEquals(classAttributes, service.attributes());
+        assertEquals(classLocation, service.locator());
+        assertEquals(Map.of(), repository.attributes());
+        assertEquals(null, repository.locator());
+        assertEquals(7, calls.weight());
+        assertEquals(Map.of("callCount", "7"), calls.attributes());
+        assertEquals(callSite, calls.locator());
+        assertEquals(Map.of("language", "java"), unit.attributes());
+        assertEquals(classLocation, unit.locator());
+        assertEquals(classLocation, adapter.textUnits(corpusId).getFirst().locator());
+        assertEquals(Map.of("contentHash", "abc"), adapter.communities(corpusId).getFirst().attributes());
+    }
+
+    @Test
+    void rePersistingWithoutALocatorOrAttributesClearsThem() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver);
+        String corpusId = "corpus-attrs-clear-" + System.nanoTime();
+        adapter.persistEntities(corpusId, List.of(new Entity("A", "Class", "", List.of(),
+                Map.of("kind", "class"), SourceLocator.of("A.java", 1, 9))));
+
+        adapter.persistEntities(corpusId, List.of(new Entity("A", "Class")));
+
+        Entity read = adapter.entities(corpusId).getFirst();
+        assertEquals(Map.of(), read.attributes());
+        assertEquals(null, read.locator());
     }
 
     private static boolean vectorIndexExists(String name, String label) {

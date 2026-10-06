@@ -317,12 +317,16 @@ classDiagram
         documentName
         ordinal
         text
+        attributes
+        locator?
     }
     class Entity {
         name
         type
         description
         sourceTextUnitIds[]
+        attributes
+        locator?
         normalizedIdentity()
     }
     class Relationship {
@@ -332,11 +336,20 @@ classDiagram
         description
         sourceTextUnitIds[]
         weight
+        attributes
+        locator?
     }
     class Community {
         id  «community-n»
         title
         summary
+        attributes
+    }
+    class SourceLocator {
+        path
+        startLine
+        endLine
+        format() «path:start-end»
     }
     class CommunityMembership {
         communityId
@@ -356,11 +369,15 @@ classDiagram
         kind
         identifier
         label
+        locator?
+        attributes
     }
     class Citation {
         textUnitId
         documentName
         excerpt
+        locator?
+        attributes
     }
     Corpus "1" --> "*" TextUnit : split into
     Corpus "1" --> "*" Chunk : chunked into
@@ -372,6 +389,12 @@ classDiagram
     RetrievalTrace "1" --> "*" RetrievalStep
     Citation ..> TextUnit : points at
 ```
+
+`attributes` (a key-sorted `Map<String, String>`, never null) and `locator` (a
+`SourceLocator`, null when unknown) are optional on every element; the text
+pipeline leaves them empty, an imported code graph fills them (see
+[`graphrag-core/README.md`](graphrag-core/README.md#code-and-other-structured-sources)).
+Entity and Relationship types are free-form strings.
 
 ---
 

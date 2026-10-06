@@ -4,18 +4,21 @@ import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityMembership;
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
+import dev.rabauer.graphrag.core.domain.SourceLocator;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 import dev.rabauer.graphrag.core.port.GraphStorePort;
 
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.Value;
 import org.neo4j.driver.exceptions.Neo4jException;
 
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -46,6 +49,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * native Neo4j label/relationship-type; this is a deliberate tradeoff that
  * keeps the uniqueness constraints in {@link #ensureConstraints()} fixed and
  * declarable up front instead of created dynamically per observed type.</p>
+ *
+ * <p>Free-form {@code attributes} (Entities, Relationships, Text Units,
+ * Communities) are stored as two parallel list properties,
+ * {@code attributeKeys} and {@code attributeValues} (Neo4j has no map-valued
+ * properties). A {@link SourceLocator} is stored as {@code locatorPath},
+ * {@code locatorStartLine} and {@code locatorEndLine}; a missing locator
+ * removes them. Elements persisted before these properties existed read back
+ * with empty attributes and no locator.</p>
  */
 public class Neo4jGraphStoreAdapter implements GraphStorePort {
 
@@ -159,12 +170,16 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         }
         List<Map<String, Object>> rows = entities.stream()
                 .filter(Objects::nonNull)
-                .map(entity -> Map.<String, Object>of(
-                        "normalizedIdentity", entity.normalizedIdentity(),
-                        "name", entity.name(),
-                        "type", entity.type(),
-                        "description", entity.description(),
-                        "sourceTextUnitIds", entity.sourceTextUnitIds()))
+                .map(entity -> {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("normalizedIdentity", entity.normalizedIdentity());
+                    row.put("name", entity.name());
+                    row.put("type", entity.type());
+                    row.put("description", entity.description());
+                    row.put("sourceTextUnitIds", entity.sourceTextUnitIds());
+                    putAttributesAndLocator(row, entity.attributes(), entity.locator());
+                    return row;
+                })
                 .toList();
         if (rows.isEmpty()) {
             return;
@@ -174,7 +189,8 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                     "UNWIND $rows AS row "
                             + "MERGE (e:Entity {corpusId: $corpusId, normalizedIdentity: row.normalizedIdentity}) "
                             + "SET e.name = row.name, e.type = row.type, "
-                            + "e.description = row.description, e.sourceTextUnitIds = row.sourceTextUnitIds "
+                            + "e.description = row.description, e.sourceTextUnitIds = row.sourceTextUnitIds, "
+                            + SET_ATTRIBUTES_AND_LOCATOR.formatted("e", "e", "e", "e", "e") + " "
                             + "WITH e, row "
                             + "UNWIND row.sourceTextUnitIds AS sourceTextUnitId "
                             + "MATCH (t:TextUnit {corpusId: $corpusId, id: sourceTextUnitId}) "
@@ -191,17 +207,21 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         }
         List<Map<String, Object>> rows = relationships.stream()
                 .filter(Objects::nonNull)
-                .map(relationship -> Map.<String, Object>of(
-                        "sourceIdentity", Entity.identityOf(relationship.source(), relationship.sourceType()),
-                        "targetIdentity", Entity.identityOf(relationship.target(), relationship.targetType()),
-                        "source", relationship.source(),
-                        "sourceType", relationship.sourceType(),
-                        "type", relationship.type(),
-                        "target", relationship.target(),
-                        "targetType", relationship.targetType(),
-                        "description", relationship.description(),
-                        "sourceTextUnitIds", relationship.sourceTextUnitIds(),
-                        "weight", relationship.weight()))
+                .map(relationship -> {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("sourceIdentity", Entity.identityOf(relationship.source(), relationship.sourceType()));
+                    row.put("targetIdentity", Entity.identityOf(relationship.target(), relationship.targetType()));
+                    row.put("source", relationship.source());
+                    row.put("sourceType", relationship.sourceType());
+                    row.put("type", relationship.type());
+                    row.put("target", relationship.target());
+                    row.put("targetType", relationship.targetType());
+                    row.put("description", relationship.description());
+                    row.put("sourceTextUnitIds", relationship.sourceTextUnitIds());
+                    row.put("weight", relationship.weight());
+                    putAttributesAndLocator(row, relationship.attributes(), relationship.locator());
+                    return row;
+                })
                 .toList();
         if (rows.isEmpty()) {
             return;
@@ -217,7 +237,8 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                             + "source: row.source, type: row.type, target: row.target}]->(t) "
                             + "SET r.sourceType = row.sourceType, r.targetType = row.targetType, "
                             + "r.description = row.description, r.sourceTextUnitIds = row.sourceTextUnitIds, "
-                            + "r.weight = row.weight",
+                            + "r.weight = row.weight, "
+                            + SET_ATTRIBUTES_AND_LOCATOR.formatted("r", "r", "r", "r", "r"),
                     Map.of("corpusId", corpusId, "rows", rows)).consume());
         }
     }
@@ -262,14 +283,17 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                     if (textUnit == null) {
                         continue;
                     }
-                    tx.run("MERGE (t:TextUnit {corpusId: $corpusId, id: $id}) "
-                                    + "SET t.documentName = $documentName, t.ordinal = $ordinal, t.text = $text",
-                            Map.of(
-                                    "corpusId", corpusId,
-                                    "id", textUnit.id(),
-                                    "documentName", textUnit.documentName() == null ? "" : textUnit.documentName(),
-                                    "ordinal", textUnit.ordinal(),
-                                    "text", textUnit.text() == null ? "" : textUnit.text()));
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("corpusId", corpusId);
+                    row.put("id", textUnit.id());
+                    row.put("documentName", textUnit.documentName() == null ? "" : textUnit.documentName());
+                    row.put("ordinal", textUnit.ordinal());
+                    row.put("text", textUnit.text() == null ? "" : textUnit.text());
+                    putAttributesAndLocator(row, textUnit.attributes(), textUnit.locator());
+                    tx.run("WITH $row AS row MERGE (t:TextUnit {corpusId: row.corpusId, id: row.id}) "
+                                    + "SET t.documentName = row.documentName, t.ordinal = row.ordinal, t.text = row.text, "
+                                    + SET_ATTRIBUTES_AND_LOCATOR.formatted("t", "t", "t", "t", "t"),
+                            Map.of("row", row));
                 }
                 return null;
             });
@@ -288,12 +312,16 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                     if (community == null) {
                         continue;
                     }
-                    tx.run("MERGE (c:Community {corpusId: $corpusId, id: $id}) SET c.title = $title, c.summary = $summary",
+                    tx.run("MERGE (c:Community {corpusId: $corpusId, id: $id}) SET c.title = $title, "
+                                    + "c.summary = $summary, c.attributeKeys = $attributeKeys, "
+                                    + "c.attributeValues = $attributeValues",
                             Map.of(
                                     "corpusId", corpusId,
                                     "id", community.id(),
                                     "title", community.title(),
-                                    "summary", community.summary()));
+                                    "summary", community.summary(),
+                                    "attributeKeys", List.copyOf(community.attributes().keySet()),
+                                    "attributeValues", List.copyOf(community.attributes().values())));
                 }
                 return null;
             });
@@ -340,10 +368,10 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 List<Entity> result = new ArrayList<>();
                 for (Record record : tx.run("MATCH (e:Entity {corpusId: $corpusId}) RETURN e.name AS name, "
                         + "e.type AS type, coalesce(e.description, '') AS description, "
-                        + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds", Map.of("corpusId", corpusId)).list()) {
-                    result.add(new Entity(record.get("name").asString(), record.get("type").asString(),
-                            record.get("description").asString(),
-                            record.get("sourceTextUnitIds").asList(value -> value.asString())));
+                        + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds, "
+                        + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("e", "e", "e", "e", "e"),
+                        Map.of("corpusId", corpusId)).list()) {
+                    result.add(entity(record));
                 }
                 return result;
             });
@@ -364,17 +392,10 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                                 + "r.target AS target, r.targetType AS targetType, "
                                 + "coalesce(r.description, '') AS description, "
                                 + "coalesce(r.sourceTextUnitIds, []) AS sourceTextUnitIds, "
-                                + "coalesce(r.weight, 1) AS weight",
+                                + "coalesce(r.weight, 1) AS weight, "
+                                + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("r", "r", "r", "r", "r"),
                         Map.of("corpusId", corpusId)).list()) {
-                    result.add(new Relationship(
-                            record.get("source").asString(),
-                            record.get("sourceType").asString(),
-                            record.get("type").asString(),
-                            record.get("target").asString(),
-                            record.get("targetType").asString(),
-                            record.get("description").asString(),
-                            record.get("sourceTextUnitIds").asList(value -> value.asString()),
-                            record.get("weight").asInt()));
+                    result.add(relationship(record));
                 }
                 return result;
             });
@@ -391,14 +412,10 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                 List<TextUnit> result = new ArrayList<>();
                 for (Record record : tx.run("MATCH (t:TextUnit {corpusId: $corpusId}) "
                                 + "RETURN t.id AS id, t.documentName AS documentName, t.ordinal AS ordinal, "
-                                + "t.text AS text ORDER BY t.documentName, t.ordinal, t.id",
+                                + "t.text AS text, " + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("t", "t", "t", "t", "t")
+                                + " ORDER BY t.documentName, t.ordinal, t.id",
                         Map.of("corpusId", corpusId)).list()) {
-                    result.add(new TextUnit(
-                            record.get("id").asString(),
-                            corpusId,
-                            record.get("documentName").asString(),
-                            record.get("ordinal").asInt(),
-                            record.get("text").asString()));
+                    result.add(textUnit(record, corpusId));
                 }
                 return result;
             });
@@ -412,15 +429,11 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         }
         try (Session session = driver.session()) {
             return session.executeRead(tx -> tx.run("MATCH (t:TextUnit {corpusId: $corpusId, id: $id}) "
-                            + "RETURN t.id AS id, t.documentName AS documentName, t.ordinal AS ordinal, t.text AS text",
+                            + "RETURN t.id AS id, t.documentName AS documentName, t.ordinal AS ordinal, t.text AS text, "
+                            + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("t", "t", "t", "t", "t"),
                     Map.of("corpusId", corpusId, "id", textUnitId)).list().stream()
                     .findFirst()
-                    .map(record -> new TextUnit(
-                            record.get("id").asString(),
-                            corpusId,
-                            record.get("documentName").asString(),
-                            record.get("ordinal").asInt(),
-                            record.get("text").asString())));
+                    .map(record -> textUnit(record, corpusId)));
         }
     }
 
@@ -433,9 +446,10 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
             return session.executeRead(tx -> {
                 List<Community> result = new ArrayList<>();
                 for (Record record : tx.run("MATCH (c:Community {corpusId: $corpusId}) RETURN c.id AS id, "
-                        + "coalesce(c.title, '') AS title, c.summary AS summary", Map.of("corpusId", corpusId)).list()) {
-                    result.add(new Community(record.get("id").asString(), record.get("title").asString(),
-                            record.get("summary").asString()));
+                        + "coalesce(c.title, '') AS title, c.summary AS summary, "
+                        + "coalesce(c.attributeKeys, []) AS attributeKeys, "
+                        + "coalesce(c.attributeValues, []) AS attributeValues", Map.of("corpusId", corpusId)).list()) {
+                    result.add(community(record));
                 }
                 return result;
             });
@@ -602,12 +616,11 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                                 + "SEARCH e IN (VECTOR INDEX " + ENTITY_VECTOR_INDEX + " FOR $query "
                                 + "WHERE e.corpusId = $corpusId LIMIT $k) SCORE AS score "
                                 + "RETURN e.name AS name, e.type AS type, coalesce(e.description, '') AS description, "
-                                + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds, score "
+                                + "coalesce(e.sourceTextUnitIds, []) AS sourceTextUnitIds, "
+                                + RETURN_ATTRIBUTES_AND_LOCATOR.formatted("e", "e", "e", "e", "e") + ", score "
                                 + "ORDER BY score DESC",
                         Map.of("corpusId", corpusId, "query", toDoubleList(query), "k", (long) k)).list()) {
-                    result.add(new Entity(record.get("name").asString(), record.get("type").asString(),
-                            record.get("description").asString(),
-                            record.get("sourceTextUnitIds").asList(value -> value.asString())));
+                    result.add(entity(record));
                 }
                 return result;
             });
@@ -633,15 +646,92 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
                         "MATCH (c:Community) "
                                 + "SEARCH c IN (VECTOR INDEX " + COMMUNITY_VECTOR_INDEX + " FOR $query "
                                 + "WHERE c.corpusId = $corpusId LIMIT $k) SCORE AS score "
-                                + "RETURN c.id AS id, coalesce(c.title, '') AS title, c.summary AS summary, score "
+                                + "RETURN c.id AS id, coalesce(c.title, '') AS title, c.summary AS summary, "
+                                + "coalesce(c.attributeKeys, []) AS attributeKeys, "
+                                + "coalesce(c.attributeValues, []) AS attributeValues, score "
                                 + "ORDER BY score DESC",
                         Map.of("corpusId", corpusId, "query", toDoubleList(query), "k", (long) k)).list()) {
-                    result.add(new Community(record.get("id").asString(), record.get("title").asString(),
-                            record.get("summary").asString()));
+                    result.add(community(record));
                 }
                 return result;
             });
         }
+    }
+
+    // -- Attributes and locators -------------------------------------------------
+
+    /** {@code SET} clause for the attribute and locator properties of {@code %s} from {@code row}. */
+    private static final String SET_ATTRIBUTES_AND_LOCATOR =
+            "%s.attributeKeys = row.attributeKeys, %s.attributeValues = row.attributeValues, "
+                    + "%s.locatorPath = row.locatorPath, %s.locatorStartLine = row.locatorStartLine, "
+                    + "%s.locatorEndLine = row.locatorEndLine";
+
+    /** {@code RETURN} items for the attribute and locator properties of {@code %s}. */
+    private static final String RETURN_ATTRIBUTES_AND_LOCATOR =
+            "coalesce(%s.attributeKeys, []) AS attributeKeys, coalesce(%s.attributeValues, []) AS attributeValues, "
+                    + "%s.locatorPath AS locatorPath, coalesce(%s.locatorStartLine, 0) AS locatorStartLine, "
+                    + "coalesce(%s.locatorEndLine, 0) AS locatorEndLine";
+
+    private static void putAttributesAndLocator(Map<String, Object> row, Map<String, String> attributes,
+                                                SourceLocator locator) {
+        row.put("attributeKeys", List.copyOf(attributes.keySet()));
+        row.put("attributeValues", List.copyOf(attributes.values()));
+        row.put("locatorPath", locator == null ? null : locator.path());
+        row.put("locatorStartLine", locator == null ? null : (long) locator.startLine());
+        row.put("locatorEndLine", locator == null ? null : (long) locator.endLine());
+    }
+
+    private static Map<String, String> attributes(Record record) {
+        List<String> keys = record.get("attributeKeys").asList(Value::asString);
+        List<String> values = record.get("attributeValues").asList(Value::asString);
+        Map<String, String> attributes = new LinkedHashMap<>();
+        for (int i = 0; i < Math.min(keys.size(), values.size()); i++) {
+            attributes.put(keys.get(i), values.get(i));
+        }
+        return attributes;
+    }
+
+    private static SourceLocator locator(Record record) {
+        Value path = record.get("locatorPath");
+        if (path == null || path.isNull()) {
+            return null;
+        }
+        return new SourceLocator(path.asString(), record.get("locatorStartLine").asInt(),
+                record.get("locatorEndLine").asInt());
+    }
+
+    private static Entity entity(Record record) {
+        return new Entity(record.get("name").asString(), record.get("type").asString(),
+                record.get("description").asString(), record.get("sourceTextUnitIds").asList(Value::asString),
+                attributes(record), locator(record));
+    }
+
+    private static Relationship relationship(Record record) {
+        return new Relationship(
+                record.get("source").asString(),
+                record.get("sourceType").asString(),
+                record.get("type").asString(),
+                record.get("target").asString(),
+                record.get("targetType").asString(),
+                record.get("description").asString(),
+                record.get("sourceTextUnitIds").asList(Value::asString),
+                record.get("weight").asInt(),
+                attributes(record), locator(record));
+    }
+
+    private static TextUnit textUnit(Record record, String corpusId) {
+        return new TextUnit(
+                record.get("id").asString(),
+                corpusId,
+                record.get("documentName").asString(),
+                record.get("ordinal").asInt(),
+                record.get("text").asString(),
+                attributes(record), locator(record));
+    }
+
+    private static Community community(Record record) {
+        return new Community(record.get("id").asString(), record.get("title").asString(),
+                record.get("summary").asString(), attributes(record));
     }
 
     private static List<Double> toDoubleList(float[] vector) {

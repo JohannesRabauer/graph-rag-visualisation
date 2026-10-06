@@ -23,7 +23,7 @@ public final class EntityResolver {
         String previousIdentity = state.currentIdentity();
         state.countMention(entity.type());
         state.recomputeType();
-        Entity resolved = new Entity(state.canonicalName, state.currentType,
+        Entity resolved = entity.with(state.canonicalName, state.currentType,
                 entity.description(), entity.sourceTextUnitIds());
         return new ResolvedEntity(resolved,
                 previousIdentity != null && !previousIdentity.equals(resolved.normalizedIdentity())
@@ -34,7 +34,7 @@ public final class EntityResolver {
     public Relationship resolve(Relationship relationship) {
         Endpoint source = resolveEndpoint(relationship.source(), relationship.sourceType());
         Endpoint target = resolveEndpoint(relationship.target(), relationship.targetType());
-        return new Relationship(source.name(), source.type(), relationship.type(), target.name(), target.type(),
+        return relationship.with(source.name(), source.type(), target.name(), target.type(),
                 relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());
     }
 

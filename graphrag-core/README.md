@@ -111,6 +111,40 @@ embeddings. `ImportResult` reports the counts, placeholders, dropped
 Relationships and where the Communities came from (`SUPPLIED`, `DETECTED`,
 `NONE`).
 
+## Code and other structured sources
+
+The domain model is not tied to prose. Entity and Relationship types are
+free-form strings (`Class`, `Method`, `CALLS`, `IMPLEMENTS`, …); only text
+extraction restricts them, to `EntityTypes.ALL` by default or to the list
+passed to `new ExtractEntitiesAndRelationships(llm, store, entityTypes)`.
+
+`Entity`, `Relationship`, `TextUnit`, `Citation`, `RetrievalStep` and
+`Community` carry two optional fields:
+
+- `attributes` — a free-form `Map<String, String>` (for example `kind`,
+  `module`, `package`, `visibility`, `callCount`). Null keys/values and blank
+  keys are dropped; the map is unmodifiable and sorted by key, so equality and
+  JSON are stable. `attribute(key)` returns an `Optional`.
+- `locator` — a `SourceLocator(path, startLine, endLine)`, 1-based and
+  inclusive, rendered as `path:startLine-endLine` by `format()` and parsed back
+  by `SourceLocator.parse(...)`. `0` lines mean "the whole source"; a null
+  locator means "unknown".
+
+The existing constructors are kept and create elements without attributes and
+locator, so nothing changes for text corpora. `with(...)`, `withAttributes`
+and `withLocator` derive copies that keep the other fields; merging
+(`GraphElementMerger`) keeps the first locator and unites the attributes (the
+first value wins).
+
+Retrieval carries them through: every `ENTITY`, `RELATIONSHIP` and `TEXT_UNIT`
+step of a trace and every `Citation` exposes the element's locator and
+attributes, so an answer item can be verified at `path:startLine-endLine`.
+
+The Neo4j adapter stores attributes as two parallel list properties
+(`attributeKeys`, `attributeValues`) and a locator as `locatorPath`,
+`locatorStartLine` and `locatorEndLine`. Elements persisted before these
+properties existed read back with empty attributes and no locator.
+
 ## Usage: wiring the ports and running the pipeline
 
 The use cases in `dev.rabauer.graphrag.core.usecase` are called in this order: ingest

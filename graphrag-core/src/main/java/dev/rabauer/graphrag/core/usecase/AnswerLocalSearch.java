@@ -103,14 +103,14 @@ public class AnswerLocalSearch {
             if (seed == null) {
                 seed = similar;
             }
-            steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, similar.normalizedIdentity(), similar.name()));
+            steps.add(LocalContextAssembler.entityStep(similar));
         }
         if (seed == null) {
             seed = LocalContextAssembler.bestMatchingEntity(orEmpty(graphStorePort.entities(corpusId)), tokens);
             if (seed == null) {
                 return LocalSearchAnswer.noMatch();
             }
-            steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, seed.normalizedIdentity(), seed.name()));
+            steps.add(LocalContextAssembler.entityStep(seed));
         }
 
         Collection<Relationship> relationships = orEmpty(graphStorePort.relationships(corpusId));
@@ -129,9 +129,7 @@ public class AnswerLocalSearch {
         String otherIdentity = seedIsSource ? targetIdentity : sourceIdentity;
         String otherName = seedIsSource ? hop.target() : hop.source();
 
-        String edgeId = sourceIdentity + "->" + hop.type() + "->" + targetIdentity;
-        steps.add(new RetrievalStep(RetrievalStep.Kind.RELATIONSHIP, edgeId,
-                hop.source() + " —" + hop.type().replace('_', ' ') + "→ " + hop.target()));
+        steps.add(LocalContextAssembler.relationshipStep(hop));
         steps.add(new RetrievalStep(RetrievalStep.Kind.ENTITY, otherIdentity, otherName));
 
         String answer = "In this corpus graph, " + hop.source() + " "

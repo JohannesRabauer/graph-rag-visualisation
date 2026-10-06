@@ -1,5 +1,6 @@
 package dev.rabauer.graphrag.core.usecase;
 
+import dev.rabauer.graphrag.core.domain.Attributes;
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
 
@@ -26,7 +27,9 @@ public final class GraphElementMerger {
         }
         return new Entity(first.name(), first.type(),
                 mergeDescriptions(first.description(), next.description()),
-                union(first.sourceTextUnitIds(), next.sourceTextUnitIds()));
+                union(first.sourceTextUnitIds(), next.sourceTextUnitIds()),
+                Attributes.union(first.attributes(), next.attributes()),
+                first.locator() != null ? first.locator() : next.locator());
     }
 
     public static Relationship merge(Relationship first, Relationship next) {
@@ -38,7 +41,9 @@ public final class GraphElementMerger {
         }
         List<String> ids = union(first.sourceTextUnitIds(), next.sourceTextUnitIds());
         return new Relationship(first.source(), first.sourceType(), first.type(), first.target(), first.targetType(),
-                mergeDescriptions(first.description(), next.description()), ids, ids.size());
+                mergeDescriptions(first.description(), next.description()), ids, ids.size(),
+                Attributes.union(first.attributes(), next.attributes()),
+                first.locator() != null ? first.locator() : next.locator());
     }
 
     /**
@@ -56,7 +61,9 @@ public final class GraphElementMerger {
         }
         return new Relationship(first.source(), first.sourceType(), first.type(), first.target(), first.targetType(),
                 mergeDescriptions(first.description(), next.description()),
-                union(first.sourceTextUnitIds(), next.sourceTextUnitIds()), first.weight() + next.weight());
+                union(first.sourceTextUnitIds(), next.sourceTextUnitIds()), first.weight() + next.weight(),
+                Attributes.union(first.attributes(), next.attributes()),
+                first.locator() != null ? first.locator() : next.locator());
     }
 
     public static String mergeDescriptions(String existing, String added) {

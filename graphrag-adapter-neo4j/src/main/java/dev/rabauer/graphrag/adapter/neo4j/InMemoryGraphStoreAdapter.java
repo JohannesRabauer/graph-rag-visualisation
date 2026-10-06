@@ -281,10 +281,9 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
                 continue;
             }
             removed.add(entry.getKey());
-            Relationship updated = new Relationship(
+            Relationship updated = relationship.with(
                     sourceMatches ? resolved.name() : relationship.source(),
                     sourceMatches ? resolved.type() : relationship.sourceType(),
-                    relationship.type(),
                     targetMatches ? resolved.name() : relationship.target(),
                     targetMatches ? resolved.type() : relationship.targetType(),
                     relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());

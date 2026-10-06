@@ -1,5 +1,7 @@
 package dev.rabauer.graphrag.core.domain;
 
+import java.util.Map;
+
 /**
  * A single, ordered touch recorded while answering a query — one Entity,
  * Relationship, or Community the retrieval process examined on its way to
@@ -11,13 +13,24 @@ package dev.rabauer.graphrag.core.domain;
  * {@link Community#id()}), so a future frontend (Story 5.2's replay) can
  * cross-reference a trace step against the same graph visualisation nodes
  * without a second identity scheme.
+ *
+ * @param locator    where the touched element lives (an Entity's,
+ *                   Relationship's or Text Unit's locator); null when unknown
+ * @param attributes the touched element's attributes; never null
  */
-public record RetrievalStep(Kind kind, String identifier, String label) {
+public record RetrievalStep(Kind kind, String identifier, String label, SourceLocator locator,
+                            Map<String, String> attributes) {
+
+    /** A step without locator and attributes. */
+    public RetrievalStep(Kind kind, String identifier, String label) {
+        this(kind, identifier, label, null, Map.of());
+    }
 
     public RetrievalStep {
         java.util.Objects.requireNonNull(kind, "kind must not be null");
         identifier = identifier == null ? "" : identifier.trim();
         label = label == null ? "" : label.trim();
+        attributes = Attributes.normalize(attributes);
     }
 
     /**
