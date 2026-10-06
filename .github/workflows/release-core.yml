@@ -1,0 +1,63 @@
+name: Release graphrag-core
+
+# Signs graphrag-core and uploads it to the Maven Central Portal.
+# The deployment then waits in the Portal for a manual "Publish" click
+# (autoPublish is off in graphrag-core/pom.xml). See graphrag-core/RELEASING.md.
+on:
+  push:
+    tags: ['graphrag-core-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, e.g. 2.0.0 (no -SNAPSHOT)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Determine the release version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#graphrag-core-v}"
+          else
+            VERSION="$INPUT_VERSION"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.]+)?$ ]] || [[ "$VERSION" == *SNAPSHOT* ]]; then
+            echo "::error::'$VERSION' is not a release version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Writes a settings.xml with the <server id="central"> credentials and
+      # imports the signing key into the runner's GPG keyring.
+      - name: Set up JDK 25 with Central credentials and the signing key
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Set the version
+        run: mvn -B -f graphrag-core/pom.xml versions:set -DnewVersion=${{ steps.version.outputs.version }} -DgenerateBackupPoms=false
+
+      - name: Test, sign and upload to Maven Central
+        run: mvn -B -f graphrag-core/pom.xml -Prelease clean deploy
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

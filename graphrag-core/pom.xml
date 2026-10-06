@@ -4,13 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <parent>
-    <groupId>dev.rabauer.graphrag</groupId>
-    <artifactId>graphrag-parent</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-    <relativePath>../pom.xml</relativePath>
-  </parent>
-
+  <!--
+    Deliberately has no <parent>: graphrag-core is published to Maven Central
+    on its own, and a published POM must not point to a parent that is not
+    published too. The root aggregator still builds it as a module; the few
+    settings it used to inherit (Java release, encoding, plugin versions,
+    the JDK 25 check) are repeated here.
+  -->
   <groupId>dev.rabauer.graphrag</groupId>
   <artifactId>graphrag-core</artifactId>
   <version>2.0.0-SNAPSHOT</version>
@@ -18,9 +18,10 @@
 
   <name>GraphRAG Lens :: Core</name>
   <description>
-    Framework-free hexagonal core: domain model and port interfaces. Carries
-    no dependency on any web framework, graph-database driver, or
-    LLM-orchestration library (AD-1).
+    Framework-free GraphRAG core: domain model, port interfaces and use cases
+    for ingestion, knowledge-graph extraction, community detection and
+    Local, Global, DRIFT and vector-baseline search. Carries no dependency on
+    any web framework, graph-database driver, or LLM-orchestration library.
   </description>
 
   <url>https://github.com/JohannesRabauer/graph-rag-visualisation</url>
@@ -35,6 +36,7 @@
 
   <developers>
     <developer>
+      <id>JohannesRabauer</id>
       <name>Johannes Rabauer</name>
       <url>https://github.com/JohannesRabauer</url>
     </developer>
@@ -44,30 +46,15 @@
     <connection>scm:git:https://github.com/JohannesRabauer/graph-rag-visualisation.git</connection>
     <developerConnection>scm:git:https://github.com/JohannesRabauer/graph-rag-visualisation.git</developerConnection>
     <url>https://github.com/JohannesRabauer/graph-rag-visualisation</url>
-    <tag>graphrag-core-1.0.0</tag>
+    <tag>HEAD</tag>
   </scm>
 
-  <!--
-    GitHub Packages was picked as the lowest-setup-cost default (this repo
-    already lives on GitHub), but note the tradeoff: unlike Maven Central,
-    GitHub Packages requires an authenticated GitHub token even to
-    *download* a public package, which is real friction for consumers.
-    Maven Central would not need a token to consume but needs more
-    publishing setup (namespace verification, GPG signing, etc.). Revisit
-    this choice before actually running a publish.
-  -->
-  <distributionManagement>
-    <repository>
-      <id>github</id>
-      <name>GitHub Packages - graph-rag-visualisation</name>
-      <url>https://maven.pkg.github.com/JohannesRabauer/graph-rag-visualisation</url>
-    </repository>
-    <snapshotRepository>
-      <id>github</id>
-      <name>GitHub Packages - graph-rag-visualisation (snapshots)</name>
-      <url>https://maven.pkg.github.com/JohannesRabauer/graph-rag-visualisation</url>
-    </snapshotRepository>
-  </distributionManagement>
+  <properties>
+    <java.version>25</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+  </properties>
 
   <dependencyManagement>
     <dependencies>
@@ -93,8 +80,32 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+        <configuration>
+          <release>${java.version}</release>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
+        <version>3.6.3</version>
         <executions>
+          <execution>
+            <id>require-java-25</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[25,)</version>
+                  <message>graphrag-core requires JDK 25 or newer. Install JDK 25 and make it the active JAVA_HOME/mvn toolchain.</message>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
           <execution>
             <id>ban-framework-dependencies</id>
             <phase>validate</phase>
@@ -120,12 +131,13 @@
   </build>
 
   <!--
-    Source/javadoc jar generation lives behind this opt-in profile, not the
+    Everything Maven Central needs lives behind this opt-in profile, not the
     default build: routine `mvn install` runs (including CI on every push/
-    PR) must not depend on Javadoc succeeding, especially once real
-    Javadoc content lands and could legitimately fail to generate. Activate
-    explicitly when preparing an actual release, e.g.
-    `mvn package -pl graphrag-core -am -Prelease`.
+    PR) must not depend on Javadoc succeeding or on a GPG key being present.
+    The release workflow (.github/workflows/release-core.yml) activates it;
+    see RELEASING.md. `mvn deploy -Prelease` signs the artifacts and uploads
+    them to the Central Portal, where the deployment waits for a manual
+    "Publish" (autoPublish is off: a published version can never be removed).
   -->
   <profiles>
     <profile>
@@ -159,6 +171,40 @@
                 </goals>
               </execution>
             </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.8</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+                <configuration>
+                  <!-- The passphrase comes from MAVEN_GPG_PASSPHRASE; loopback
+                       stops gpg from asking for it interactively in CI. -->
+                  <gpgArguments>
+                    <arg>--pinentry-mode</arg>
+                    <arg>loopback</arg>
+                  </gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.11.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <!-- <server> id in settings.xml holding the Portal user token. -->
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>false</autoPublish>
+              <waitUntil>validated</waitUntil>
+            </configuration>
           </plugin>
         </plugins>
       </build>
