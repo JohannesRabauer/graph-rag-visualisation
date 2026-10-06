@@ -1,5 +1,6 @@
 package dev.rabauer.graphrag.adapter.neo4j;
 
+import dev.rabauer.graphrag.core.community.GraphCommunities;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityMembership;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -80,6 +81,8 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
 
     private final Driver driver;
 
+    private final Neo4jGraphStoreOptions options;
+
     /** Vector indexes known to exist, so each is created/checked at most once per adapter. */
     private final Set<String> knownVectorIndexes = ConcurrentHashMap.newKeySet();
 
@@ -87,7 +90,13 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
     private final Map<String, Long> vectorIndexDimensions = new ConcurrentHashMap<>();
 
     public Neo4jGraphStoreAdapter(Driver driver) {
+        this(driver, Neo4jGraphStoreOptions.defaults());
+    }
+
+    /** An adapter configured by {@code options} (null means {@link Neo4jGraphStoreOptions#defaults()}). */
+    public Neo4jGraphStoreAdapter(Driver driver, Neo4jGraphStoreOptions options) {
         this.driver = Objects.requireNonNull(driver, "driver");
+        this.options = options == null ? Neo4jGraphStoreOptions.defaults() : options;
         ensureConstraints();
     }
 
@@ -742,16 +751,24 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         return values;
     }
 
-    // -- Community detection (GDS Leiden, AD-4) --------------------------------
+    // -- Community detection (GDS Leiden, AD-4, or the core detector) ------------
 
     /**
-     * Groups the corpus's Entities with GDS Leiden over a corpus-scoped,
-     * undirected projection weighted by {@code r.weight} (missing weights
-     * count as 1). The projection is uniquely named per call and always
-     * dropped afterwards, even when Leiden fails. There is deliberately no
-     * fallback to connected components: when GDS is unavailable or Leiden
-     * throws, the failure propagates as an {@link IllegalStateException}
-     * naming community detection.
+     * Groups the corpus's Entities.
+     *
+     * <p>With {@link Neo4jGraphStoreOptions.CommunityDetection#CORE} the
+     * core's pure-Java detector runs over {@link #entities(String)} and
+     * {@link #relationships(String)}; no GDS plugin is needed.</p>
+     *
+     * <p>With {@link Neo4jGraphStoreOptions.CommunityDetection#GDS_LEIDEN} (the
+     * default), GDS Leiden runs over a corpus-scoped, undirected projection
+     * weighted by {@code r.weight} (missing weights count as 1). The
+     * projection is uniquely named per call and always dropped afterwards,
+     * even when Leiden fails. When GDS is unavailable or Leiden throws, the
+     * failure propagates as an {@link IllegalStateException} naming community
+     * detection — unless {@link Neo4jGraphStoreOptions#fallbackToCoreDetector()}
+     * is set, in which case a warning is logged and the core detector answers
+     * instead.</p>
      *
      * <p>Entities without relationships, and any Entity the Leiden stream
      * omits, become single-member groups. A corpus without relationships is
@@ -762,6 +779,26 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         if (corpusId == null || corpusId.isBlank()) {
             return List.of();
         }
+        if (options.communityDetection() == Neo4jGraphStoreOptions.CommunityDetection.CORE) {
+            return coreCommunities(corpusId);
+        }
+        try {
+            return gdsLeidenCommunities(corpusId);
+        } catch (IllegalStateException e) {
+            if (!options.fallbackToCoreDetector()) {
+                throw e;
+            }
+            LOG.log(Level.WARNING, () -> "GDS Leiden failed for corpus " + corpusId
+                    + "; falling back to the core community detector: " + e.getMessage());
+            return coreCommunities(corpusId);
+        }
+    }
+
+    private List<List<String>> coreCommunities(String corpusId) {
+        return GraphCommunities.detect(options.coreDetector(), entities(corpusId), relationships(corpusId));
+    }
+
+    private List<List<String>> gdsLeidenCommunities(String corpusId) {
         try (Session session = driver.session()) {
             List<String> identities = session.executeRead(tx -> tx.run(
                     "MATCH (e:Entity {corpusId: $corpusId}) RETURN e.normalizedIdentity AS identity",

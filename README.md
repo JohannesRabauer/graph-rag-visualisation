@@ -206,7 +206,8 @@ Design rules that keep the core reusable:
 | --- | --- |
 | `IngestCorpus` | Validates uploads and builds a `Corpus` from parsed documents. |
 | `ExtractEntitiesAndRelationships` (`BuildKnowledgeGraph`) | Splits the corpus into overlapping **Text Units** (about 6,000 characters each, with about 600 characters of overlap). It asks the LLM for entities and relationships **one passage at a time**, resolves duplicates (`EntityResolver`), merges descriptions and provenance (`GraphElementMerger`), and persists after every passage, so the graph grows live. |
-| `DetectCommunities` | Groups entities with `GraphStorePort.detectCommunities` (GDS Leiden on Neo4j) and keeps groups of **at least 3** members (`MIN_COMMUNITY_SIZE`). It asks the LLM for a title and summary written from the members' descriptions and internal relationships. |
+| `DetectCommunities` | Groups entities with `GraphStorePort.detectCommunities` (GDS Leiden on Neo4j; the core's pure-Java modularity detector by default) and keeps groups of **at least 3** members (`MIN_COMMUNITY_SIZE`). It asks the LLM for a title and summary written from the members' descriptions and internal relationships. Options add bounded parallelism, a per-run budget, per-item failure isolation and summary reuse. |
+| `ImportKnowledgeGraph` | Imports an exact, pre-built graph (for example from a code scan) without any extraction call, then detects Communities (or takes the caller's) and embeds. |
 | `EmbedGraphElements` | When the embedding model is semantic, embeds every entity (`name: description`) and community summary for meaning-based seed matching. |
 | `ConstructVectorIndex` | Builds the vector baseline: 500-character chunks, their embeddings, and a fitted 2-D projection. |
 | `AnswerLocalSearch` | Seeds on the entities closest to the question and walks their one-hop neighbourhood into the Text Units it cites. |

@@ -48,12 +48,13 @@ usable fallback; only the abstract methods listed below are required.
 | `VectorStorePort` | Persists and queries a corpus's embedded chunks and its fitted 2D projection model. | `void persistChunks(String corpusId, Collection<EmbeddedChunk> chunks)` |
 
 `GraphStorePort.detectCommunities(String corpusId)` is the grouping that
-`DetectCommunities` summarizes and persists. Its default is connected
-components over `entities(corpusId)`/`relationships(corpusId)`; override it to
-plug in a modularity-based algorithm (the Neo4j adapter uses GDS Leiden). It
-returns groups of member identities (`Entity.normalizedIdentity()`); their
-order does not matter, because `DetectCommunities` numbers Communities by each
-group's first member in `entities(corpusId)`.
+`DetectCommunities` summarizes and persists. Its default is the core's
+modularity-based detector (see [Communities without GDS](#communities-without-gds));
+override it to plug in a native algorithm (the Neo4j adapter uses GDS Leiden
+by default). It returns groups of member identities
+(`Entity.normalizedIdentity()`); their order does not matter, because
+`DetectCommunities` numbers Communities by each group's first member in
+`entities(corpusId)`.
 
 ## Optional LLM capabilities
 
@@ -144,6 +145,62 @@ The Neo4j adapter stores attributes as two parallel list properties
 (`attributeKeys`, `attributeValues`) and a locator as `locatorPath`,
 `locatorStartLine` and `locatorEndLine`. Elements persisted before these
 properties existed read back with empty attributes and no locator.
+
+## Communities without GDS
+
+`dev.rabauer.graphrag.core.community` holds a pure-Java, deterministic
+community detector, so any store gets modularity-based Communities without a
+graph-algorithm plugin:
+
+- `ModularityCommunityDetector` — Louvain local moving and aggregation with a
+  Leiden-style connectivity refinement (every Community is connected).
+  Weighted by `Relationship.weight()`, undirected. `Options`: `seed` (visit
+  order; default 42, every seed reproducible), `resolution` (default 1.0;
+  higher gives more, smaller Communities), `maxLevels`, `maxIterationsPerLevel`,
+  `refineConnectivity`. `detectHierarchy(...)` returns every aggregation level,
+  finest first; `modularity(...)` scores a partition.
+- `ConnectedComponentsCommunityDetector` — the grouping the port used before.
+- `GraphCommunities.detect(detector, entities, relationships)` runs any
+  `CommunityDetector` over a graph; `GraphCommunities.defaultDetector()` is the
+  one `GraphStorePort.detectCommunities` uses by default.
+
+A detector can also be plugged in per run (`DetectCommunities.Options.withDetector`)
+or per store (`new InMemoryGraphStoreAdapter(detector)`, or
+`Neo4jGraphStoreOptions.withCommunityDetection(CORE)` / `withCoreDetector` for
+Neo4j without the GDS plugin). With GDS Leiden, a GDS failure still fails the
+detection unless `withFallbackToCoreDetector(true)` is set; the fallback logs a
+warning.
+
+To skip detection entirely, supply Communities (for example packages or
+modules) through `ImportKnowledgeGraph` (see above).
+
+### Summarizing Communities: options and result
+
+`new DetectCommunities(store, llm, DetectCommunities.Options)` configures a run;
+`run(corpusId, progress, onCommunityDetected)` returns a
+`CommunityDetectionResult`. The existing constructors and `detect(...)` behave
+exactly as before (sequential, unlimited, the first failure propagates).
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `minCommunitySize` | 3 | Smaller groups produce no Community. |
+| `detector` | the store's | Grouping to use instead of `GraphStorePort.detectCommunities`. |
+| `parallelism` | 1 | Summaries in flight at once; only for a port whose `summarizesCommunities()` is true. |
+| `maxSummaries` | unlimited | Port calls per run; the rest are `SKIPPED_BUDGET`. |
+| `maxWallTime` | unlimited | Time budget; summaries not finished by then are `SKIPPED_BUDGET`. |
+| `failurePolicy` | `FAIL_RUN` | `ISOLATE_ITEM`: a failing summary is `FAILED` (with its error) and the run continues. |
+| `reuseSummaries` | off | Reuse a stored Community's summary when its content hash matches (attributes `contentHash`, `summaryStatus`). |
+
+Every detected Community and membership is persisted in every case; one whose
+summary failed or was skipped gets the deterministic title and summary, and
+the result's `status` is `PARTIAL` (else `COMPLETE`, or `EMPTY` when no group
+reached the minimum size). Per Community, `summaries()` says `GENERATED`,
+`REUSED`, `DETERMINISTIC`, `FAILED` or `SKIPPED_BUDGET`; `count(status)` counts
+them. The content hash covers the member identities and descriptions and the
+internal Relationships handed to the port, so a re-run regenerates only
+Communities whose content changed; a fallback summary is never reused, so it
+is retried. A `ProgressListener` is told after each summary, in Community
+order.
 
 ## Usage: wiring the ports and running the pipeline
 

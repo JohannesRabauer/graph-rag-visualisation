@@ -1,5 +1,7 @@
 package dev.rabauer.graphrag.core.usecase;
 
+import dev.rabauer.graphrag.core.community.ConnectedComponentsCommunityDetector;
+import dev.rabauer.graphrag.core.community.GraphCommunities;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityMembership;
@@ -132,7 +134,7 @@ class DetectCommunitiesTest {
     }
 
     @Test
-    void defaultPortGroupsTwoBridgedCliquesIntoOneCommunityAndLeavesAnIsolatedEntityOut() {
+    void defaultPortSplitsTwoBridgedCliquesByModularityAndLeavesAnIsolatedEntityOut() {
         List<Entity> entities = new ArrayList<>();
         for (String name : List.of("A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4", "Loner")) {
             entities.add(new Entity(name, "Node"));
@@ -148,10 +150,11 @@ class DetectCommunitiesTest {
                 new Corpus("corpus-1", List.of(new UploadedDocument("demo.txt", "demo content"))),
                 (community, members) -> callbackInvocations.put(community.id(), members));
 
-        assertEquals(1, communities.size());
-        assertEquals(List.of(id("A1"), id("A2"), id("A3"), id("A4"), id("B1"), id("B2"), id("B3"), id("B4")),
-                callbackInvocations.get("community-1"));
-        assertEquals(1, callbackInvocations.size());
+        // The default is modularity-based (no longer connected components): the bridge does not merge the cliques.
+        assertEquals(2, communities.size());
+        assertEquals(List.of(id("A1"), id("A2"), id("A3"), id("A4")), callbackInvocations.get("community-1"));
+        assertEquals(List.of(id("B1"), id("B2"), id("B3"), id("B4")), callbackInvocations.get("community-2"));
+        assertEquals(2, callbackInvocations.size());
         assertTrue(graphStore.persistedMemberships.stream()
                 .noneMatch(membership -> membership.entityIdentity().equals(id("Loner"))));
     }
@@ -192,7 +195,14 @@ class DetectCommunitiesTest {
             relationships.add(new Relationship("N" + (i % 10), "Node", "rel" + i, "N" + ((i + 1) % 10), "Node",
                     "", List.of(), weight));
         }
-        RecordingGraphStore graphStore = new RecordingGraphStore(entities, relationships);
+        RecordingGraphStore graphStore = new RecordingGraphStore(entities, relationships) {
+            @Override
+            public List<List<String>> detectCommunities(String corpusId) {
+                // One Community for the whole ring, so all 40 Relationships are internal.
+                return GraphCommunities.detect(new ConnectedComponentsCommunityDetector(), entities(corpusId),
+                        relationships(corpusId));
+            }
+        };
         RecordingLlm llm = new RecordingLlm();
 
         new DetectCommunities(graphStore, llm).detect(corpus());

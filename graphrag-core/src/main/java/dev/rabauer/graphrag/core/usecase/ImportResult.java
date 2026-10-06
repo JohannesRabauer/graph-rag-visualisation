@@ -20,10 +20,13 @@ import java.util.List;
  * @param communities           the Communities persisted (supplied or detected);
  *                              empty when none were supplied or detected
  * @param embedded              whether Entities and Communities were embedded
+ * @param detection             the {@link DetectCommunities} run, with each
+ *                              summary's outcome; null when detection did not run
  */
 public record ImportResult(String corpusId, int textUnits, int entities, int relationships,
                            int placeholderEntities, int droppedRelationships,
-                           CommunitySource communitySource, List<Community> communities, boolean embedded) {
+                           CommunitySource communitySource, List<Community> communities, boolean embedded,
+                           CommunityDetectionResult detection) {
 
     public ImportResult {
         corpusId = corpusId == null ? "" : corpusId;

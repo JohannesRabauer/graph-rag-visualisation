@@ -476,6 +476,39 @@ class Neo4jGraphStoreAdapterTest {
     }
 
     @Test
+    void theCoreDetectorModeSplitsBridgedCliquesWithoutGdsAndLeavesNoProjection() {
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver, Neo4jGraphStoreOptions.defaults()
+                .withCommunityDetection(Neo4jGraphStoreOptions.CommunityDetection.CORE));
+        String corpusId = "corpus-core-detector-" + System.nanoTime();
+        persistBridgedCliques(adapter, corpusId);
+
+        Set<Set<String>> groups = asSets(adapter.detectCommunities(corpusId));
+
+        assertTrue(groups.contains(Set.of(id("A1"), id("A2"), id("A3"), id("A4"))), groups::toString);
+        assertTrue(groups.contains(Set.of(id("B1"), id("B2"), id("B3"), id("B4"))), groups::toString);
+        assertTrue(projectionsFor(corpusId).isEmpty());
+    }
+
+    @Test
+    void aGdsFailureFallsBackToTheCoreDetectorOnlyWhenTheFlagIsSet() {
+        Neo4jGraphStoreOptions fallback = Neo4jGraphStoreOptions.defaults().withFallbackToCoreDetector(true);
+        Neo4jGraphStoreAdapter adapter = new Neo4jGraphStoreAdapter(driver, fallback) {
+            @Override
+            String leidenStreamCypher() {
+                return "CALL gds.doesNotExist($graphName) YIELD nodeId RETURN '' AS identity, 0 AS communityId";
+            }
+        };
+        String corpusId = "corpus-gds-fallback-" + System.nanoTime();
+        persistBridgedCliques(adapter, corpusId);
+
+        Set<Set<String>> groups = asSets(adapter.detectCommunities(corpusId));
+
+        assertTrue(groups.contains(Set.of(id("A1"), id("A2"), id("A3"), id("A4"))), groups::toString);
+        assertTrue(projectionsFor(corpusId).isEmpty());
+        assertFalse(Neo4jGraphStoreOptions.defaults().fallbackToCoreDetector());
+    }
+
+    @Test
     void projectionNameIsSanitizedAndUniquePerCall() {
         String first = Neo4jGraphStoreAdapter.projectionName("my corpus/x:1");
         String second = Neo4jGraphStoreAdapter.projectionName("my corpus/x:1");

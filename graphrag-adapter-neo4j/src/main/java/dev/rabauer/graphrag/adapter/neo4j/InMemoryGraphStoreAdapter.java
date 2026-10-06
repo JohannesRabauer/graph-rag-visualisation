@@ -1,5 +1,7 @@
 package dev.rabauer.graphrag.adapter.neo4j;
 
+import dev.rabauer.graphrag.core.community.CommunityDetector;
+import dev.rabauer.graphrag.core.community.GraphCommunities;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityMembership;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -17,8 +19,26 @@ import java.util.Optional;
 
 /**
  * An in-memory graph-store implementation used to validate the extraction flow.
+ * Communities are detected with a configurable core detector (by default
+ * {@link GraphCommunities#defaultDetector()}).
  */
 public class InMemoryGraphStoreAdapter implements GraphStorePort {
+
+    private final CommunityDetector communityDetector;
+
+    public InMemoryGraphStoreAdapter() {
+        this(GraphCommunities.defaultDetector());
+    }
+
+    /** A store that groups Communities with {@code communityDetector}. */
+    public InMemoryGraphStoreAdapter(CommunityDetector communityDetector) {
+        this.communityDetector = java.util.Objects.requireNonNull(communityDetector, "communityDetector");
+    }
+
+    @Override
+    public List<List<String>> detectCommunities(String corpusId) {
+        return GraphCommunities.detect(communityDetector, entities(corpusId), relationships(corpusId));
+    }
 
     private final Map<String, Entity> entities = new LinkedHashMap<>();
     private final Map<String, Relationship> relationships = new LinkedHashMap<>();

@@ -1,5 +1,6 @@
 package dev.rabauer.graphrag.core.port;
 
+import dev.rabauer.graphrag.core.community.GraphCommunities;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityMembership;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -7,17 +8,10 @@ import dev.rabauer.graphrag.core.domain.GraphExtraction;
 import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Queue;
-import java.util.Set;
 
 /**
  * Port for persisting and querying the knowledge graph.
@@ -131,75 +125,23 @@ public interface GraphStorePort {
      * format). Every Entity of the corpus appears in exactly one group; an
      * Entity without relationships is its own single-member group.
      *
-     * <p>The default implementation groups by connected components over
-     * {@link #entities(String)} and {@link #relationships(String)}, with groups
-     * and their members in the order of {@link #entities(String)}. Graph stores
-     * with a native community-detection algorithm (for example GDS Leiden) may
-     * override it; callers must not rely on the order an override returns.</p>
+     * <p>The default implementation runs the core's deterministic,
+     * modularity-based detector ({@link GraphCommunities#defaultDetector()}:
+     * Louvain with a Leiden-style connectivity refinement, seed 42, resolution
+     * 1.0, weighted by {@link Relationship#weight()}) over
+     * {@link #entities(String)} and {@link #relationships(String)}, so any
+     * store gets modularity-based Communities without a graph-algorithm
+     * plugin. Groups and members are in the order of {@link #entities(String)}.
+     * Graph stores with a native algorithm (for example GDS Leiden) may
+     * override it; callers must not rely on the order an override returns. The
+     * former connected-components grouping is available as
+     * {@link dev.rabauer.graphrag.core.community.ConnectedComponentsCommunityDetector}.</p>
      *
      * @param corpusId the corpus whose Entities are grouped
      * @return the member-identity groups; empty when the corpus has no Entities
      */
     default List<List<String>> detectCommunities(String corpusId) {
-        return connectedComponents(entities(corpusId), relationships(corpusId));
-    }
-
-    private static List<List<String>> connectedComponents(Collection<Entity> entities,
-                                                          Collection<Relationship> relationships) {
-        if (entities == null || entities.isEmpty()) {
-            return List.of();
-        }
-        Set<String> entityIdentities = new LinkedHashSet<>();
-        for (Entity entity : entities) {
-            if (entity != null) {
-                entityIdentities.add(entity.normalizedIdentity());
-            }
-        }
-        Map<String, Set<String>> adjacency = new LinkedHashMap<>();
-        for (String identity : entityIdentities) {
-            adjacency.put(identity, new LinkedHashSet<>());
-        }
-        if (relationships != null) {
-            for (Relationship relationship : relationships) {
-                if (relationship == null) {
-                    continue;
-                }
-                String source = Entity.identityOf(relationship.source(), relationship.sourceType());
-                String target = Entity.identityOf(relationship.target(), relationship.targetType());
-                adjacency.computeIfAbsent(source, ignored -> new LinkedHashSet<>()).add(target);
-                adjacency.computeIfAbsent(target, ignored -> new LinkedHashSet<>()).add(source);
-            }
-        }
-
-        Set<String> visited = new HashSet<>();
-        List<List<String>> groups = new ArrayList<>();
-        for (String start : entityIdentities) {
-            if (!visited.add(start)) {
-                continue;
-            }
-            // Traverse through every endpoint (also ones without an Entity, as before),
-            // but report only identities that are actual Entities of the corpus.
-            Set<String> component = new HashSet<>();
-            Queue<String> pending = new ArrayDeque<>();
-            pending.add(start);
-            while (!pending.isEmpty()) {
-                String current = pending.remove();
-                component.add(current);
-                for (String neighbor : adjacency.getOrDefault(current, Set.of())) {
-                    if (visited.add(neighbor)) {
-                        pending.add(neighbor);
-                    }
-                }
-            }
-            List<String> members = new ArrayList<>();
-            for (String identity : entityIdentities) {
-                if (component.contains(identity)) {
-                    members.add(identity);
-                }
-            }
-            groups.add(List.copyOf(members));
-        }
-        return List.copyOf(groups);
+        return GraphCommunities.detect(entities(corpusId), relationships(corpusId));
     }
 
     /**

@@ -120,13 +120,14 @@ public class ImportKnowledgeGraph {
         graphStorePort.persistRelationships(corpusId, List.copyOf(relationships.values()));
 
         List<Community> communities = List.of();
+        CommunityDetectionResult detection = null;
         ImportResult.CommunitySource source = ImportResult.CommunitySource.NONE;
         if (input.hasSuppliedCommunities()) {
             communities = persistSuppliedCommunities(corpusId, input, entities);
             source = ImportResult.CommunitySource.SUPPLIED;
         } else if (effective.detectCommunities()) {
-            communities = new DetectCommunities(graphStorePort, llmPort, effective.minCommunitySize())
-                    .detect(corpusId);
+            detection = new DetectCommunities(graphStorePort, llmPort, effective.communities()).run(corpusId);
+            communities = detection.communities();
             source = communities.isEmpty() ? ImportResult.CommunitySource.NONE
                     : ImportResult.CommunitySource.DETECTED;
         }
@@ -137,7 +138,7 @@ public class ImportKnowledgeGraph {
         }
 
         return new ImportResult(corpusId, input.textUnits().size(), entities.size(), relationships.size(),
-                placeholders, dropped, source, communities, embedded);
+                placeholders, dropped, source, communities, embedded, detection);
     }
 
     private static Map<String, Entity> mergeEntities(List<Entity> input) {
@@ -250,38 +251,43 @@ public class ImportKnowledgeGraph {
      * @param detectCommunities whether to detect Communities when none are supplied
      * @param embed             whether to embed Entities and Communities (only
      *                          with a semantic {@link EmbeddingPort})
-     * @param minCommunitySize  the minimum Community size for detection (at least 1)
+     * @param communities       how {@link DetectCommunities} runs (minimum size,
+     *                          detector, parallelism, budget, failure policy,
+     *                          summary reuse); null means its defaults
      * @param missingEndpoints  what to do with dangling Relationship endpoints
      */
-    public record Options(boolean detectCommunities, boolean embed, int minCommunitySize,
+    public record Options(boolean detectCommunities, boolean embed, DetectCommunities.Options communities,
                           MissingEndpoints missingEndpoints) {
 
         public Options {
-            if (minCommunitySize < 1) {
-                throw new IllegalArgumentException("minCommunitySize must be at least 1, was " + minCommunitySize);
-            }
+            communities = communities == null ? DetectCommunities.Options.defaults() : communities;
             missingEndpoints = missingEndpoints == null ? MissingEndpoints.CREATE : missingEndpoints;
         }
 
-        /** Detect, embed, {@value DetectCommunities#MIN_COMMUNITY_SIZE} as minimum size, create placeholders. */
+        /** Detect with {@link DetectCommunities.Options#defaults()}, embed, create placeholders. */
         public static Options defaults() {
-            return new Options(true, true, DetectCommunities.MIN_COMMUNITY_SIZE, MissingEndpoints.CREATE);
+            return new Options(true, true, DetectCommunities.Options.defaults(), MissingEndpoints.CREATE);
         }
 
         public Options withDetectCommunities(boolean value) {
-            return new Options(value, embed, minCommunitySize, missingEndpoints);
+            return new Options(value, embed, communities, missingEndpoints);
         }
 
         public Options withEmbed(boolean value) {
-            return new Options(detectCommunities, value, minCommunitySize, missingEndpoints);
+            return new Options(detectCommunities, value, communities, missingEndpoints);
         }
 
+        /** Shorthand for changing {@link DetectCommunities.Options#minCommunitySize()}. */
         public Options withMinCommunitySize(int value) {
+            return new Options(detectCommunities, embed, communities.withMinCommunitySize(value), missingEndpoints);
+        }
+
+        public Options withCommunities(DetectCommunities.Options value) {
             return new Options(detectCommunities, embed, value, missingEndpoints);
         }
 
         public Options withMissingEndpoints(MissingEndpoints value) {
-            return new Options(detectCommunities, embed, minCommunitySize, value);
+            return new Options(detectCommunities, embed, communities, value);
         }
     }
 }
