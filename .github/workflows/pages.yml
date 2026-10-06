@@ -2,7 +2,14 @@ name: Website
 
 # Builds and publishes the project website (the static site under docs/)
 # to GitHub Pages. The site has no build step: HTML, CSS and JS are
-# committed as served. The job only validates the files and uploads them.
+# committed as served. The job validates the files, writes the latest
+# graphrag-core release from Maven Central into the Library snippets, and
+# uploads them.
+#
+# A Maven Central release fires no GitHub event (it goes live when someone
+# clicks Publish in the Central Portal), so an hourly run checks whether
+# Central has a newer graphrag-core than the live site and redeploys only
+# then. Pushes and manual runs always deploy.
 
 on:
   push:
@@ -10,6 +17,8 @@ on:
     paths:
       - 'docs/**'
       - '.github/workflows/pages.yml'
+  schedule:
+    - cron: '23 * * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -26,6 +35,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.version.outputs.deploy }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -48,16 +59,55 @@ jobs:
           sudo apt-get install -y -qq tidy >/dev/null
           tidy -q -e --drop-empty-elements no docs/index.html || test $? -eq 1
 
+      # The committed page carries the version it was written with in
+      # <meta name="graphrag-core-version">; every occurrence of that version
+      # is replaced with Central's latest release. If Central can't be
+      # reached, a push still deploys with the committed version.
+      - name: Write the latest graphrag-core release into the page
+        id: version
+        run: |
+          set -euo pipefail
+          semver='^[0-9]+\.[0-9]+\.[0-9]+$'
+          current=$(grep -oP '<meta name="graphrag-core-version" content="\K[^"]+' docs/index.html)
+          [[ "$current" =~ $semver ]] || { echo "::error file=docs/index.html::graphrag-core-version meta missing or malformed: '$current'"; exit 1; }
+
+          latest=$(curl -fsSL --retry 3 https://repo1.maven.org/maven2/dev/rabauer/graphrag/graphrag-core/maven-metadata.xml \
+                     | grep -oP '<release>\K[^<]+' || true)
+          if ! [[ "$latest" =~ $semver ]]; then
+            echo "::warning::could not read the latest graphrag-core release from Maven Central; keeping $current"
+            latest="$current"
+          fi
+
+          if [ "$latest" != "$current" ]; then
+            cur_re=${current//./\\.}
+            sed -i -E "s/(^|[^0-9.])${cur_re}([^0-9.]|$)/\1${latest}\2/g" docs/index.html
+          fi
+          echo "graphrag-core on the page: $latest (committed: $current)"
+
+          deploy=true
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            live=$(curl -fsSL --retry 3 https://johannesrabauer.github.io/graph-rag-visualisation/ \
+                     | grep -oP '<meta name="graphrag-core-version" content="\K[^"]+' || true)
+            if [ "$live" = "$latest" ]; then
+              deploy=false
+              echo "live site already shows $latest; nothing to deploy"
+            fi
+          fi
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+
       - name: Configure GitHub Pages
+        if: steps.version.outputs.deploy == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload the site as a Pages artifact
+        if: steps.version.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
 
   deploy:
     needs: build
+    if: needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -6,6 +6,10 @@
   <title>GraphRAG Lens — watch GraphRAG build a knowledge graph and answer from it</title>
   <meta name="description" content="GraphRAG Lens is an open-source teaching and demo tool that shows how GraphRAG works: upload documents, watch a knowledge graph grow passage by passage, see communities form, ask in Local, Global and DRIFT mode, replay every retrieval trace and compare against plain vector search.">
   <meta name="theme-color" content="#FAFAF9">
+  <!-- The graphrag-core version shown in the Library snippets. The Website
+       workflow replaces it (here and in the snippets) with the latest release
+       on Maven Central at deploy time, so it needs no edit after a release. -->
+  <meta name="graphrag-core-version" content="2.0.0">
   <link rel="canonical" href="https://johannesrabauer.github.io/graph-rag-visualisation/">
   <meta property="og:type" content="website">
   <meta property="og:title" content="GraphRAG Lens — see how GraphRAG works">
@@ -732,15 +736,15 @@ OPENAI_API_KEY=sk-... docker compose up"><pre><span class="c"># clone and start 
           <div class="codeblock" data-copy="&lt;dependency&gt;
     &lt;groupId&gt;dev.rabauer.graphrag&lt;/groupId&gt;
     &lt;artifactId&gt;graphrag-core&lt;/artifactId&gt;
-    &lt;version&gt;2.0.1&lt;/version&gt;
+    &lt;version&gt;2.0.0&lt;/version&gt;
 &lt;/dependency&gt;"><pre><span class="c">&lt;!-- Maven: pom.xml (JDK 21+) --&gt;</span>
 <span class="k">&lt;dependency&gt;</span>
     <span class="k">&lt;groupId&gt;</span>dev.rabauer.graphrag<span class="k">&lt;/groupId&gt;</span>
     <span class="k">&lt;artifactId&gt;</span>graphrag-core<span class="k">&lt;/artifactId&gt;</span>
-    <span class="k">&lt;version&gt;</span><span class="s">2.0.1</span><span class="k">&lt;/version&gt;</span>
+    <span class="k">&lt;version&gt;</span><span class="s">2.0.0</span><span class="k">&lt;/version&gt;</span>
 <span class="k">&lt;/dependency&gt;</span></pre></div>
-          <div class="codeblock" data-copy="implementation(&quot;dev.rabauer.graphrag:graphrag-core:2.0.1&quot;)"><pre><span class="c">// Gradle: build.gradle.kts</span>
-<span class="k">implementation</span>(<span class="s">"dev.rabauer.graphrag:graphrag-core:2.0.1"</span>)</pre></div>
+          <div class="codeblock" data-copy="implementation(&quot;dev.rabauer.graphrag:graphrag-core:2.0.0&quot;)"><pre><span class="c">// Gradle: build.gradle.kts</span>
+<span class="k">implementation</span>(<span class="s">"dev.rabauer.graphrag:graphrag-core:2.0.0"</span>)</pre></div>
           <ul class="checklist" style="margin-top:22px">
             <li>A Maven Enforcer rule fails the build if Spring, the Neo4j driver or LangChain4j leak into the core.</li>
             <li>Implementing a port means implementing its abstract methods only. Defaults cover the rest.</li>

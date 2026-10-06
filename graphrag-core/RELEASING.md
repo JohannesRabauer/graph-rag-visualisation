@@ -53,9 +53,10 @@ in the Portal before publishing it.
    signature) and click **Publish**. If the Portal shows two deployments (one
    per artifact), publish both. It takes a few minutes to an hour to appear on Maven Central.
 4. Bump to the next snapshot: `version` in `graphrag-core/pom.xml` and
-   `graphrag-core-testkit/pom.xml` and `graphrag-core.version` in the root `pom.xml`, and update the coordinates
-   in `README.md` and in the Library section of the website
-   (`docs/index.html`, Maven and Gradle snippets).
+   `graphrag-core-testkit/pom.xml` and `graphrag-core.version` in the root `pom.xml`,
+   and update the coordinates in `README.md` and `graphrag-core/README.md`. The
+   website picks up the new version by itself: its workflow checks Maven Central
+   every hour and redeploys when the release appears.
 
 ## Trying it locally
 
