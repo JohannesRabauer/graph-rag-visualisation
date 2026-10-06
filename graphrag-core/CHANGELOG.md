@@ -9,9 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.1] - 2026-10-06
 
+### Added
+
+- **`graphrag-core-testkit` on Maven Central** (`dev.rabauer.graphrag:graphrag-core-testkit`), released together with `graphrag-core` under the same version. Its POM no longer has a parent.
+
 ### Changed
 
-- The artifact is now compiled for Java 21 (class-file major version 65) instead of Java 25, so Java 21 applications can use it. The API is unchanged. Building the core needs JDK 21 or newer; CI builds and tests it on JDK 21 and 25, and the release workflow fails if any class is not major version 65.
+- `graphrag-core` and `graphrag-core-testkit` are now compiled for Java 21 (class-file major version 65) instead of Java 25, so Java 21 applications can use them. The API is unchanged. Building them needs JDK 21 or newer; CI builds and tests them on JDK 21 and 25, and the release workflow fails if any class is not major version 65.
 
 ## [2.0.0] - 2026-10-06
 
