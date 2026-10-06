@@ -20,14 +20,13 @@ Neo4j Java Driver, or LangChain4j, and the build enforces that ban.
 <dependency>
     <groupId>dev.rabauer.graphrag</groupId>
     <artifactId>graphrag-core</artifactId>
-    <version>2.0.0-SNAPSHOT</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
-**This artifact is not yet published to any Maven registry.** There is no
-Maven Central, GitHub Packages, or other remote coordinate you can point at
-today. To consume it, clone this repository and install it into your local
-Maven repository:
+Released on Maven Central; no extra repository configuration is needed. To
+build the current development version (`-SNAPSHOT`) yourself, clone this
+repository and install it into your local Maven repository:
 
 ```
 mvn install -pl graphrag-core -am
