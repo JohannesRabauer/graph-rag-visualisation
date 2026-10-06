@@ -39,10 +39,17 @@ public class EmbedGraphElements {
     }
 
     public void run(Corpus corpus) {
-        if (corpus == null || !isSemantic(embeddingPort)) {
+        if (corpus == null) {
             return;
         }
-        String corpusId = corpus.id();
+        run(corpus.id());
+    }
+
+    /** {@link #run(Corpus)} for a corpus known only by its id (e.g. an imported graph). */
+    public void run(String corpusId) {
+        if (corpusId == null || !isSemantic(embeddingPort)) {
+            return;
+        }
 
         Map<String, float[]> entityEmbeddings = new LinkedHashMap<>();
         for (Entity entity : orEmpty(graphStorePort.entities(corpusId))) {

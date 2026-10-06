@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The next release is **2.0.0**. It contains breaking changes, including the namespace move below.
 
+### Added — reuse for exact, non-text graphs (Codebase Atlas)
+
+- **Optional LLM capabilities.** `LlmPort` gains the capability flags `extractsEntities()` (default `true`), `summarizesCommunities()` and `derivesSubQuestions()` (default `false`), in the style of `synthesizesAnswers()`, and `LlmPort.none()`, a port with every capability off. `extract(Corpus)` stays the only abstract method so `LlmPort` remains a functional interface; a port without extraction returns the new `GraphExtraction.empty()`. `ExtractEntitiesAndRelationships` makes no extraction call for a null port or one whose `extractsEntities()` is `false`, and persists only the Text Units.
+- **`ImportKnowledgeGraph`** use case with `KnowledgeGraphImport`, `ImportKnowledgeGraph.Options`, `ImportKnowledgeGraph.MissingEndpoints` and `ImportResult`: imports pre-built Text Units, Entities and Relationships (and optionally caller-supplied Communities and memberships) without any extraction call, then optionally detects Communities and embeds. Repeated Relationships have their weights summed (`GraphElementMerger.mergeSummingWeights`).
+- `DetectCommunities.detect(String corpusId)` / `detect(String corpusId, callback)` and `EmbedGraphElements.run(String corpusId)` for corpora known only by id.
+
 ### Changed
 
 - **Breaking — namespace moved to `dev.rabauer.graphrag`.**

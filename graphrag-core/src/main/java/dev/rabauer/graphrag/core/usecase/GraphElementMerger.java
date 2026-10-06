@@ -41,6 +41,24 @@ public final class GraphElementMerger {
                 mergeDescriptions(first.description(), next.description()), ids, ids.size());
     }
 
+    /**
+     * Merges two sightings of the same Relationship from an exact source
+     * (for example two call sites of one method): descriptions and source
+     * Text Units are joined like {@link #merge(Relationship, Relationship)},
+     * but the weights are summed instead of recounted from the Text Units.
+     */
+    public static Relationship mergeSummingWeights(Relationship first, Relationship next) {
+        if (first == null) {
+            return next;
+        }
+        if (next == null) {
+            return first;
+        }
+        return new Relationship(first.source(), first.sourceType(), first.type(), first.target(), first.targetType(),
+                mergeDescriptions(first.description(), next.description()),
+                union(first.sourceTextUnitIds(), next.sourceTextUnitIds()), first.weight() + next.weight());
+    }
+
     public static String mergeDescriptions(String existing, String added) {
         String result = normalizeDescription(existing);
         if (result.length() >= DESCRIPTION_LIMIT || added == null || added.isBlank()) {

@@ -24,6 +24,11 @@ import java.util.function.Consumer;
  * normalised, and the unit plus its extraction are persisted before the next
  * unit starts (AD-14). Any unit failure stops the whole pass — no retries,
  * no partial "best effort" continuation.
+ *
+ * <p>A null port, or one whose {@link LlmPort#extractsEntities()} is
+ * {@code false}, makes no extraction call: every Text Unit is still split and
+ * persisted, but nothing is extracted. Exact graphs built without a model go
+ * through {@link ImportKnowledgeGraph} instead.
  */
 public class ExtractEntitiesAndRelationships {
 
@@ -31,7 +36,7 @@ public class ExtractEntitiesAndRelationships {
     private final GraphStorePort graphStorePort;
 
     public ExtractEntitiesAndRelationships(LlmPort llmPort, GraphStorePort graphStorePort) {
-        this.llmPort = llmPort;
+        this.llmPort = llmPort == null ? LlmPort.none() : llmPort;
         this.graphStorePort = graphStorePort;
     }
 
@@ -208,6 +213,9 @@ public class ExtractEntitiesAndRelationships {
     }
 
     private GraphExtraction extractUnit(TextUnit unit) {
+        if (!llmPort.extractsEntities()) {
+            return GraphExtraction.empty();
+        }
         GraphExtraction raw;
         try {
             raw = llmPort.extract(unit, EntityTypes.ALL);

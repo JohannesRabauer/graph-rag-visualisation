@@ -90,7 +90,17 @@ public class DetectCommunities {
      * lose already-detected Communities.
      */
     public List<Community> detect(Corpus corpus, BiConsumer<Community, List<String>> onCommunityDetected) {
-        Collection<Entity> stored = graphStorePort.entities(corpus.id());
+        return detect(corpus.id(), onCommunityDetected);
+    }
+
+    /** {@link #detect(Corpus)} for a corpus known only by its id (e.g. an imported graph). */
+    public List<Community> detect(String corpusId) {
+        return detect(corpusId, null);
+    }
+
+    /** {@link #detect(Corpus, BiConsumer)} for a corpus known only by its id. */
+    public List<Community> detect(String corpusId, BiConsumer<Community, List<String>> onCommunityDetected) {
+        Collection<Entity> stored = graphStorePort.entities(corpusId);
         if (stored == null || stored.isEmpty()) {
             return List.of();
         }
@@ -99,7 +109,7 @@ public class DetectCommunities {
             return List.of();
         }
 
-        List<List<Entity>> groups = orderedGroups(entities, graphStorePort.detectCommunities(corpus.id())).stream()
+        List<List<Entity>> groups = orderedGroups(entities, graphStorePort.detectCommunities(corpusId)).stream()
                 .filter(members -> distinctIdentities(members) >= minCommunitySize)
                 .toList();
         if (groups.isEmpty()) {
@@ -108,7 +118,7 @@ public class DetectCommunities {
 
         List<Community> communities = new ArrayList<>();
         List<CommunityMembership> memberships = new ArrayList<>();
-        List<Relationship> allRelationships = storedRelationships(corpus.id());
+        List<Relationship> allRelationships = storedRelationships(corpusId);
         int index = 1;
         for (List<Entity> members : groups) {
             String communityId = "community-" + index++;
@@ -119,8 +129,8 @@ public class DetectCommunities {
             }
         }
 
-        graphStorePort.persistCommunities(corpus.id(), communities);
-        graphStorePort.persistCommunityMemberships(corpus.id(), memberships);
+        graphStorePort.persistCommunities(corpusId, communities);
+        graphStorePort.persistCommunityMemberships(corpusId, memberships);
 
         if (onCommunityDetected != null) {
             Map<String, List<String>> memberIdentitiesByCommunityId = new LinkedHashMap<>();
@@ -194,7 +204,7 @@ public class DetectCommunities {
                 : List.copyOf(internal);
     }
 
-    private static String fallbackSummary(List<Entity> members) {
+    static String fallbackSummary(List<Entity> members) {
         if (members == null || members.isEmpty()) {
             return "A small connected cluster of related entities.";
         }

@@ -19,17 +19,88 @@ import java.util.List;
 
 /**
  * Port for LLM-driven knowledge-graph construction and related generation.
+ *
+ * <p>Every capability is optional. {@link #extract(Corpus)} is the only
+ * method without a default, and only so that {@code LlmPort} stays a
+ * functional interface (existing callers implement it as a lambda). A port
+ * that never extracts returns {@link GraphExtraction#empty()} there and
+ * reports {@link #extractsEntities()} {@code false}; {@link #none()} is such
+ * a port with every capability off. All other methods have documented,
+ * deterministic defaults, so a use case given a port without a capability
+ * degrades to the same deterministic result it produces without any port.
+ *
+ * <p>Capability flags, in the style of {@link #synthesizesAnswers()}:
+ * <ul>
+ *   <li>{@link #extractsEntities()} (default {@code true}): whether
+ *       {@link #extract(TextUnit, List)} really extracts. When {@code false},
+ *       {@code ExtractEntitiesAndRelationships} makes no extraction call and
+ *       persists only the Text Units; the import path
+ *       ({@code ImportKnowledgeGraph}) never calls extraction at all.</li>
+ *   <li>{@link #summarizesCommunities()} (default {@code false}): whether
+ *       {@link #summarizeCommunity(Collection, Collection)} calls a model.
+ *       {@code DetectCommunities} always calls the port (an override is
+ *       honoured either way); the flag only enables its bounded parallelism,
+ *       which is pointless for deterministic summaries.</li>
+ *   <li>{@link #derivesSubQuestions()} (default {@code false}): whether
+ *       {@link #deriveDriftSubQuestions(String, Collection)} calls a model.
+ *       DRIFT uses the deterministic derivation when the port's call fails
+ *       and failures are isolated per item.</li>
+ *   <li>{@link #synthesizesAnswers()} (default {@code false}): whether the
+ *       {@code Answer*} use cases generate an answer. The retrieval-only use
+ *       cases never synthesize.</li>
+ * </ul>
  */
 public interface LlmPort {
 
     /**
      * Extracts a knowledge graph from a corpus.
      *
+     * <p>The only abstract method (so a lambda is a valid {@code LlmPort}).
+     * A port without extraction returns {@link GraphExtraction#empty()} and
+     * overrides {@link #extractsEntities()} to return {@code false}.
+     *
      * @param corpus the corpus to extract a knowledge graph from; never null
      * @return the extracted entities and relationships for {@code corpus};
      *         never null
      */
     GraphExtraction extract(Corpus corpus);
+
+    /**
+     * A port with every capability off: no extraction, the deterministic
+     * Community summaries and DRIFT sub-questions, no answer synthesis.
+     * Use it for exact, pre-built graphs (see {@code ImportKnowledgeGraph})
+     * when no model is available at all.
+     */
+    static LlmPort none() {
+        return NoLlm.INSTANCE;
+    }
+
+    /**
+     * Whether {@link #extract(TextUnit, List)} really extracts Entities and
+     * Relationships. Defaults to {@code true} for compatibility: a port
+     * implemented as a lambda extracts.
+     */
+    default boolean extractsEntities() {
+        return true;
+    }
+
+    /**
+     * Whether {@link #summarizeCommunity(Collection, Collection)} calls a
+     * model (and so may be slow, fail, or benefit from parallelism). The
+     * default is {@code false}: the inherited summaries are deterministic.
+     */
+    default boolean summarizesCommunities() {
+        return false;
+    }
+
+    /**
+     * Whether {@link #deriveDriftSubQuestions(String, Collection)} calls a
+     * model. The default is {@code false}: one deterministic sub-question per
+     * candidate Community.
+     */
+    default boolean derivesSubQuestions() {
+        return false;
+    }
 
     /**
      * Extracts a knowledge graph from a single Text Unit (AD-24), restricted
@@ -49,6 +120,10 @@ public interface LlmPort {
                 List.of(new UploadedDocument(unit.documentName(), unit.text()))));
     }
 
+    /**
+     * A one-sentence Community summary. The default is deterministic:
+     * "This community centers on" plus up to four distinct member names.
+     */
     default String summarizeCommunity(Collection<Entity> members) {
         if (members == null || members.isEmpty()) {
             return "A small connected cluster of related entities.";
@@ -82,6 +157,11 @@ public interface LlmPort {
         return new CommunitySummary(CommunitySummary.deterministicTitle(members), summarizeCommunity(members));
     }
 
+    /**
+     * The DRIFT sub-questions, one per candidate Community in candidate order.
+     * The default is deterministic: the question followed by
+     * {@code "Community summary: "} and the Community's summary.
+     */
     default List<String> deriveDriftSubQuestions(String question, Collection<Community> communities) {
         if (communities == null || communities.isEmpty()) {
             return List.of();
@@ -173,5 +253,29 @@ public interface LlmPort {
 
     default GraphExtraction extractEntitiesAndRelationships(Corpus corpus) {
         return extract(corpus);
+    }
+
+    /** The port behind {@link #none()}. */
+    final class NoLlm implements LlmPort {
+
+        static final NoLlm INSTANCE = new NoLlm();
+
+        private NoLlm() {
+        }
+
+        @Override
+        public GraphExtraction extract(Corpus corpus) {
+            return GraphExtraction.empty();
+        }
+
+        @Override
+        public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+            return GraphExtraction.empty();
+        }
+
+        @Override
+        public boolean extractsEntities() {
+            return false;
+        }
     }
 }

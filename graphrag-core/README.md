@@ -42,7 +42,7 @@ usable fallback; only the abstract methods listed below are required.
 | Port | Purpose | Abstract method(s) you implement |
 | --- | --- | --- |
 | `DocumentParserPort` | Parses source documents (e.g. PDF, text) during ingestion. | `boolean supports(String filename)` |
-| `LlmPort` | LLM-driven knowledge-graph extraction and related generation. | `GraphExtraction extract(Corpus corpus)` |
+| `LlmPort` | LLM-driven knowledge-graph extraction and related generation. Every capability is optional (see [Optional LLM capabilities](#optional-llm-capabilities)). | `GraphExtraction extract(Corpus corpus)` (a port without extraction returns `GraphExtraction.empty()`) |
 | `GraphStorePort` | Persists and queries the knowledge graph. | `void persistEntities(Collection<Entity> entities)`, `void persistRelationships(Collection<Relationship> relationships)` |
 | `EmbeddingPort` | Turns chunk text into a dense embedding vector. | `float[] embed(String text)` |
 | `VectorStorePort` | Persists and queries a corpus's embedded chunks and its fitted 2D projection model. | `void persistChunks(String corpusId, Collection<EmbeddedChunk> chunks)` |
@@ -54,6 +54,62 @@ plug in a modularity-based algorithm (the Neo4j adapter uses GDS Leiden). It
 returns groups of member identities (`Entity.normalizedIdentity()`); their
 order does not matter, because `DetectCommunities` numbers Communities by each
 group's first member in `entities(corpusId)`.
+
+## Optional LLM capabilities
+
+`LlmPort` has one abstract method, `extract(Corpus)`. It stays abstract only
+so that `LlmPort` remains a functional interface: existing callers implement
+it as a lambda. Every other method has a deterministic default. Four
+capability flags tell the use cases whether a model is really behind a
+method:
+
+| Flag | Default | Effect when `false` |
+| --- | --- | --- |
+| `extractsEntities()` | `true` | `ExtractEntitiesAndRelationships` makes no extraction call; it still splits and persists the Text Units. |
+| `summarizesCommunities()` | `false` | `DetectCommunities` still calls `summarizeCommunity` (an override is always honoured), but runs sequentially. |
+| `derivesSubQuestions()` | `false` | DRIFT uses one deterministic sub-question per candidate Community. |
+| `synthesizesAnswers()` | `false` | The `Answer*` use cases return their templated answers. |
+
+`LlmPort.none()` is a port with every capability off. A port that only
+summarizes Communities (the typical case for an exact, scanned graph)
+implements `extract(Corpus)` as `return GraphExtraction.empty();`, returns
+`false` from `extractsEntities()` and overrides
+`summarizeCommunity(members, relationships)`.
+
+## Importing an exact graph (no LLM extraction)
+
+When the graph is already exact — for example classes, methods and calls
+from a bytecode scan — skip extraction entirely and import it with
+`ImportKnowledgeGraph`:
+
+```java
+KnowledgeGraphImport graph = KnowledgeGraphImport.of(textUnits, entities, relationships);
+ImportResult result = new ImportKnowledgeGraph(graphStore, llmPort, embeddingPort)
+        .run("my-repo", graph);   // ImportKnowledgeGraph.Options.defaults()
+```
+
+The import never calls `extract`. It:
+
+1. merges Entities with the same `normalizedIdentity()` and Relationships with
+   the same `(source, type, target)`, **summing** their weights (repeated
+   call edges add up);
+2. handles Relationship endpoints that are neither imported nor already
+   stored per `Options.missingEndpoints()`: `CREATE` a placeholder Entity
+   (default), `KEEP` the edge as given, or `DROP` and count it;
+3. persists Text Units, then Entities, then Relationships;
+4. persists caller-supplied Communities and memberships as given
+   (`graph.withCommunities(...)`, for example one Community per package) and
+   skips detection, or else runs `DetectCommunities` (switch off with
+   `Options.withDetectCommunities(false)`; minimum size via
+   `withMinCommunitySize`); a membership whose Community was not supplied
+   gets a Community with the deterministic title and summary;
+5. embeds Entities and Communities when the `EmbeddingPort` is semantic
+   (switch off with `withEmbed(false)`).
+
+The only model calls an import can make are Community summaries and
+embeddings. `ImportResult` reports the counts, placeholders, dropped
+Relationships and where the Communities came from (`SUPPLIED`, `DETECTED`,
+`NONE`).
 
 ## Usage: wiring the ports and running the pipeline
 

@@ -115,6 +115,21 @@ final class StageClock {
         }
 
         @Override
+        public boolean extractsEntities() {
+            return delegate.extractsEntities();
+        }
+
+        @Override
+        public boolean summarizesCommunities() {
+            return delegate.summarizesCommunities();
+        }
+
+        @Override
+        public boolean derivesSubQuestions() {
+            return delegate.derivesSubQuestions();
+        }
+
+        @Override
         public SynthesizedAnswer synthesizeAnswer(String question, List<ContextItem> context) {
             return timeLlm(() -> delegate.synthesizeAnswer(question, context));
         }
