@@ -33,6 +33,40 @@ Maven repository:
 mvn install -pl graphrag-core -am
 ```
 
+## An exact code graph in five calls
+
+For a non-text source — classes, methods and calls from a code scan — no
+extraction model is involved; only Community summaries may use one:
+
+```java
+// Ports: your own GraphStorePort (or only a GraphReadPort for queries), an optional LlmPort for summaries.
+GraphStorePort graph = ...;                 // e.g. Neo4jGraphStoreAdapter with prefixes and CORE detection
+LlmPort llm = new MySmallModelPort();       // extends PromptedLlmPort, or LlmPort.none()
+
+// 1. Import the exact graph (Entities/Relationships/TextUnits with attributes and SourceLocators).
+ImportResult imported = new ImportKnowledgeGraph(graph, llm, null).run("my-repo",
+        KnowledgeGraphImport.of(textUnits, entities, relationships),
+        ImportKnowledgeGraph.Options.defaults().withCommunities(DetectCommunities.Options.defaults()
+                .withParallelism(2).withMaxWallTime(Duration.ofMinutes(5))
+                .withFailurePolicy(FailurePolicy.ISOLATE_ITEM).withReuseSummaries(true)));
+
+// 2. Retrieve for an agent — no synthesis, a trace with path:start-end on every item.
+RetrievalResult callers = new RetrieveLocalContext(graph, SeedMatchers.forCode(null),
+        LocalRetrievalOptions.defaults().withDirection(LocalRetrievalOptions.Direction.INCOMING)
+                .withIncludeRelationshipTypes(Set.of("CALLS")))
+        .retrieve("Who calls OrderService.placeOrder?", "my-repo");
+RetrievalResult overview = new RetrieveGlobalContext(graph, null, SeedMatchers.forCode(null),
+        GlobalRetrievalOptions.defaults()).retrieve("How does placeOrder work?", "my-repo");
+
+// 3. Re-index a changed file, then refresh the Communities once per batch.
+UpdateSources updates = new UpdateSources(graph, null, llm, null);
+updates.replaceSource("my-repo", "src/main/java/com/shop/OrderService.java", graphOfThatFile, null);
+updates.recomputeCommunities("my-repo");
+```
+
+`CodeGraphExampleTest` in `graphrag-core-testkit` runs this path on a 50-class
+graph, offline.
+
 ## The ports
 
 A consumer implements these five interfaces (all in `dev.rabauer.graphrag.core.port`)
@@ -618,8 +652,16 @@ implementation, not a real adapter.
 ## Package layout
 
 - `dev.rabauer.graphrag.core.domain` — the data carried between use cases and ports
-  (corpora, chunks, entities, relationships, communities, retrieval traces).
+  (corpora, chunks, entities, relationships, communities, retrieval traces,
+  `SourceLocator`, `Attributes`, `Sources`).
 - `dev.rabauer.graphrag.core.port` — the SPI a consumer implements (see the table
   above).
 - `dev.rabauer.graphrag.core.usecase` — the actual operations, called in the pipeline
-  order shown above.
+  order shown above, plus import, retrieval-only queries and incremental updates.
+- `dev.rabauer.graphrag.core.retrieval` — seed matchers, retrieval options and the
+  `RetrievalResult` / `RetrievedItem` records.
+- `dev.rabauer.graphrag.core.community` — the pure-Java community detectors.
+- `dev.rabauer.graphrag.core.llm` — `LenientJson` and `PromptedLlmPort` for small models.
+
+The companion artifact `graphrag-core-testkit` (package `dev.rabauer.graphrag.testkit`)
+holds the port contracts, the fixtures and `InMemoryGraphStore`.

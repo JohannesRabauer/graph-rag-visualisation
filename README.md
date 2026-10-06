@@ -97,11 +97,15 @@ flowchart LR
 ```mermaid
 flowchart BT
     core["graphrag-core<br/><i>domain · ports · use cases</i>"]
+    kit["graphrag-core-testkit<br/><i>port contracts · fixtures</i>"]
     neo["graphrag-adapter-neo4j"]
     lc["graphrag-adapter-langchain4j"]
     parse["graphrag-adapter-parsing"]
     web["graphrag-web"]
+    kit --> core
     neo --> core
+    neo -. tests .-> kit
+    lc -. tests .-> kit
     lc --> core
     parse --> core
     web --> neo
@@ -113,7 +117,8 @@ flowchart BT
 | Module | Purpose |
 | --- | --- |
 | [`graphrag-core`](graphrag-core/README.md) | The GraphRAG library: domain model, port interfaces and use cases. It is **framework-free**: a Maven Enforcer rule bans Spring, the Neo4j driver and LangChain4j, so the core can be reused in any Java application. It is versioned and released independently (`dev.rabauer.graphrag:graphrag-core`). |
-| `graphrag-adapter-neo4j` | `GraphStorePort` and `VectorStorePort` on Neo4j through the plain Java driver. It provides corpus-scoped writes, GDS Leiden community detection, vector indexes for semantic matching, and the durable corpus registry. It also has in-memory variants for tests. |
+| [`graphrag-core-testkit`](graphrag-core/README.md#testkit-proving-an-adapter-correct) | JUnit 5 contract tests a third-party adapter extends (`GraphReadPortContract`, `GraphStorePortContract`, `VectorStorePortContract`, `EmbeddingPortContract`, `CodeGraphRetrievalContract`), a 50-class code-graph fixture and a reference in-memory store. Framework-free like the core. |
+| `graphrag-adapter-neo4j` | `GraphStorePort` and `VectorStorePort` on Neo4j through the plain Java driver. It provides corpus-scoped writes, GDS Leiden or the core's community detection, vector indexes for semantic matching, label/type prefixes to share a database, and the durable corpus registry. It also has in-memory variants for tests. |
 | `graphrag-adapter-langchain4j` | `LlmPort` and `EmbeddingPort` on OpenAI through LangChain4j (JSON-mode prompts, no retries). It also contains the deterministic offline stand-ins `LangChain4jLlmPort` and `LangChain4jEmbeddingPort`. |
 | `graphrag-adapter-parsing` | `DocumentParserPort` for plain text and PDF (PDFBox). |
 | `graphrag-web` | The Spring Boot app: REST and SSE endpoints, wiring, and the plain-JS frontend (Thymeleaf template, Cytoscape from a CDN, no Node/npm tooling). |
@@ -213,6 +218,8 @@ Design rules that keep the core reusable:
 | `AnswerLocalSearch` | Seeds on the entities closest to the question and walks their one-hop neighbourhood into the Text Units it cites. |
 | `AnswerGlobalSearch` | Answers from the top community summaries and each community's most relevant passages. |
 | `AnswerDriftSearch` | Starts from communities, spawns sub-questions, gathers Local-style context for each branch, and synthesizes once over the union. |
+| `RetrieveLocalContext`, `RetrieveGlobalContext`, `RetrieveDriftContext` | Retrieval only: the numbered context items and the full trace (with source locators) without a synthesized answer, for consumers that are themselves LLMs. Seeds come from a pluggable `SeedMatcher` (keyword, semantic, code identifier, hybrid). |
+| `UpdateSources` | Incremental updates: remove or replace one source (file, document) and recompute Communities. |
 | `AnswerVectorBaseline` | Plain vector RAG: top-5 chunks by cosine similarity, synthesized and cited the same way. It also returns the similarity ranking (the top 12 scored chunks, the top 5 marked as used) and how many chunks it scored. |
 | `CompareAnswers` | Runs a GraphRAG mode and the vector baseline fresh, then measures context, documents, overlap and latency, and produces a verdict. |
 | `CompareAllModes` | Runs all four methods (Local, Global, DRIFT, Vector Search) one after the other on the same question. Per method: the answer, citations, traversal steps with a count per kind, and the time split into retrieval, embedding and LLM (`StageTiming`, measured by wrapping the ports). Across methods: an evidence table saying how far each passage got in each method (not retrieved, ranked below the vector cut-off, in context, cited). A failing method is reported, not thrown. |
