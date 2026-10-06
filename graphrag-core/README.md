@@ -1,5 +1,7 @@
 # GraphRAG Lens :: Core
 
+[![Maven Central](https://img.shields.io/maven-central/v/dev.rabauer.graphrag/graphrag-core)](https://central.sonatype.com/artifact/dev.rabauer.graphrag/graphrag-core)
+
 `graphrag-core` is the framework-free hexagonal core of GraphRAG Lens: the
 domain model and the port interfaces (the SPI) that a consuming application
 implements and wires together, plus the use cases that orchestrate them. It

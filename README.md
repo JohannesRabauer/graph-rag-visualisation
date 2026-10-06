@@ -1,5 +1,7 @@
 # GraphRAG Lens
 
+[![Maven Central](https://img.shields.io/maven-central/v/dev.rabauer.graphrag/graphrag-core)](https://central.sonatype.com/artifact/dev.rabauer.graphrag/graphrag-core)
+
 GraphRAG Lens is a teaching and demo tool that shows **how GraphRAG works** rather than only what it answers.
 
 **Website:** <https://johannesrabauer.github.io/graph-rag-visualisation/> — an illustrated walk through the whole application, built from the `docs/` folder and published by the [Website workflow](.github/workflows/pages.yml) on every push to `main`.
