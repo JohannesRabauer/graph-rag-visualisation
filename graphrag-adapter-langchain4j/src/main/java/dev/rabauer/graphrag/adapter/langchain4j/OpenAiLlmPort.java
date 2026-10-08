@@ -242,6 +242,17 @@ public class OpenAiLlmPort implements LlmPort {
                 Every entity type, and every relationship's sourceType and targetType, must be exactly \
                 one of: %s. If none fits, use "%s".
 
+                Rules:
+                - Name each entity by its most complete name in the passage (for example "Ada Lovelace", \
+                not "Ada" or "she") and spell it the same way every time.
+                - Extract only specific things the passage says something about; skip pronouns and \
+                generic nouns.
+                - Every relationship's source and target must be an entity listed in "entities", with the \
+                same name and type.
+                - Write a relationship type as a short lowercase verb phrase joined by underscores, for \
+                example "works_for" or "located_in".
+                - Descriptions use only what the passage says.
+
                 Respond with strict JSON only (no markdown, no commentary) using exactly this shape:
                 {
                   "entities": [ { "name": "string", "type": "string", "description": "one or two sentences" } ],
@@ -349,7 +360,8 @@ public class OpenAiLlmPort implements LlmPort {
         return """
                 You summarize one community of a knowledge graph. Using only the members and \
                 relationships below, write a short title (at most 6 words) naming what the community \
-                is about, and a summary of 2 to 4 sentences describing what connects its members.
+                is about, and a summary of 2 to 4 sentences describing what connects its members, which \
+                members matter most and how they relate. Name members exactly as written.
 
                 Respond with strict JSON only (no markdown, no commentary) using exactly this shape:
                 { "title": "string", "summary": "string" }
@@ -435,7 +447,9 @@ public class OpenAiLlmPort implements LlmPort {
                 - Cite every claim inline only with the numbers of "Source passage" items that \
                 support it, written as [n], for example [3] or [4][5]. Only "Source passage" items \
                 may be cited; never put [n] on an Entity, Relationship or Community summary item.
-                - If the context does not answer the question, set "answer" to "%s" and \
+                - If the context answers only part of the question, answer that part and say what the \
+                context does not cover.
+                - If the context does not answer the question at all, set "answer" to "%s" and \
                 "notInContext" to true.
 
                 Respond with strict JSON only (no markdown, no commentary) using exactly this shape:

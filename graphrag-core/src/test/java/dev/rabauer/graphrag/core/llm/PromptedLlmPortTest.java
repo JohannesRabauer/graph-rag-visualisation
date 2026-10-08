@@ -2,6 +2,9 @@ package dev.rabauer.graphrag.core.llm;
 
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
+import dev.rabauer.graphrag.core.domain.ComparisonFacts;
+import dev.rabauer.graphrag.core.domain.ComparisonStats;
+import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
 import dev.rabauer.graphrag.core.domain.ContextItem;
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.GraphExtraction;
@@ -202,6 +205,148 @@ class PromptedLlmPortTest {
         assertEquals(new SynthesizedAnswer(false, "It saves the order [1]."), on.synthesizeAnswer("q", context));
         assertTrue(on.synthesizeAnswer("q", context).notInContext());
         assertTrue(on.requests.getFirst().lastUserText().contains("[1] Source passage: save(order)"));
+    }
+
+    @Test
+    void extractionPromptStatesTheNamingAndRelationshipRules() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true),
+                "{\"entities\":[],\"relationships\":[]}");
+
+        port.extract(new TextUnit("t", "c", "a.txt", 0, "Ada met Bob."), List.of("Person", "Other"));
+
+        String prompt = port.requests.getFirst().lastUserText();
+        assertTrue(prompt.contains("Entity types: Person, Other. Use \"Other\" when no other type fits."));
+        assertTrue(prompt.contains("most complete name"));
+        assertTrue(prompt.contains("must be an entity listed in \"entities\""));
+        assertTrue(prompt.contains("\"works_for\""));
+        assertTrue(prompt.endsWith("Passage (a.txt, part 1):\nAda met Bob."));
+    }
+
+    @Test
+    void withoutGleaningsExtractionIsOneCall() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true),
+                "{\"entities\":[{\"name\":\"Ada\",\"type\":\"Person\"}],\"relationships\":[]}",
+                "{\"entities\":[{\"name\":\"Bob\",\"type\":\"Person\"}],\"relationships\":[]}");
+
+        GraphExtraction extraction = port.extract(new TextUnit("t", "c", "a.txt", 0, "Ada met Bob."),
+                List.of("Person", "Other"));
+
+        assertEquals(List.of("Ada"), extraction.entities().stream().map(Entity::name).toList());
+        assertEquals(1, port.requests.size());
+    }
+
+    @Test
+    void gleaningAddsWhatTheFirstPassMissedInTheSameConversation() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true).withGleanings(2),
+                "{\"entities\":[{\"name\":\"Ada\",\"type\":\"Person\",\"description\":\"A mathematician.\"}],"
+                        + "\"relationships\":[]}",
+                "{\"entities\":[{\"name\":\"Bob\",\"type\":\"Person\"},"
+                        + "{\"name\":\"Ada\",\"type\":\"Person\",\"description\":\"Met Bob.\"}],"
+                        + "\"relationships\":[{\"source\":\"Ada\",\"sourceType\":\"Person\",\"type\":\"met\","
+                        + "\"target\":\"Bob\",\"targetType\":\"Person\"}]}",
+                "{\"entities\":[],\"relationships\":[]}");
+
+        GraphExtraction extraction = port.extract(new TextUnit("t", "c", "a.txt", 0, "Ada met Bob."),
+                List.of("Person", "Other"));
+
+        assertEquals(List.of("Ada", "Bob"), extraction.entities().stream().map(Entity::name).toList());
+        assertEquals("A mathematician. Met Bob.", extraction.entities().getFirst().description());
+        assertEquals(1, extraction.relationships().size());
+        assertEquals(3, port.requests.size());
+        List<PromptedLlmPort.Message> second = port.requests.get(1).messages();
+        assertEquals(List.of(PromptedLlmPort.Role.USER, PromptedLlmPort.Role.ASSISTANT, PromptedLlmPort.Role.USER),
+                second.stream().map(PromptedLlmPort.Message::role).toList());
+        assertTrue(second.get(1).text().contains("A mathematician."));
+        assertEquals(PromptedLlmPort.GLEANING_PROMPT, second.get(2).text());
+        assertEquals(PromptedLlmPort.Purpose.EXTRACTION, port.requests.get(1).purpose());
+        assertEquals(5, port.requests.get(2).messages().size());
+    }
+
+    @Test
+    void gleaningStopsWhenATurnAddsNothingNew() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true).withGleanings(3),
+                "{\"entities\":[{\"name\":\"Ada\",\"type\":\"Person\"}],\"relationships\":[]}",
+                "{\"entities\":[{\"name\":\"Ada\",\"type\":\"Person\"}],\"relationships\":[]}",
+                "{\"entities\":[{\"name\":\"Bob\",\"type\":\"Person\"}],\"relationships\":[]}");
+
+        GraphExtraction extraction = port.extract(new TextUnit("t", "c", "a.txt", 0, "Ada met Bob."),
+                List.of("Person", "Other"));
+
+        assertEquals(List.of("Ada"), extraction.entities().stream().map(Entity::name).toList());
+        assertEquals(2, port.requests.size());
+    }
+
+    @Test
+    void anUnusableGleaningReplyKeepsTheFirstPass() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true).withGleanings(1),
+                "{\"entities\":[{\"name\":\"Ada\",\"type\":\"Person\"}],\"relationships\":[]}",
+                "Nothing else, sorry.");
+
+        GraphExtraction extraction = port.extract(new TextUnit("t", "c", "a.txt", 0, "Ada met Bob."),
+                List.of("Person", "Other"));
+
+        assertEquals(List.of("Ada"), extraction.entities().stream().map(Entity::name).toList());
+        assertEquals(2, port.requests.size());
+    }
+
+    @Test
+    void negativeGleaningsAreRejected() {
+        assertThrows(IllegalArgumentException.class, () -> PromptedLlmPort.Options.defaults().withGleanings(-1));
+        assertEquals(0, PromptedLlmPort.Options.defaults().gleanings());
+        assertEquals(0, new PromptedLlmPort.Options(true, true, true, 1, 1, 1, 1).gleanings());
+    }
+
+    @Test
+    void summaryPromptIncludesRelationshipDescriptions() {
+        ScriptedPort port = new ScriptedPort("{\"title\":\"Orders\",\"summary\":\"About orders.\"}");
+
+        port.summarizeCommunity(MEMBERS, List.of(new Relationship("OrderService", "Class", "CALLS", "OrderRepository",
+                "Interface", "Saves each placed order.", List.of(), 1)));
+
+        assertTrue(port.requests.getFirst().lastUserText()
+                .contains("1. OrderService -[CALLS]-> OrderRepository: Saves each placed order."));
+    }
+
+    @Test
+    void answerPromptKeepsBackgroundItemsUncited() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withSynthesis(true),
+                "{\"answer\": \"It saves orders [2].\", \"notInContext\": false}");
+
+        port.synthesizeAnswer("What does it do?", List.of(
+                new ContextItem(1, RetrievalStep.Kind.ENTITY, "OrderService (Class)", null),
+                new ContextItem(2, RetrievalStep.Kind.TEXT_UNIT, "save(order)", "t-1")));
+
+        String prompt = port.requests.getFirst().lastUserText();
+        assertTrue(prompt.contains("[1] Entity: OrderService (Class)"));
+        assertTrue(prompt.contains("background facts: use them, but never cite them"));
+        assertTrue(prompt.contains("answers only part of the question"));
+        assertTrue(prompt.endsWith("Question: What does it do?"));
+    }
+
+    @Test
+    void writesAComparisonVerdictFromTheFacts() {
+        ScriptedPort port = new ScriptedPort("{\"verdict\": \"GraphRAG read two more documents.\"}");
+        ComparisonFacts facts = new ComparisonFacts("global", new ComparisonStats(6, 3, 120),
+                new ComparisonStats(5, 1, 40), 5, 2);
+
+        ComparisonVerdict verdict = port.compareAnswers("Who?", "Ada [1].", "Bob [1].", facts);
+
+        assertEquals(new ComparisonVerdict("GraphRAG read two more documents.", ComparisonVerdict.Source.LLM), verdict);
+        PromptedLlmPort.CompletionRequest request = port.requests.getFirst();
+        assertEquals(PromptedLlmPort.Purpose.VERDICT, request.purpose());
+        assertEquals(PromptedLlmPort.Schemas.VERDICT, request.jsonSchema());
+        assertTrue(request.lastUserText().contains("GraphRAG (GLOBAL search)"));
+        assertTrue(request.lastUserText().contains("- GraphRAG: 6 context items from 3 distinct documents, 120 ms"));
+        assertTrue(request.lastUserText().contains("2 of the 5 passages"));
+        assertTrue(request.lastUserText().contains("GraphRAG answer:\nAda [1]."));
+    }
+
+    @Test
+    void anEmptyVerdictFailsSoTheCallerFallsBackToTheRule() {
+        ScriptedPort port = new ScriptedPort("{\"verdict\": \"\"}", "{}");
+
+        assertEquals(PromptedLlmPort.Purpose.VERDICT, assertThrows(LlmReplyException.class,
+                () -> port.compareAnswers("q", "a", "b", null)).purpose());
     }
 
     @Test

@@ -403,8 +403,9 @@ with failures still visible:
    own JSON library.
 2. **`PromptedLlmPort`** — an abstract `LlmPort` with the prompts, the JSON
    Schemas (`PromptedLlmPort.Schemas`) and the parsing for Community
-   summaries, DRIFT sub-questions and (opt-in) extraction and answer
-   synthesis. Implement only `complete(CompletionRequest)`:
+   summaries, DRIFT sub-questions, the GraphRAG-vs-Vector verdict and
+   (opt-in) extraction and answer synthesis. Implement only
+   `complete(CompletionRequest)`:
 
    ```java
    class OllamaLlmPort extends PromptedLlmPort {
@@ -413,7 +414,7 @@ with failures still visible:
 
        @Override
        protected String complete(CompletionRequest request) {
-           // request.messages(): the prompt (and, on the retry, the bad reply plus a correction)
+           // request.messages(): the prompt (and, on the retry or a gleaning turn, the earlier turns)
            // request.jsonSchema(): pass to Ollama's `format` for schema-constrained output
            return callOllama(request.messages(), request.jsonSchema(), request.maxOutputTokens());
        }
@@ -426,7 +427,11 @@ with failures still visible:
    failure of `complete` itself propagates unchanged and is never retried.
    Fewer DRIFT sub-questions than candidates are filled with the
    deterministic ones. `Options`: `extraction`, `synthesis` (both off),
-   `correctiveRetry` (on), output-token limits.
+   `correctiveRetry` (on), output-token limits, and `gleanings` (0). With
+   `withGleanings(1)`, extraction asks once more, in the same conversation,
+   for the Entities and Relationships the first reply missed. This improves
+   recall, especially for small models, at the cost of one more call per
+   Text Unit.
 3. **Per-item failure isolation** (`FailurePolicy.ISOLATE_ITEM`): a failed
    Community summary becomes `FAILED` with its error and the deterministic
    summary (`DetectCommunities`); a failed Text Unit extraction is recorded in

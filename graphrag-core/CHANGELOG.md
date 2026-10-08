@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Gleaning for `PromptedLlmPort` extraction.** `PromptedLlmPort.Options.withGleanings(n)` (default `0`) runs up to `n` more turns of the extraction conversation per Text Unit. Each turn asks only for the Entities and Relationships missed so far (`PromptedLlmPort.GLEANING_PROMPT`), and the results are merged by identity. Gleaning stops early when a turn adds nothing new or its reply cannot be used; what was found so far is kept. Each turn costs one more call per Text Unit.
+- **`PromptedLlmPort.compareAnswers`.** The GraphRAG-vs-Vector verdict is now written by the model (`Purpose.VERDICT`, `Schemas.VERDICT`, output-token limit `Options.verdictTokens()`, default 256). Before, it was always the rule-based text. An unusable reply fails with `LlmReplyException`, and `CompareAnswers` falls back to the rule-based verdict as before.
+
+### Changed
+
+- **Better `PromptedLlmPort` prompts.**
+  - **Extraction:** asks for each entity's most complete name, spelled the same way every time. It skips pronouns and generic nouns, allows only relationships between listed entities, and asks for relationship types as lowercase `verb_phrase`s. Consistent names and types mean fewer duplicate Entities and Relationships across Text Units.
+  - **Community summary:** now includes Relationship descriptions and asks which members matter most.
+  - **DRIFT sub-questions:** each one must be answerable from its own Community.
+  - **Answer:** says that Entity, Relationship and Community items are background that is never cited, rules out outside knowledge, and asks for a partial answer that names what is missing.
+- `OpenAiLlmPort` (adapter) uses the same extraction rules and the same partial-answer rule, and its community summary also asks which members matter most.
+- **Breaking for record patterns:** `PromptedLlmPort.Options` gains the record components `gleanings` and `verdictTokens`. The seven-argument constructor is kept; it means no gleaning and 256 verdict tokens. A negative `gleanings` throws `IllegalArgumentException`.
+
 ## [2.0.1] - 2026-10-06
 
 ### Added

@@ -2,6 +2,9 @@ package dev.rabauer.graphrag.core.llm;
 
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
+import dev.rabauer.graphrag.core.domain.ComparisonFacts;
+import dev.rabauer.graphrag.core.domain.ComparisonStats;
+import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
 import dev.rabauer.graphrag.core.domain.ContextItem;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -19,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -42,15 +46,26 @@ import java.util.function.Function;
  * fails too, an {@link LlmReplyException} is thrown for that item. A failure
  * of {@link #complete} itself propagates unchanged and is never retried.
  *
- * <p>Capabilities: Community summaries and DRIFT sub-questions are always
+ * <p>Capabilities: Community summaries, DRIFT sub-questions and the
+ * GraphRAG-vs-Vector verdict ({@link #compareAnswers}) are always
  * model-backed; extraction and answer synthesis are switched by
  * {@link Options#extraction()} and {@link Options#synthesis()} (both off by
- * default: an exact, imported graph needs neither).
+ * default: an exact, imported graph needs neither). With
+ * {@link Options#gleanings()} above zero, extraction asks the model again,
+ * in the same conversation, for what its earlier replies missed.
  */
 public abstract class PromptedLlmPort implements LlmPort {
 
     static final int MAX_DESCRIPTION_CHARS = 300;
     static final int MAX_CONTEXT_ITEM_CHARS = 1500;
+    static final int MAX_VERDICT_ANSWER_CHARS = 1500;
+    static final int MAX_VERDICT_SENTENCES = 2;
+
+    static final String GLEANING_PROMPT = """
+            Some entities and relationships in the passage were missed. Reply with one JSON object of the \
+            same shape that lists only the missing ones, following the same rules. Use the exact names \
+            already given for entities listed before. If nothing is missing, reply \
+            {"entities":[],"relationships":[]}.""";
 
     private final Options options;
 
@@ -116,14 +131,28 @@ public abstract class PromptedLlmPort implements LlmPort {
             return GraphExtraction.empty();
         }
         List<String> types = entityTypes == null || entityTypes.isEmpty() ? EntityTypes.ALL : entityTypes;
-        return call(Purpose.EXTRACTION, extractionPrompt(unit, types), Schemas.extraction(types),
-                options.extractionTokens(), object -> parseExtraction(object, types));
+        String schema = Schemas.extraction(types);
+        Exchange<GraphExtraction> first = exchange(Purpose.EXTRACTION,
+                List.of(new Message(Role.USER, extractionPrompt(unit, types))), schema, options.extractionTokens(),
+                object -> parseExtraction(object, types));
+        return glean(first, types, schema);
     }
 
     String extractionPrompt(TextUnit unit, List<String> types) {
         return """
-                Extract the named entities and the relationships between them from the passage.
-                Entity types: %s. Use "%s" when no other type fits.
+                Extract a knowledge graph from the passage: the entities it names and the relationships \
+                between them.
+                Rules:
+                - Entity types: %s. Use "%s" when no other type fits.
+                - Name each entity by its most complete name in the passage (for example "Ada Lovelace", \
+                not "Ada" or "she") and spell it the same way every time.
+                - Extract only specific things the passage says something about; skip pronouns and \
+                generic nouns.
+                - Every relationship's source and target must be an entity listed in "entities", with the \
+                same name and type.
+                - Write a relationship type as a short lowercase verb phrase joined by underscores, for \
+                example "works_for" or "located_in".
+                - Each description is one sentence, using only what the passage says.
                 Reply with one JSON object and nothing else, shaped like:
                 {"entities":[{"name":"...","type":"...","description":"one sentence"}],\
                 "relationships":[{"source":"...","sourceType":"...","type":"verb_phrase","target":"...",\
@@ -132,6 +161,53 @@ public abstract class PromptedLlmPort implements LlmPort {
                 Passage (%s, part %d):
                 %s""".formatted(String.join(", ", types), types.getLast(), unit.documentName(), unit.ordinal() + 1,
                 unit.text());
+    }
+
+    /**
+     * Up to {@link Options#gleanings()} more turns of the extraction
+     * conversation, each asking only for what the replies so far missed. A
+     * turn that adds nothing new, or whose reply cannot be used, ends
+     * gleaning and keeps what was found; a failure of {@link #complete}
+     * propagates.
+     */
+    private GraphExtraction glean(Exchange<GraphExtraction> first, List<String> types, String schema) {
+        if (options.gleanings() == 0) {
+            return first.value();
+        }
+        Map<String, Entity> entities = new LinkedHashMap<>();
+        Map<String, Relationship> relationships = new LinkedHashMap<>();
+        boolean grew = addExtraction(first.value(), entities, relationships);
+        List<Message> conversation = new ArrayList<>(first.messages());
+        for (int round = 0; round < options.gleanings() && grew; round++) {
+            conversation.add(new Message(Role.USER, GLEANING_PROMPT));
+            String reply = complete(new CompletionRequest(Purpose.EXTRACTION, List.copyOf(conversation), schema,
+                    options.extractionTokens()));
+            Optional<GraphExtraction> more = LenientJson.parseObject(reply)
+                    .flatMap(result -> parseExtraction(result.object(), types));
+            if (more.isEmpty()) {
+                break;
+            }
+            conversation.add(new Message(Role.ASSISTANT, reply));
+            grew = addExtraction(more.get(), entities, relationships);
+        }
+        return new GraphExtraction(List.copyOf(entities.values()), List.copyOf(relationships.values()));
+    }
+
+    /** Merges {@code extraction} in; whether it held an element not seen before. */
+    private static boolean addExtraction(GraphExtraction extraction, Map<String, Entity> entities,
+                                         Map<String, Relationship> relationships) {
+        boolean added = false;
+        for (Entity entity : extraction.entities()) {
+            added |= !entities.containsKey(entity.normalizedIdentity());
+            entities.merge(entity.normalizedIdentity(), entity, GraphElementMerger::merge);
+        }
+        for (Relationship relationship : extraction.relationships()) {
+            String key = relationship.sourceIdentity() + "|" + relationship.type().toLowerCase(Locale.ROOT) + "|"
+                    + relationship.targetIdentity();
+            added |= !relationships.containsKey(key);
+            relationships.merge(key, relationship, GraphElementMerger::merge);
+        }
+        return added;
     }
 
     private static Optional<GraphExtraction> parseExtraction(Map<String, Object> object, List<String> types) {
@@ -188,13 +264,20 @@ public abstract class PromptedLlmPort implements LlmPort {
         index = 1;
         for (Relationship relationship : relationships == null ? List.<Relationship>of() : relationships) {
             lines.append(index++).append(". ").append(relationship.source()).append(" -[")
-                    .append(relationship.type()).append("]-> ").append(relationship.target()).append('\n');
+                    .append(relationship.type()).append("]-> ").append(relationship.target());
+            String description = truncate(relationship.description(), MAX_DESCRIPTION_CHARS);
+            if (!description.isEmpty()) {
+                lines.append(": ").append(description);
+            }
+            lines.append('\n');
         }
         if (index == 1) {
             lines.append("(none)\n");
         }
         return """
-                Summarize this group of connected elements. Use only the members and relationships below.
+                Summarize this group of connected elements, using only the members and relationships below.
+                The title names the group's shared theme. The summary says what the group is about, which \
+                members matter most and how they relate, naming members exactly as written.
                 Reply with one JSON object and nothing else, shaped like:
                 {"title":"at most 6 words","summary":"2 to 4 sentences on what connects the members"}
 
@@ -245,7 +328,9 @@ public abstract class PromptedLlmPort implements LlmPort {
         }
         return """
                 Break the question into one focused follow-up question per group below, in the same order \
-                (%d questions). Keep names and identifiers from the question exactly as written.
+                (%d questions). Each follow-up asks what that group contributes to the question, so it \
+                can be answered from that group alone. Keep names and identifiers from the question \
+                exactly as written.
                 Reply with one JSON object and nothing else, shaped like:
                 {"subQuestions":["...","..."]}
 
@@ -280,9 +365,16 @@ public abstract class PromptedLlmPort implements LlmPort {
                     .append(truncate(item.text(), MAX_CONTEXT_ITEM_CHARS)).append('\n');
         }
         return """
-                Answer the question using only the numbered context. Cite source passages inline as [n]; \
-                only "Source passage" items may be cited. If the context does not answer the question, \
-                set "answer" to "%s" and "notInContext" to true.
+                Answer the question using only the numbered context below, not outside knowledge.
+                Rules:
+                - Cite every claim inline with the numbers of the "Source passage" items that support it, \
+                written as [n], for example [3] or [4][5].
+                - Entity, Relationship and Community summary items are background facts: use them, but \
+                never cite them.
+                - If the context answers only part of the question, answer that part and say what the \
+                context does not cover.
+                - If the context does not answer the question at all, set "answer" to "%s" and \
+                "notInContext" to true.
                 Reply with one JSON object and nothing else, shaped like:
                 {"answer":"...","notInContext":false}
 
@@ -290,6 +382,56 @@ public abstract class PromptedLlmPort implements LlmPort {
                 %s
                 Question: %s""".formatted(SynthesizedAnswer.NOT_IN_CONTEXT,
                 items.isEmpty() ? "(no context)\n" : items, question == null ? "" : question.trim());
+    }
+
+    // -- Comparison verdict ------------------------------------------------------------------
+
+    /**
+     * One short model call naming the concrete difference between a GraphRAG
+     * answer and a Vector Search answer and its reason, grounded in the
+     * measured {@code facts}. An unusable reply fails with
+     * {@link LlmReplyException}; {@code CompareAnswers} then falls back to
+     * {@link ComparisonVerdict#ruleBased(ComparisonFacts)}.
+     */
+    @Override
+    public ComparisonVerdict compareAnswers(String question, String graphAnswer, String vectorAnswer,
+                                            ComparisonFacts facts) {
+        return call(Purpose.VERDICT, verdictPrompt(question, graphAnswer, vectorAnswer, facts), Schemas.VERDICT,
+                options.verdictTokens(), object -> {
+                    String verdict = LenientJson.string(object, "verdict");
+                    return verdict.isEmpty() ? Optional.empty()
+                            : Optional.of(new ComparisonVerdict(verdict, ComparisonVerdict.Source.LLM));
+                });
+    }
+
+    String verdictPrompt(String question, String graphAnswer, String vectorAnswer, ComparisonFacts facts) {
+        ComparisonFacts f = facts == null ? new ComparisonFacts(null, null, null, 0, 0) : facts;
+        return """
+                Two answers to the same question follow. GraphRAG (%s search) answered from a knowledge \
+                graph of entities, relationships, community summaries and source passages; Vector Search \
+                answered from the text chunks most similar to the question.
+                In at most %d short sentences, name the concrete difference between the answers and its \
+                reason, using only the answers and the measured facts. Do not say which answer is correct; \
+                say what each side retrieved and what that changed.
+                Reply with one JSON object and nothing else, shaped like:
+                {"verdict":"..."}
+
+                Measured facts:
+                - GraphRAG: %s
+                - Vector Search: %s
+                - %d of the %d passages Vector Search retrieved were also read by GraphRAG.
+                Question: %s
+                GraphRAG answer:
+                %s
+                Vector Search answer:
+                %s""".formatted(f.graphMode(), MAX_VERDICT_SENTENCES, statsLine(f.graph()), statsLine(f.vector()),
+                f.sharedPassages(), f.vectorPassages(), question == null ? "" : question.trim(),
+                truncate(graphAnswer, MAX_VERDICT_ANSWER_CHARS), truncate(vectorAnswer, MAX_VERDICT_ANSWER_CHARS));
+    }
+
+    private static String statsLine(ComparisonStats stats) {
+        return stats.contextItems() + " context items from " + stats.distinctDocuments() + " distinct documents, "
+                + stats.latencyMs() + " ms";
     }
 
     // -- The call ---------------------------------------------------------------------------
@@ -300,7 +442,16 @@ public abstract class PromptedLlmPort implements LlmPort {
      */
     private <T> T call(Purpose purpose, String prompt, String schema, int maxTokens,
                        Function<Map<String, Object>, Optional<T>> parse) {
-        List<Message> messages = new ArrayList<>(List.of(new Message(Role.USER, prompt)));
+        return exchange(purpose, List.of(new Message(Role.USER, prompt)), schema, maxTokens, parse).value();
+    }
+
+    /**
+     * {@link #call} from a given conversation; also returns the conversation
+     * up to and including the reply that was used.
+     */
+    private <T> Exchange<T> exchange(Purpose purpose, List<Message> conversation, String schema, int maxTokens,
+                                     Function<Map<String, Object>, Optional<T>> parse) {
+        List<Message> messages = new ArrayList<>(conversation);
         String reply = "";
         int attempts = options.correctiveRetry() ? 2 : 1;
         for (int attempt = 1; attempt <= attempts; attempt++) {
@@ -308,7 +459,8 @@ public abstract class PromptedLlmPort implements LlmPort {
             Optional<LenientJson.Result> parsed = LenientJson.parseObject(reply);
             Optional<T> value = parsed.flatMap(result -> parse.apply(result.object()));
             if (value.isPresent()) {
-                return value.get();
+                messages.add(new Message(Role.ASSISTANT, reply));
+                return new Exchange<>(value.get(), List.copyOf(messages));
             }
             messages.add(new Message(Role.ASSISTANT, reply == null ? "" : reply));
             messages.add(new Message(Role.USER, (parsed.isEmpty()
@@ -319,6 +471,10 @@ public abstract class PromptedLlmPort implements LlmPort {
         }
         throw new LlmReplyException(purpose, attempts, reply, "The model's " + purpose.name().toLowerCase()
                 + " reply could not be used after " + attempts + " attempt(s): " + abbreviate(reply), null);
+    }
+
+    /** A parsed reply and the conversation that produced it. */
+    private record Exchange<T>(T value, List<Message> messages) {
     }
 
     private static String label(RetrievalStep.Kind kind) {
@@ -348,7 +504,9 @@ public abstract class PromptedLlmPort implements LlmPort {
         EXTRACTION,
         COMMUNITY_SUMMARY,
         SUB_QUESTIONS,
-        ANSWER
+        ANSWER,
+        /** The GraphRAG-vs-Vector verdict ({@link #compareAnswers}). */
+        VERDICT
     }
 
     /** Who said a message. */
@@ -403,28 +561,54 @@ public abstract class PromptedLlmPort implements LlmPort {
      * @param summaryTokens     output-token limit suggested for Community summaries
      * @param subQuestionTokens output-token limit suggested for DRIFT sub-questions
      * @param answerTokens      output-token limit suggested for answers
+     * @param gleanings         how many extra extraction turns ask for the
+     *                          Entities and Relationships missed so far (0,
+     *                          the default: one pass; each turn is one more
+     *                          call per Text Unit)
+     * @param verdictTokens     output-token limit suggested for the
+     *                          comparison verdict
      */
     public record Options(boolean extraction, boolean synthesis, boolean correctiveRetry, int extractionTokens,
-                          int summaryTokens, int subQuestionTokens, int answerTokens) {
+                          int summaryTokens, int subQuestionTokens, int answerTokens, int gleanings,
+                          int verdictTokens) {
 
-        /** Summaries and sub-questions only, with the corrective retry. */
+        public Options {
+            if (gleanings < 0) {
+                throw new IllegalArgumentException("gleanings must not be negative: " + gleanings);
+            }
+        }
+
+        /** Without gleaning, with the default verdict token limit (256). */
+        public Options(boolean extraction, boolean synthesis, boolean correctiveRetry, int extractionTokens,
+                       int summaryTokens, int subQuestionTokens, int answerTokens) {
+            this(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
+                    answerTokens, 0, 256);
+        }
+
+        /** Summaries, sub-questions and verdicts only, with the corrective retry and no gleaning. */
         public static Options defaults() {
-            return new Options(false, false, true, 4096, 512, 512, 1024);
+            return new Options(false, false, true, 4096, 512, 512, 1024, 0, 256);
         }
 
         public Options withExtraction(boolean value) {
             return new Options(value, synthesis, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens);
+                    answerTokens, gleanings, verdictTokens);
         }
 
         public Options withSynthesis(boolean value) {
             return new Options(extraction, value, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens);
+                    answerTokens, gleanings, verdictTokens);
         }
 
         public Options withCorrectiveRetry(boolean value) {
             return new Options(extraction, synthesis, value, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens);
+                    answerTokens, gleanings, verdictTokens);
+        }
+
+        /** {@code count} extra extraction turns for missed elements; 1 is usually enough. */
+        public Options withGleanings(int count) {
+            return new Options(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens,
+                    subQuestionTokens, answerTokens, count, verdictTokens);
         }
     }
 
@@ -438,6 +622,9 @@ public abstract class PromptedLlmPort implements LlmPort {
         public static final String SUB_QUESTIONS = """
                 {"type":"object","properties":{"subQuestions":{"type":"array","items":{"type":"string"}}},\
                 "required":["subQuestions"]}""";
+
+        public static final String VERDICT = """
+                {"type":"object","properties":{"verdict":{"type":"string"}},"required":["verdict"]}""";
 
         public static final String ANSWER = """
                 {"type":"object","properties":{"answer":{"type":"string"},"notInContext":{"type":"boolean"}},\

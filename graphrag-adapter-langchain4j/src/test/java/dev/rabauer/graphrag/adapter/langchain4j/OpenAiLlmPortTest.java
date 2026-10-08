@@ -108,6 +108,9 @@ class OpenAiLlmPortTest {
         assertTrue(prompt.contains(unit.text()));
         assertTrue(prompt.toLowerCase().contains("json"), "JSON mode requires the word json in the prompt");
         assertTrue(prompt.contains("description"));
+        assertTrue(prompt.contains("most complete name"));
+        assertTrue(prompt.contains("must be an entity listed in \"entities\""));
+        assertTrue(prompt.contains("\"works_for\""));
     }
 
     @Test
