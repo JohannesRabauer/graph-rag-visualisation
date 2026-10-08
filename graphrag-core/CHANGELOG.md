@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Gleaning for `PromptedLlmPort` extraction.** `PromptedLlmPort.Options.withGleanings(n)` (default `0`) runs up to `n` more turns of the extraction conversation per Text Unit. Each turn asks only for the Entities and Relationships missed so far (`PromptedLlmPort.GLEANING_PROMPT`), and the results are merged by identity. Gleaning stops early when a turn adds nothing new or its reply cannot be used; what was found so far is kept. Each turn costs one more call per Text Unit.
+- **Map-reduce Global Search.** New domain record `CommunityPoint(communityId, text, score)`, and new `LlmPort.mapsCommunities()` (default `false`) and `LlmPort.mapCommunities(question, communities)`.
+  - When the port synthesizes answers and maps Communities, `AnswerGlobalSearch` reads up to 30 Communities (`MAX_MAPPED_COMMUNITIES`), most similar first with a semantic `EmbeddingPort`, otherwise by keyword score then id.
+  - The Communities are read in batches of 5 (`MAP_BATCH_SIZE`), each recorded as a `COMMUNITY` step, and the port returns key points scored 0–100.
+  - The 20 best points above 0 (`MAX_REDUCE_POINTS`) become `COMMUNITY` context items. Up to two member Text Units are added for each of the first five Communities the points come from (`MAX_PASSAGE_COMMUNITIES`). One `synthesizeAnswer` call writes the cited answer (the reduce step).
+  - No point above 0 gives the not-in-context answer without that call.
+  - `PromptedLlmPort` maps whenever synthesis is on (`Purpose.COMMUNITY_POINTS`, `Schemas.COMMUNITY_POINTS`, up to 3 points per Community), so `OpenAiLlmPort` and the web app use map-reduce too.
+  - A synthesizing port that does not map keeps the three-Community path, and the templated path is unchanged.
 - **Entity name hints.** New `LlmPort.extract(TextUnit, List<String> entityTypes, List<String> knownEntityNames)`; its default ignores the names. `ExtractEntitiesAndRelationships` passes each Text Unit the 50 most-mentioned Entity names resolved so far in the run (`EntityResolver.mostMentionedNames(int)`). `PromptedLlmPort` lists them before the passage, so the model reuses their spelling instead of creating duplicates. A port that wraps another must forward the new overload, as `StageClock` does.
 - **Description summaries.** New `LlmPort.summarizesDescriptions()` (default `false`) and `LlmPort.summarizeDescription(elementName, description)`.
   - With a summarising port, `ExtractEntitiesAndRelationships` keeps up to 8,000 characters of each element's distinct description sentences during a run. What it persists per Text Unit is still cut to `GraphElementMerger.DESCRIPTION_LIMIT`, which is now public (1,000).

@@ -2,6 +2,7 @@ package dev.rabauer.graphrag.core.usecase;
 
 import dev.rabauer.graphrag.core.domain.Chunk;
 import dev.rabauer.graphrag.core.domain.Community;
+import dev.rabauer.graphrag.core.domain.CommunityPoint;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
@@ -132,6 +133,16 @@ final class StageClock {
         @Override
         public boolean derivesSubQuestions() {
             return delegate.derivesSubQuestions();
+        }
+
+        @Override
+        public boolean mapsCommunities() {
+            return delegate.mapsCommunities();
+        }
+
+        @Override
+        public List<CommunityPoint> mapCommunities(String question, List<Community> communities) {
+            return timeLlm(() -> delegate.mapCommunities(question, communities));
         }
 
         @Override

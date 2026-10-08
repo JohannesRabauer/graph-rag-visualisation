@@ -358,11 +358,11 @@
             <div>
               <span class="eyebrow eyebrow--global">Broad questions</span>
               <h3>Global Search</h3>
-              <p class="mode-tagline">Read the community summaries, pick the ones that match the question, and answer from them and their most relevant passages.</p>
-              <p>Built for "what is this corpus about?". Canonical GraphRAG maps the question over community reports and reduces partial answers. Lens takes the three communities whose summaries are closest in meaning, records each as a step, follows each with up to two member passages ranked by relationship weight, and writes one answer over all of it. A corpus with no communities yet gives an honest "no answer" with the reason.</p>
+              <p class="mode-tagline">Read the community summaries for key points, keep the best, and answer from them and their most relevant passages.</p>
+              <p>Built for "what is this corpus about?". Like canonical GraphRAG, Lens maps the question over the community summaries and reduces the results: the model reads up to 30 communities, five at a time, and writes scored key points for each; the 20 best points, plus up to two member passages for each of the first five communities they come from, go into one final answer. A corpus with no communities yet gives an honest "no answer" with the reason.</p>
               <div class="mode-diagram" aria-hidden="true">
                 <svg viewBox="0 0 440 150">
-                  <text class="d-mono" x="12" y="18">QUESTION → TOP-3 COMMUNITIES → 2 PASSAGES EACH</text>
+                  <text class="d-mono" x="12" y="18">QUESTION → MAP COMMUNITIES → BEST POINTS + PASSAGES</text>
                   <rect class="d-box" x="12" y="34" width="118" height="28" rx="6"/>
                   <text class="d-text" x="71" y="52" text-anchor="middle">"Main themes?"</text>
                   <rect x="160" y="30" width="120" height="30" rx="8" fill="#FDE7D8"/>
@@ -386,11 +386,8 @@
                 </svg>
               </div>
               <ul class="trace-shape" aria-label="Shape of a Global Search trace">
-                <li class="k-comm">COMMUNITY</li><li class="arrow">→</li>
-                <li class="k-tu">TEXT_UNIT ≤2</li><li class="arrow">→</li>
-                <li class="k-comm">COMMUNITY</li><li class="arrow">→</li>
-                <li class="k-tu">TEXT_UNIT ≤2</li><li class="arrow">→</li>
-                <li class="k-mute">…</li><li class="arrow">→</li>
+                <li class="k-comm">COMMUNITY ×≤30</li><li class="arrow">→</li>
+                <li class="k-tu">TEXT_UNIT ≤10</li><li class="arrow">→</li>
                 <li class="k-syn">SYNTHESIS</li>
               </ul>
             </div>

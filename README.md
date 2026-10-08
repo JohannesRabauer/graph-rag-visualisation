@@ -218,7 +218,7 @@ Design rules that keep the core reusable:
 | `EmbedGraphElements` | When the embedding model is semantic, embeds every entity (`name: description`) and community summary for meaning-based seed matching. |
 | `ConstructVectorIndex` | Builds the vector baseline: 500-character chunks, their embeddings, and a fitted 2-D projection. |
 | `AnswerLocalSearch` | Seeds on the entities closest to the question and walks their one-hop neighbourhood into the Text Units it cites. |
-| `AnswerGlobalSearch` | Answers from the top community summaries and each community's most relevant passages. |
+| `AnswerGlobalSearch` | Map-reduce over the community summaries with a live LLM: up to 30 communities are read, five per call, for scored key points; the best points and their communities' most relevant passages make the answer. Offline it quotes the best-matching summary. |
 | `AnswerDriftSearch` | Starts from communities, spawns sub-questions, gathers Local-style context for each branch, and synthesizes once over the union. |
 | `RetrieveLocalContext`, `RetrieveGlobalContext`, `RetrieveDriftContext` | Retrieval only: the numbered context items and the full trace (with source locators) without a synthesized answer, for consumers that are themselves LLMs. Seeds come from a pluggable `SeedMatcher` (keyword, semantic, code identifier, hybrid). |
 | `UpdateSources` | Incremental updates: remove or replace one source (file, document) and recompute Communities. |
@@ -287,7 +287,7 @@ flowchart TB
     KW --> MODE
 
     MODE -- Local --> L1["Top-3 seed entities"] --> L2["≤ 10 one-hop relationships<br/>highest weight first"] --> L3["≤ 5 cited Text Units"]
-    MODE -- Global --> G1["Top-3 communities<br/>(title + summary)"] --> G2["≤ 2 member Text Units<br/>per community"]
+    MODE -- Global --> G1["Map: ≤ 30 communities,<br/>5 per call, scored key points"] --> G2["≤ 20 best points + ≤ 2 member<br/>Text Units for ≤ 5 communities"]
     MODE -- DRIFT --> D1["≤ 3 candidate communities"] --> D2["Sub-questions"] --> D3["Local-style context<br/>per branch"] --> D4["Union, de-duplicated"]
     MODE -- "Vector (Compare)" --> V1["Top-5 chunks<br/>cosine similarity"]
 

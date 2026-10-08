@@ -1,6 +1,7 @@
 package dev.rabauer.graphrag.core.llm;
 
 import dev.rabauer.graphrag.core.domain.Community;
+import dev.rabauer.graphrag.core.domain.CommunityPoint;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonStats;
@@ -255,6 +256,40 @@ class PromptedLlmPortTest {
         assertEquals(PromptedLlmPort.Schemas.DESCRIPTION_SUMMARY, request.jsonSchema());
         assertTrue(request.lastUserText().contains("at most 1000 characters"));
         assertTrue(request.lastUserText().endsWith("Element: Ada\nNotes:\nAda wrote. Ada met Bob."));
+    }
+
+    @Test
+    void mapsCommunitiesToScoredPointsWhenSynthesisIsOn() {
+        List<Community> batch = List.of(new Community("c-1", "Orders", "Order handling."),
+                new Community("c-2", "Payments", "Charging."));
+        ScriptedPort off = new ScriptedPort();
+        ScriptedPort on = new ScriptedPort(PromptedLlmPort.Options.defaults().withSynthesis(true), """
+                {"points":[{"community":2,"point":"Payments are charged.","score":140},
+                {"community":3,"point":"No such group.","score":50},{"community":1,"point":"","score":40},
+                {"community":"1","point":"Orders are handled.","score":"35"}]}""",
+                "{\"points\": []}");
+
+        assertFalse(off.mapsCommunities());
+        assertEquals(List.of(), off.mapCommunities("q", batch));
+        assertTrue(off.requests.isEmpty());
+        assertTrue(on.mapsCommunities());
+        assertEquals(List.of(new CommunityPoint("c-2", "Payments are charged.", 100),
+                new CommunityPoint("c-1", "Orders are handled.", 35)), on.mapCommunities("How does it work?", batch));
+        assertEquals(List.of(), on.mapCommunities("q", batch));
+        PromptedLlmPort.CompletionRequest request = on.requests.getFirst();
+        assertEquals(PromptedLlmPort.Purpose.COMMUNITY_POINTS, request.purpose());
+        assertEquals(PromptedLlmPort.Schemas.COMMUNITY_POINTS, request.jsonSchema());
+        assertTrue(request.lastUserText().contains("[1] Orders: Order handling.\n[2] Payments: Charging."));
+        assertTrue(request.lastUserText().endsWith("Question: How does it work?"));
+    }
+
+    @Test
+    void aMapReplyWithoutPointsIsAskedAgain() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withSynthesis(true),
+                "{\"answer\": \"Orders.\"}", "{\"points\": []}");
+
+        assertEquals(List.of(), port.mapCommunities("q", List.of(new Community("c-1", "Orders."))));
+        assertEquals(2, port.requests.size());
     }
 
     @Test

@@ -1,6 +1,7 @@
 package dev.rabauer.graphrag.core.llm;
 
 import dev.rabauer.graphrag.core.domain.Community;
+import dev.rabauer.graphrag.core.domain.CommunityPoint;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonStats;
@@ -46,6 +47,9 @@ import java.util.function.Function;
  * fails too, an {@link LlmReplyException} is thrown for that item. A failure
  * of {@link #complete} itself propagates unchanged and is never retried.
  *
+ * <p>Map-reduce Global Search ({@link #mapCommunities}) runs whenever
+ * answer synthesis is on.
+ *
  * <p>Capabilities: Community summaries, DRIFT sub-questions and the
  * GraphRAG-vs-Vector verdict ({@link #compareAnswers}) are always
  * model-backed; extraction, answer synthesis and description summaries are
@@ -61,6 +65,7 @@ public abstract class PromptedLlmPort implements LlmPort {
     static final int MAX_CONTEXT_ITEM_CHARS = 1500;
     static final int MAX_VERDICT_ANSWER_CHARS = 1500;
     static final int MAX_VERDICT_SENTENCES = 2;
+    static final int MAX_POINTS_PER_COMMUNITY = 3;
 
     static final String GLEANING_PROMPT = """
             Some entities and relationships in the passage were missed. Reply with one JSON object of the \
@@ -390,6 +395,64 @@ public abstract class PromptedLlmPort implements LlmPort {
                 %s""".formatted(communities.size(), question == null ? "" : question.trim(), lines);
     }
 
+    // -- Global Search map step -------------------------------------------------------------
+
+    /** Map-reduce Global Search runs whenever answers are synthesized. */
+    @Override
+    public boolean mapsCommunities() {
+        return options.synthesis();
+    }
+
+    /**
+     * One call per batch: up to {@value #MAX_POINTS_PER_COMMUNITY} scored key
+     * points per Community. A point naming no Community of the batch is
+     * dropped; an empty {@code points} array is a valid reply.
+     */
+    @Override
+    public List<CommunityPoint> mapCommunities(String question, List<Community> communities) {
+        if (!options.synthesis() || communities == null || communities.isEmpty()) {
+            return List.of();
+        }
+        List<Community> batch = communities.stream().filter(Objects::nonNull).toList();
+        return call(Purpose.COMMUNITY_POINTS, communityPointsPrompt(question, batch), Schemas.COMMUNITY_POINTS,
+                options.answerTokens(), object -> {
+                    if (!object.containsKey("points")) {
+                        return Optional.empty();
+                    }
+                    List<CommunityPoint> points = new ArrayList<>();
+                    for (Map<String, Object> node : LenientJson.objects(object, "points")) {
+                        int index = (int) LenientJson.number(node, "community").orElse(0);
+                        String text = LenientJson.string(node, "point");
+                        if (index >= 1 && index <= batch.size() && !text.isEmpty()) {
+                            points.add(new CommunityPoint(batch.get(index - 1).id(), text,
+                                    (int) Math.round(LenientJson.number(node, "score").orElse(0))));
+                        }
+                    }
+                    return Optional.of(List.copyOf(points));
+                });
+    }
+
+    String communityPointsPrompt(String question, List<Community> communities) {
+        StringBuilder groups = new StringBuilder();
+        int index = 1;
+        for (Community community : communities) {
+            groups.append('[').append(index++).append("] ")
+                    .append(community.title().isEmpty() ? "" : community.title() + ": ")
+                    .append(truncate(community.summary(), MAX_CONTEXT_ITEM_CHARS)).append('\n');
+        }
+        return """
+                Each numbered group below summarizes one part of a document collection. For each group, \
+                write up to %d key points that help answer the question, using only that group's text, and \
+                score each from 0 (does not help) to 100 (answers the question directly). Leave out groups \
+                that do not help; reply with an empty "points" array if none do.
+                Reply with one JSON object and nothing else, shaped like:
+                {"points":[{"community":1,"point":"one or two sentences","score":80}]}
+
+                Groups:
+                %s
+                Question: %s""".formatted(MAX_POINTS_PER_COMMUNITY, groups, question == null ? "" : question.trim());
+    }
+
     // -- Answer synthesis ------------------------------------------------------------------
 
     @Override
@@ -559,7 +622,9 @@ public abstract class PromptedLlmPort implements LlmPort {
         /** The GraphRAG-vs-Vector verdict ({@link #compareAnswers}). */
         VERDICT,
         /** One description from an element's merged descriptions ({@link #summarizeDescription}). */
-        DESCRIPTION_SUMMARY
+        DESCRIPTION_SUMMARY,
+        /** The map step of map-reduce Global Search ({@link #mapCommunities}). */
+        COMMUNITY_POINTS
     }
 
     /** Who said a message. */
@@ -687,6 +752,11 @@ public abstract class PromptedLlmPort implements LlmPort {
         public static final String SUB_QUESTIONS = """
                 {"type":"object","properties":{"subQuestions":{"type":"array","items":{"type":"string"}}},\
                 "required":["subQuestions"]}""";
+
+        public static final String COMMUNITY_POINTS = """
+                {"type":"object","properties":{"points":{"type":"array","items":{"type":"object","properties":{\
+                "community":{"type":"integer"},"point":{"type":"string"},"score":{"type":"integer"}},\
+                "required":["community","point","score"]}}},"required":["points"]}""";
 
         public static final String DESCRIPTION_SUMMARY = """
                 {"type":"object","properties":{"description":{"type":"string"}},"required":["description"]}""";

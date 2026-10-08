@@ -2,6 +2,7 @@ package dev.rabauer.graphrag.core.port;
 
 import dev.rabauer.graphrag.core.domain.Chunk;
 import dev.rabauer.graphrag.core.domain.Community;
+import dev.rabauer.graphrag.core.domain.CommunityPoint;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
@@ -118,6 +119,31 @@ public interface LlmPort {
     default GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
         return extract(new Corpus(unit.corpusId(),
                 List.of(new UploadedDocument(unit.documentName(), unit.text()))));
+    }
+
+    /**
+     * Whether {@link #mapCommunities(String, List)} calls a model. When true
+     * and {@link #synthesizesAnswers()} is true too, {@code AnswerGlobalSearch}
+     * answers by map-reduce over the corpus's Communities instead of from the
+     * three best-matching ones. The default is {@code false}.
+     */
+    default boolean mapsCommunities() {
+        return false;
+    }
+
+    /**
+     * The map step of map-reduce Global Search: the key points each of
+     * {@code communities} contributes to {@code question}, each scored from 0
+     * to 100. A Community that does not help contributes no point (or one
+     * scored 0). Only called when {@link #mapsCommunities()} is true; the
+     * default returns no points.
+     *
+     * @param question    the user's question
+     * @param communities one batch of Communities, in reading order; never null
+     * @return the points, each naming a Community of the batch; never null
+     */
+    default List<CommunityPoint> mapCommunities(String question, List<Community> communities) {
+        return List.of();
     }
 
     /**

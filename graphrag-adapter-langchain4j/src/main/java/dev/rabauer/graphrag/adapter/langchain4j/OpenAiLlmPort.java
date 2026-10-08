@@ -1,6 +1,7 @@
 package dev.rabauer.graphrag.adapter.langchain4j;
 
 import dev.rabauer.graphrag.core.domain.Community;
+import dev.rabauer.graphrag.core.domain.CommunityPoint;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
@@ -156,6 +157,11 @@ public class OpenAiLlmPort extends PromptedLlmPort {
     @Override
     public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
         return failingVisibly(() -> super.summarizeCommunity(members, relationships));
+    }
+
+    @Override
+    public List<CommunityPoint> mapCommunities(String question, List<Community> communities) {
+        return failingVisibly(() -> super.mapCommunities(question, communities));
     }
 
     @Override
