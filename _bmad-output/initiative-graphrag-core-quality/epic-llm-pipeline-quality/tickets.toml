@@ -1,0 +1,68 @@
+# The planned stories of epic-llm-pipeline-quality, in build order.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Sharper PromptedLlmPort prompts, gleaning and model-written verdicts"
+description = "Adds the naming and relationship rules to extraction, relationship descriptions to summaries, background-uncited and partial-answer rules to answers, opt-in gleaning (Options.gleanings), and PromptedLlmPort.compareAnswers (Purpose.VERDICT); the extraction and answer rules also go into OpenAiLlmPort, with a CHANGELOG [Unreleased] entry."
+verify = "PromptedLlmPortTest covers gleaning (merge, early stop, unusable reply), the verdict and the prompt rules, and the core and adapter builds are green."
+covers = ["R1"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 2
+type = "story"
+title = "OpenAiLlmPort builds on PromptedLlmPort"
+description = "Makes OpenAiLlmPort a PromptedLlmPort that only implements complete() over LangChain4j, so the web app uses the core prompts, schemas and parsing, keeping JSON mode, maxRetries(0), LlmCallFailedException and the output-token-limit check; adds an OpenAiLlmPort constructor taking PromptedLlmPort.Options and wires graphrag-web's ParserConfig to pass Options from configuration (gleanings default 0), with a CHANGELOG entry."
+verify = "OpenAiLlmPortTest and OpenAiLlmPortRobustnessTest pass against the shared prompts, OpenAiLlmPort holds no prompt text of its own, and the web module's tests pass with OPENAI_API_KEY unset."
+covers = ["R2"]
+after = [1]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Tell extraction the entity names found so far"
+description = "Adds LlmPort.extract(TextUnit, List<String> entityTypes, List<String> knownEntityNames) with a default that ignores the names, has ExtractEntitiesAndRelationships pass the run's most-mentioned resolved names, and has PromptedLlmPort list them in the extraction prompt (OpenAiLlmPort inherits it), with a CHANGELOG entry."
+verify = "A scripted ExtractEntitiesAndRelationships run with a PromptedLlmPort shows the second unit's prompt lists the first unit's names, capped, and an existing lambda port still works."
+covers = ["R3"]
+after = [2]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Summarise descriptions that outgrow their limit"
+description = "Keeps every distinct description sentence during an extraction run and, for a port whose new LlmPort.summarizesDescriptions() is true, calls the new LlmPort.summarizeDescription(name, sentences) once per overflowing Entity or Relationship at the end of the run; PromptedLlmPort implements it (Purpose.DESCRIPTION_SUMMARY, Options flag, off by default) and without it the 1000-character cut stays, with a CHANGELOG entry."
+verify = "A scripted run with an overflowing Entity makes one summary call and persists the summary; with LlmPort.none() the description equals today's."
+covers = ["R4"]
+after = [3]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Map-reduce Global Search"
+description = "With a synthesizing port, Global Search maps every Community (in batches) through a new LlmPort.mapCommunities(question, communities) to rated key points and reduces the best points, with their Communities' top passages, through synthesizeAnswer into one cited answer; PromptedLlmPort implements the map (Purpose.COMMUNITY_POINTS) and the trace shows one COMMUNITY step per Community read and the synthesis, with a CHANGELOG entry."
+verify = "A scripted AnswerGlobalSearch test records one COMMUNITY step per Community, makes one map call per batch and one reduce call, cites passages from two Communities, and the non-synthesizing path is unchanged."
+covers = ["R5"]
+after = [4]
+hitl = false
+risk = "high"
+plan_checkpoint = true
+
+[[entry]]
+id = 6
+type = "story"
+title = "Refactor sweep"
+description = "Cleans up what the plans and reviews of entries 1-5 deferred, checks the CHANGELOG and READMEs against the final API, and a person runs the demo corpus with a real key."
+verify = "env -u OPENAI_API_KEY mvn -B verify -Dapi.version=1.44 is green, and on the demo corpus with a real key Global Search for \"What are the main themes?\" reads every Community and cites passages from more than one."
+covers = ["R1", "R2", "R3", "R4", "R5"]
+after = [1, 2, 3, 4, 5]
+hitl = true
+risk = "low"
