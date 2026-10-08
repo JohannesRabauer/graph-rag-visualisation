@@ -4,7 +4,10 @@ import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
 
 import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -36,6 +39,21 @@ public final class EntityResolver {
         Endpoint target = resolveEndpoint(relationship.target(), relationship.targetType());
         return relationship.with(source.name(), source.type(), target.name(), target.type(),
                 relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());
+    }
+
+    /**
+     * The canonical names resolved so far, most-mentioned first (ties in
+     * first-seen order), at most {@code limit}.
+     */
+    public List<String> mostMentionedNames(int limit) {
+        List<NameState> byMentions = new ArrayList<>(states.values());
+        // List.sort is stable, so equal counts keep first-seen order.
+        byMentions.sort(Comparator.comparingInt(NameState::mentions).reversed());
+        return byMentions.stream()
+                .map(state -> state.canonicalName)
+                .filter(name -> !name.isEmpty())
+                .limit(Math.max(0, limit))
+                .toList();
     }
 
     public static String nameKey(String name) {
@@ -104,6 +122,14 @@ public final class EntityResolver {
                 }
             }
             currentType = winnerType;
+        }
+
+        private int mentions() {
+            int total = 0;
+            for (TypeState state : types.values()) {
+                total += state.mentions;
+            }
+            return total;
         }
 
         private String currentIdentity() {

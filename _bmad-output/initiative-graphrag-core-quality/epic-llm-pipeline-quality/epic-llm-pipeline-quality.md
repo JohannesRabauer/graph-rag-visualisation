@@ -55,5 +55,8 @@ Library users and the demo get fewer duplicate entities, fuller descriptions and
 - Assumption: a description summary replaces the merged text completely, applies to Entities and Relationships, and is capped at the same 1000 characters (entry 4).
 - Assumption: in entry 2, complete() keeps throwing LlmCallFailedException on a reply cut off by the output-token limit, so a truncated reply still fails visibly instead of being repaired.
 - Assumption: the user supplies an OpenAI key and runs the demo check in entry 6.
+- Assumption: in entry 2, `OpenAiLlmPort` keeps the deterministic DRIFT sub-questions (`derivesSubQuestions()` false). Local Search seeds its matches from the question plus the Community summary, and model-written sub-questions would change DRIFT retrieval in the demo. Switching them on is a separate decision.
+- Assumption: in entry 2, a blank Community summary from OpenAI now fails the item, like every other unusable reply, instead of falling back to the templated summary.
+- Note: entries 2–4 were built directly, not through `bmad-build`. The renderer returned templates with unrendered `{{ … }}` tags (`resolved_values` empty), and the skill says not to run workflow source (2026-10-08).
 - Assumption: map-reduce Global Search shows its map step as one `COMMUNITY` trace step per Community read and its reduce step as the existing synthesis, so the replay needs no new step kind.
 - Assumption: description summaries run once per element at the end of an extraction run, not on every merge.

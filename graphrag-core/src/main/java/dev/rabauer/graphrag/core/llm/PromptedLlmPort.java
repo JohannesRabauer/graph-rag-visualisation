@@ -48,9 +48,10 @@ import java.util.function.Function;
  *
  * <p>Capabilities: Community summaries, DRIFT sub-questions and the
  * GraphRAG-vs-Vector verdict ({@link #compareAnswers}) are always
- * model-backed; extraction and answer synthesis are switched by
- * {@link Options#extraction()} and {@link Options#synthesis()} (both off by
- * default: an exact, imported graph needs neither). With
+ * model-backed; extraction, answer synthesis and description summaries are
+ * switched by {@link Options#extraction()}, {@link Options#synthesis()} and
+ * {@link Options#descriptionSummaries()} (all off by default: an exact,
+ * imported graph needs none of them). With
  * {@link Options#gleanings()} above zero, extraction asks the model again,
  * in the same conversation, for what its earlier replies missed.
  */
@@ -127,18 +128,30 @@ public abstract class PromptedLlmPort implements LlmPort {
 
     @Override
     public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+        return extract(unit, entityTypes, List.of());
+    }
+
+    /** Lists {@code knownEntityNames} in the prompt so the model reuses their spelling. */
+    @Override
+    public GraphExtraction extract(TextUnit unit, List<String> entityTypes, List<String> knownEntityNames) {
         if (!options.extraction() || unit == null || unit.text() == null || unit.text().isBlank()) {
             return GraphExtraction.empty();
         }
         List<String> types = entityTypes == null || entityTypes.isEmpty() ? EntityTypes.ALL : entityTypes;
         String schema = Schemas.extraction(types);
         Exchange<GraphExtraction> first = exchange(Purpose.EXTRACTION,
-                List.of(new Message(Role.USER, extractionPrompt(unit, types))), schema, options.extractionTokens(),
+                List.of(new Message(Role.USER, extractionPrompt(unit, types, knownEntityNames))), schema,
+                options.extractionTokens(),
                 object -> parseExtraction(object, types));
         return glean(first, types, schema);
     }
 
-    String extractionPrompt(TextUnit unit, List<String> types) {
+    String extractionPrompt(TextUnit unit, List<String> types, List<String> knownEntityNames) {
+        String known = knownEntityNames == null || knownEntityNames.isEmpty() ? "" : """
+                Entities found in earlier passages; when the passage means one of them, use its name exactly:
+                %s
+
+                """.formatted(String.join("; ", knownEntityNames));
         return """
                 Extract a knowledge graph from the passage: the entities it names and the relationships \
                 between them.
@@ -158,9 +171,9 @@ public abstract class PromptedLlmPort implements LlmPort {
                 "relationships":[{"source":"...","sourceType":"...","type":"verb_phrase","target":"...",\
                 "targetType":"...","description":"one sentence"}]}
 
-                Passage (%s, part %d):
-                %s""".formatted(String.join(", ", types), types.getLast(), unit.documentName(), unit.ordinal() + 1,
-                unit.text());
+                %sPassage (%s, part %d):
+                %s""".formatted(String.join(", ", types), types.getLast(), known, unit.documentName(),
+                unit.ordinal() + 1, unit.text());
     }
 
     /**
@@ -236,6 +249,44 @@ public abstract class PromptedLlmPort implements LlmPort {
             }
         }
         return Optional.of(new GraphExtraction(entities, relationships));
+    }
+
+    // -- Description summaries -------------------------------------------------------------
+
+    @Override
+    public boolean summarizesDescriptions() {
+        return options.descriptionSummaries();
+    }
+
+    /**
+     * One call that merges an element's descriptions into one, when
+     * {@link Options#descriptionSummaries()} is on; otherwise
+     * {@code description} unchanged.
+     */
+    @Override
+    public String summarizeDescription(String elementName, String description) {
+        if (!options.descriptionSummaries() || description == null || description.isBlank()) {
+            return LlmPort.super.summarizeDescription(elementName, description);
+        }
+        return call(Purpose.DESCRIPTION_SUMMARY, descriptionSummaryPrompt(elementName, description),
+                Schemas.DESCRIPTION_SUMMARY, options.summaryTokens(), object -> {
+                    String summary = LenientJson.string(object, "description");
+                    return summary.isEmpty() ? Optional.empty() : Optional.of(summary);
+                });
+    }
+
+    String descriptionSummaryPrompt(String elementName, String description) {
+        return """
+                The notes below describe one element of a knowledge graph, collected from several passages.
+                Merge them into one description of at most %d characters: keep every distinct fact that \
+                fits, most important first, drop repetitions, and use only the notes.
+                Reply with one JSON object and nothing else, shaped like:
+                {"description":"..."}
+
+                Element: %s
+                Notes:
+                %s""".formatted(GraphElementMerger.DESCRIPTION_LIMIT, elementName == null ? "" : elementName.trim(),
+                description.trim());
     }
 
     // -- Community summaries ---------------------------------------------------------------
@@ -506,7 +557,9 @@ public abstract class PromptedLlmPort implements LlmPort {
         SUB_QUESTIONS,
         ANSWER,
         /** The GraphRAG-vs-Vector verdict ({@link #compareAnswers}). */
-        VERDICT
+        VERDICT,
+        /** One description from an element's merged descriptions ({@link #summarizeDescription}). */
+        DESCRIPTION_SUMMARY
     }
 
     /** Who said a message. */
@@ -567,10 +620,13 @@ public abstract class PromptedLlmPort implements LlmPort {
      *                          call per Text Unit)
      * @param verdictTokens     output-token limit suggested for the
      *                          comparison verdict
+     * @param descriptionSummaries whether {@link #summarizeDescription(String, String)}
+     *                          calls the model (off by default; one call per
+     *                          element whose merged description outgrew its limit)
      */
     public record Options(boolean extraction, boolean synthesis, boolean correctiveRetry, int extractionTokens,
                           int summaryTokens, int subQuestionTokens, int answerTokens, int gleanings,
-                          int verdictTokens) {
+                          int verdictTokens, boolean descriptionSummaries) {
 
         public Options {
             if (gleanings < 0) {
@@ -578,37 +634,46 @@ public abstract class PromptedLlmPort implements LlmPort {
             }
         }
 
-        /** Without gleaning, with the default verdict token limit (256). */
+        /** Without gleaning or description summaries, with the default verdict token limit (256). */
         public Options(boolean extraction, boolean synthesis, boolean correctiveRetry, int extractionTokens,
                        int summaryTokens, int subQuestionTokens, int answerTokens) {
             this(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, 0, 256);
+                    answerTokens, 0, 256, false);
         }
 
-        /** Summaries, sub-questions and verdicts only, with the corrective retry and no gleaning. */
+        /**
+         * Summaries, sub-questions and verdicts only, with the corrective
+         * retry, no gleaning and no description summaries.
+         */
         public static Options defaults() {
-            return new Options(false, false, true, 4096, 512, 512, 1024, 0, 256);
+            return new Options(false, false, true, 4096, 512, 512, 1024, 0, 256, false);
         }
 
         public Options withExtraction(boolean value) {
             return new Options(value, synthesis, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, gleanings, verdictTokens);
+                    answerTokens, gleanings, verdictTokens, descriptionSummaries);
         }
 
         public Options withSynthesis(boolean value) {
             return new Options(extraction, value, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, gleanings, verdictTokens);
+                    answerTokens, gleanings, verdictTokens, descriptionSummaries);
         }
 
         public Options withCorrectiveRetry(boolean value) {
             return new Options(extraction, synthesis, value, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, gleanings, verdictTokens);
+                    answerTokens, gleanings, verdictTokens, descriptionSummaries);
         }
 
         /** {@code count} extra extraction turns for missed elements; 1 is usually enough. */
         public Options withGleanings(int count) {
             return new Options(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens,
-                    subQuestionTokens, answerTokens, count, verdictTokens);
+                    subQuestionTokens, answerTokens, count, verdictTokens, descriptionSummaries);
+        }
+
+        /** Whether descriptions that outgrow their limit are summarised by the model. */
+        public Options withDescriptionSummaries(boolean value) {
+            return new Options(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens,
+                    subQuestionTokens, answerTokens, gleanings, verdictTokens, value);
         }
     }
 
@@ -622,6 +687,9 @@ public abstract class PromptedLlmPort implements LlmPort {
         public static final String SUB_QUESTIONS = """
                 {"type":"object","properties":{"subQuestions":{"type":"array","items":{"type":"string"}}},\
                 "required":["subQuestions"]}""";
+
+        public static final String DESCRIPTION_SUMMARY = """
+                {"type":"object","properties":{"description":{"type":"string"}},"required":["description"]}""";
 
         public static final String VERDICT = """
                 {"type":"object","properties":{"verdict":{"type":"string"}},"required":["verdict"]}""";

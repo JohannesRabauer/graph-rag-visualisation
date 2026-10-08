@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Gleaning for `PromptedLlmPort` extraction.** `PromptedLlmPort.Options.withGleanings(n)` (default `0`) runs up to `n` more turns of the extraction conversation per Text Unit. Each turn asks only for the Entities and Relationships missed so far (`PromptedLlmPort.GLEANING_PROMPT`), and the results are merged by identity. Gleaning stops early when a turn adds nothing new or its reply cannot be used; what was found so far is kept. Each turn costs one more call per Text Unit.
+- **Entity name hints.** New `LlmPort.extract(TextUnit, List<String> entityTypes, List<String> knownEntityNames)`; its default ignores the names. `ExtractEntitiesAndRelationships` passes each Text Unit the 50 most-mentioned Entity names resolved so far in the run (`EntityResolver.mostMentionedNames(int)`). `PromptedLlmPort` lists them before the passage, so the model reuses their spelling instead of creating duplicates. A port that wraps another must forward the new overload, as `StageClock` does.
+- **Description summaries.** New `LlmPort.summarizesDescriptions()` (default `false`) and `LlmPort.summarizeDescription(elementName, description)`.
+  - With a summarising port, `ExtractEntitiesAndRelationships` keeps up to 8,000 characters of each element's distinct description sentences during a run. What it persists per Text Unit is still cut to `GraphElementMerger.DESCRIPTION_LIMIT`, which is now public (1,000).
+  - At the end of the run, each Entity and Relationship whose description outgrew the limit is summarised once and persisted again.
+  - A failed summary fails the run under `FailurePolicy.FAIL_RUN`. Under `ISOLATE_ITEM` it keeps the cut description.
+  - `PromptedLlmPort` implements this with `Options.withDescriptionSummaries(true)`, `Purpose.DESCRIPTION_SUMMARY` and `Schemas.DESCRIPTION_SUMMARY`.
+  - `GraphElementMerger` gains `merge(..., int descriptionLimit)`, `mergeDescriptions(existing, added, limit)` and `capDescription`.
+  - Without a summarising port, nothing changes.
 - **`PromptedLlmPort.compareAnswers`.** The GraphRAG-vs-Vector verdict is now written by the model (`Purpose.VERDICT`, `Schemas.VERDICT`, output-token limit `Options.verdictTokens()`, default 256). Before, it was always the rule-based text. An unusable reply fails with `LlmReplyException`, and `CompareAnswers` falls back to the rule-based verdict as before.
 
 ### Changed
@@ -19,8 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Community summary:** now includes Relationship descriptions and asks which members matter most.
   - **DRIFT sub-questions:** each one must be answerable from its own Community.
   - **Answer:** says that Entity, Relationship and Community items are background that is never cited, rules out outside knowledge, and asks for a partial answer that names what is missing.
-- `OpenAiLlmPort` (adapter) uses the same extraction rules and the same partial-answer rule, and its community summary also asks which members matter most.
-- **Breaking for record patterns:** `PromptedLlmPort.Options` gains the record components `gleanings` and `verdictTokens`. The seven-argument constructor is kept; it means no gleaning and 256 verdict tokens. A negative `gleanings` throws `IllegalArgumentException`.
+- `OpenAiLlmPort` (adapter, not released with the core) is now a `PromptedLlmPort`. It uses the core's prompts, schemas and lenient parsing, and only implements `complete`, sending the conversation in OpenAI JSON mode. Every failure is still an `OpenAiLlmPort.LlmCallFailedException`: a network error, a reply cut off by the output-token limit, or a reply that stays unusable. `summarizesCommunities()` is now true. DRIFT sub-questions stay deterministic. A blank Community summary now fails instead of falling back to the templated one. There is a new constructor taking `PromptedLlmPort.Options`, and the web app reads `GRAPHRAG_EXTRACTION_GLEANINGS` (default 0) and `GRAPHRAG_DESCRIPTION_SUMMARIES` (default false).
+- **Breaking for record patterns:** `PromptedLlmPort.Options` gains the record components `gleanings`, `verdictTokens` and `descriptionSummaries`. The seven-argument constructor is kept; it means no gleaning, 256 verdict tokens and no description summaries. A negative `gleanings` throws `IllegalArgumentException`.
 
 ## [2.0.1] - 2026-10-06
 

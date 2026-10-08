@@ -21,6 +21,152 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ExtractEntitiesAndRelationshipsTest {
 
     @org.junit.jupiter.api.Test
+    void eachUnitIsToldTheMostMentionedNamesFoundBeforeIt() {
+        List<List<String>> hints = new ArrayList<>();
+        LlmPort llmPort = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return GraphExtraction.empty();
+            }
+
+            @Override
+            public GraphExtraction extract(TextUnit unit, List<String> entityTypes, List<String> knownEntityNames) {
+                hints.add(knownEntityNames);
+                return unit.documentName().equals("a.txt")
+                        ? new GraphExtraction(List.of(new Entity("Dr. Watson", "Person"),
+                                new Entity("Sherlock Holmes", "Person")), List.of())
+                        : new GraphExtraction(List.of(new Entity("Sherlock Holmes", "Person")), List.of());
+            }
+        };
+        Corpus corpus = new Corpus("c1", List.of(new UploadedDocument("a.txt", "Holmes met Watson."),
+                new UploadedDocument("b.txt", "Holmes left."), new UploadedDocument("c.txt", "The end.")));
+
+        new ExtractEntitiesAndRelationships(llmPort, null).extract(corpus);
+
+        assertEquals(List.of(List.of(), List.of("Dr. Watson", "Sherlock Holmes"),
+                List.of("Sherlock Holmes", "Dr. Watson")), hints);
+    }
+
+    /** One long, distinct sentence about Ada per document, so her description outgrows the limit. */
+    private static LlmPort adaPort(boolean summarizes, List<String> summarized) {
+        return new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return GraphExtraction.empty();
+            }
+
+            @Override
+            public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+                return new GraphExtraction(List.of(new Entity("Ada", "Person",
+                        "In " + unit.documentName() + " Ada " + "works ".repeat(60).trim() + ".", List.of())),
+                        List.of());
+            }
+
+            @Override
+            public boolean summarizesDescriptions() {
+                return summarizes;
+            }
+
+            @Override
+            public String summarizeDescription(String elementName, String description) {
+                summarized.add(elementName + ": " + description);
+                return "Ada works a lot.";
+            }
+        };
+    }
+
+    private static Corpus fiveDocuments() {
+        List<UploadedDocument> documents = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            documents.add(new UploadedDocument("d" + i + ".txt", "Ada works."));
+        }
+        return new Corpus("c1", documents);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aSummarisingPortSummarisesAnOverflowingDescriptionOnceAtTheEnd() {
+        List<String> summarized = new ArrayList<>();
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+
+        new ExtractEntitiesAndRelationships(adaPort(true, summarized), store).run(fiveDocuments());
+
+        assertEquals(1, summarized.size());
+        assertTrue(summarized.getFirst().startsWith("Ada: In d1.txt Ada works"));
+        assertTrue(summarized.getFirst().contains("In d5.txt Ada works"));
+        assertEquals(6, store.persistCalls);
+        assertEquals("Ada works a lot.", store.persistedEntities.getLast().description());
+        assertTrue(store.persistedEntities.stream()
+                .allMatch(entity -> entity.description().length() <= GraphElementMerger.DESCRIPTION_LIMIT));
+    }
+
+    @org.junit.jupiter.api.Test
+    void withoutSummariesAnOverflowingDescriptionIsCutAsBefore() {
+        List<String> summarized = new ArrayList<>();
+        PerUnitRecordingGraphStorePort store = new PerUnitRecordingGraphStorePort();
+
+        new ExtractEntitiesAndRelationships(adaPort(false, summarized), store).run(fiveDocuments());
+
+        assertTrue(summarized.isEmpty());
+        assertEquals(5, store.persistCalls);
+        String last = store.persistedEntities.getLast().description();
+        assertTrue(last.contains("In d2.txt") && !last.contains("In d3.txt"), last);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aFailedSummaryKeepsTheCutDescriptionWhenItemsAreIsolated() {
+        LlmPort failing = new LlmPort() {
+            @Override
+            public GraphExtraction extract(Corpus corpus) {
+                return GraphExtraction.empty();
+            }
+
+            @Override
+            public GraphExtraction extract(TextUnit unit, List<String> entityTypes) {
+                return adaPort(true, new ArrayList<>()).extract(unit, entityTypes);
+            }
+
+            @Override
+            public boolean summarizesDescriptions() {
+                return true;
+            }
+
+            @Override
+            public String summarizeDescription(String elementName, String description) {
+                throw new IllegalStateException("model down");
+            }
+        };
+
+        GraphExtraction isolated = new ExtractEntitiesAndRelationships(failing, null, EntityTypes.ALL,
+                FailurePolicy.ISOLATE_ITEM).extract(fiveDocuments());
+
+        assertEquals(GraphElementMerger.DESCRIPTION_LIMIT, isolated.entities().getFirst().description().length());
+        assertTrue(assertThrows(IllegalStateException.class, () -> new ExtractEntitiesAndRelationships(failing, null)
+                .extract(fiveDocuments())).getMessage().contains("Summarising the description of 'Ada' failed"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void nameHintsAreCapped() {
+        EntityResolver resolver = new EntityResolver();
+        for (int i = 0; i < ExtractEntitiesAndRelationships.MAX_NAME_HINTS + 5; i++) {
+            resolver.resolve(new Entity("Name " + i, "Person"));
+        }
+
+        assertEquals(ExtractEntitiesAndRelationships.MAX_NAME_HINTS,
+                resolver.mostMentionedNames(ExtractEntitiesAndRelationships.MAX_NAME_HINTS).size());
+        assertEquals(List.of(), resolver.mostMentionedNames(0));
+    }
+
+    @org.junit.jupiter.api.Test
+    void aLambdaPortStillExtractsThroughTheHintOverload() {
+        LlmPort llmPort = corpus -> new GraphExtraction(List.of(new Entity("Ada", "Person")), List.of());
+
+        GraphExtraction extraction = llmPort.extract(new TextUnit("t", "c", "a.txt", 0, "Ada."), EntityTypes.ALL,
+                List.of("Bob"));
+
+        assertEquals(List.of("Ada"), extraction.entities().stream().map(Entity::name).toList());
+    }
+
+    @org.junit.jupiter.api.Test
     void runPersistsExtractionResults() {
         LlmPort llmPort = corpus -> new GraphExtraction(
                 List.of(new Entity("Sherlock Holmes", "Person"), new Entity("Dr. Watson", "Person")),

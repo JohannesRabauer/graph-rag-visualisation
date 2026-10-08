@@ -9,6 +9,7 @@ import dev.rabauer.graphrag.adapter.neo4j.Neo4jGraphStoreAdapter;
 import dev.rabauer.graphrag.adapter.neo4j.Neo4jVectorStoreAdapter;
 import dev.rabauer.graphrag.adapter.parsing.PdfDocumentParserAdapter;
 import dev.rabauer.graphrag.adapter.parsing.PlainTextDocumentParserAdapter;
+import dev.rabauer.graphrag.core.llm.PromptedLlmPort;
 import dev.rabauer.graphrag.core.port.DocumentParserPort;
 import dev.rabauer.graphrag.core.port.EmbeddingPort;
 import dev.rabauer.graphrag.core.port.GraphStorePort;
@@ -56,13 +57,24 @@ public class ParserConfig {
      * is used so local development, CI, and tests keep working without any
      * network access or credentials — matching the architecture's
      * environment-variable-only configuration rule (no in-app config UI).
+     *
+     * <p>{@code GRAPHRAG_EXTRACTION_GLEANINGS} (default 0) sets how many extra
+     * extraction turns ask the model for the Entities and Relationships it
+     * missed; each turn is one more call per passage.
+     * {@code GRAPHRAG_DESCRIPTION_SUMMARIES} (default false) has the model
+     * summarise an Entity's or Relationship's description once it outgrows
+     * its limit, instead of dropping what later passages add.
      */
     @Bean
     public LlmPort llmPort(@Value("${OPENAI_API_KEY:}") String openAiApiKey,
-                           @Value("${OPENAI_MODEL:gpt-4o-mini}") String openAiModel) {
+                           @Value("${OPENAI_MODEL:gpt-4o-mini}") String openAiModel,
+                           @Value("${GRAPHRAG_EXTRACTION_GLEANINGS:0}") int gleanings,
+                           @Value("${GRAPHRAG_DESCRIPTION_SUMMARIES:false}") boolean descriptionSummaries) {
         if (openAiApiKey != null && !openAiApiKey.isBlank()) {
-            LOG.info("OPENAI_API_KEY detected — using real OpenAI-backed LLM adapter (model={})", openAiModel);
-            return new OpenAiLlmPort(openAiApiKey, openAiModel);
+            LOG.info("OPENAI_API_KEY detected — using real OpenAI-backed LLM adapter "
+                    + "(model={}, gleanings={}, descriptionSummaries={})", openAiModel, gleanings, descriptionSummaries);
+            return new OpenAiLlmPort(openAiApiKey, openAiModel, PromptedLlmPort.Options.defaults()
+                    .withCorrectiveRetry(false).withGleanings(gleanings).withDescriptionSummaries(descriptionSummaries));
         }
         LOG.warn("OPENAI_API_KEY not set — falling back to the deterministic offline LLM stub. "
                 + "Set OPENAI_API_KEY to enable real AI-driven graph extraction.");

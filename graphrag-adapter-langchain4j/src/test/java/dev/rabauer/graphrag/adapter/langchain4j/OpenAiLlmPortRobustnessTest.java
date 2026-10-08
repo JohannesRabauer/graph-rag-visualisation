@@ -9,6 +9,7 @@ import dev.langchain4j.model.output.FinishReason;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.domain.Relationship;
+import dev.rabauer.graphrag.core.llm.PromptedLlmPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
@@ -44,12 +45,20 @@ class OpenAiLlmPortRobustnessTest {
         }
     }
 
+    private static OpenAiLlmPort oneShot(ChatModel json) {
+        return new OpenAiLlmPort(json, PromptedLlmPort.Options.defaults().withCorrectiveRetry(false));
+    }
+
+    private static OpenAiLlmPort withRetry(ChatModel json) {
+        return new OpenAiLlmPort(json, PromptedLlmPort.Options.defaults());
+    }
+
     @Test
     void parsesAJsonObjectWrappedInProse() {
         ScriptedChatModel json = new ScriptedChatModel(
                 "Sure, here it is: {\"title\": \"Baker Street\", \"summary\": \"Holmes and Watson.\",} Hope it helps!");
 
-        CommunitySummary summary = new OpenAiLlmPort(json, json).summarizeCommunity(MEMBERS, RELATIONSHIPS);
+        CommunitySummary summary = oneShot(json).summarizeCommunity(MEMBERS, RELATIONSHIPS);
 
         assertEquals("Baker Street", summary.title());
         assertEquals("Holmes and Watson.", summary.summary());
@@ -60,14 +69,14 @@ class OpenAiLlmPortRobustnessTest {
         ScriptedChatModel json = new ScriptedChatModel("They are friends.",
                 "{\"title\": \"Friends\", \"summary\": \"Holmes knows Watson.\"}");
 
-        CommunitySummary summary = new OpenAiLlmPort(json, json, true).summarizeCommunity(MEMBERS, RELATIONSHIPS);
+        CommunitySummary summary = withRetry(json).summarizeCommunity(MEMBERS, RELATIONSHIPS);
 
         assertEquals("Holmes knows Watson.", summary.summary());
         assertEquals(2, json.requests.size());
         List<ChatMessage> retry = json.requests.get(1);
         assertEquals(3, retry.size());
         assertEquals("They are friends.", ((AiMessage) retry.get(1)).text());
-        assertTrue(((dev.langchain4j.data.message.UserMessage) retry.get(2)).singleText().contains("only the JSON"));
+        assertTrue(((dev.langchain4j.data.message.UserMessage) retry.get(2)).singleText().contains("only one JSON object"));
     }
 
     @Test
@@ -75,7 +84,7 @@ class OpenAiLlmPortRobustnessTest {
         ScriptedChatModel json = new ScriptedChatModel("They are friends.", "{\"title\":\"x\",\"summary\":\"y\"}");
 
         assertThrows(OpenAiLlmPort.LlmCallFailedException.class,
-                () -> new OpenAiLlmPort(json, json).summarizeCommunity(MEMBERS, RELATIONSHIPS));
+                () -> oneShot(json).summarizeCommunity(MEMBERS, RELATIONSHIPS));
         assertEquals(1, json.requests.size());
     }
 
@@ -84,7 +93,7 @@ class OpenAiLlmPortRobustnessTest {
         ScriptedChatModel json = new ScriptedChatModel("No.", "Still no.");
 
         OpenAiLlmPort.LlmCallFailedException failure = assertThrows(OpenAiLlmPort.LlmCallFailedException.class,
-                () -> new OpenAiLlmPort(json, json, true).summarizeCommunity(MEMBERS, RELATIONSHIPS));
+                () -> withRetry(json).summarizeCommunity(MEMBERS, RELATIONSHIPS));
 
         assertTrue(failure.getMessage().contains("Still no."));
         assertEquals(2, json.requests.size());

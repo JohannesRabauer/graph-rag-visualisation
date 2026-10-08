@@ -121,7 +121,7 @@ flowchart BT
 | [`graphrag-core`](graphrag-core/README.md) | The GraphRAG library: domain model, port interfaces and use cases. It is **framework-free**: a Maven Enforcer rule bans Spring, the Neo4j driver and LangChain4j, so the core can be reused in any Java application. It is versioned and released independently (`dev.rabauer.graphrag:graphrag-core`) and targets Java 21, so it runs on JDK 21+. |
 | [`graphrag-core-testkit`](graphrag-core/README.md#testkit-proving-an-adapter-correct) | JUnit 5 contract tests a third-party adapter extends (`GraphReadPortContract`, `GraphStorePortContract`, `VectorStorePortContract`, `EmbeddingPortContract`, `CodeGraphRetrievalContract`), a 50-class code-graph fixture and a reference in-memory store. Framework-free like the core, and released with it on Maven Central (`dev.rabauer.graphrag:graphrag-core-testkit`). |
 | `graphrag-adapter-neo4j` | `GraphStorePort` and `VectorStorePort` on Neo4j through the plain Java driver. It provides corpus-scoped writes, GDS Leiden or the core's community detection, vector indexes for semantic matching, label/type prefixes to share a database, and the durable corpus registry. It also has in-memory variants for tests. |
-| `graphrag-adapter-langchain4j` | `LlmPort` and `EmbeddingPort` on OpenAI through LangChain4j (JSON-mode prompts, no retries). It also contains the deterministic offline stand-ins `LangChain4jLlmPort` and `LangChain4jEmbeddingPort`. |
+| `graphrag-adapter-langchain4j` | `LlmPort` and `EmbeddingPort` on OpenAI through LangChain4j. `OpenAiLlmPort` is a `PromptedLlmPort`: the prompts are the core's, and the adapter only sends them in JSON mode, without retries. It also contains the deterministic offline stand-ins `LangChain4jLlmPort` and `LangChain4jEmbeddingPort`. |
 | `graphrag-adapter-parsing` | `DocumentParserPort` for plain text and PDF (PDFBox). |
 | `graphrag-web` | The Spring Boot app: REST and SSE endpoints, wiring, and the plain-JS frontend (Thymeleaf template, Cytoscape from a CDN, no Node/npm tooling). |
 
@@ -467,7 +467,7 @@ erDiagram
 
 | | With `OPENAI_API_KEY` | Offline (no key, or the Offline Demo) |
 | --- | --- | --- |
-| Extraction | LLM per passage, with descriptions | Regex/sentence-based stub |
+| Extraction | LLM per passage, with descriptions; `GRAPHRAG_EXTRACTION_GLEANINGS=n` adds up to `n` turns asking for what was missed; `GRAPHRAG_DESCRIPTION_SUMMARIES=true` summarises descriptions that outgrow 1,000 characters | Regex/sentence-based stub |
 | Communities | GDS Leiden + LLM title and summary | GDS Leiden (or connected components in memory) + templated summary |
 | Seed matching | Embedding similarity (top-3) | `KeywordMatcher` |
 | Answers | LLM-written with `[n]` citations | Deterministic templates, no citations |

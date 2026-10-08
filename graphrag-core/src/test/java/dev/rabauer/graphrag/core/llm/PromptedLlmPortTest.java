@@ -223,6 +223,41 @@ class PromptedLlmPortTest {
     }
 
     @Test
+    void knownEntityNamesAreListedBeforeThePassageAndKeptForGleaning() {
+        ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true).withGleanings(1),
+                "{\"entities\":[{\"name\":\"Ada Lovelace\",\"type\":\"Person\"}],\"relationships\":[]}",
+                "{\"entities\":[],\"relationships\":[]}");
+        TextUnit unit = new TextUnit("t", "c", "a.txt", 1, "Ada wrote to Babbage, Charles.");
+
+        port.extract(unit, List.of("Person", "Other"), List.of("Ada Lovelace", "Babbage, Charles"));
+
+        String prompt = port.requests.getFirst().lastUserText();
+        assertTrue(prompt.contains("use its name exactly:\nAda Lovelace; Babbage, Charles\n\nPassage (a.txt, part 2):"));
+        assertEquals(prompt, port.requests.get(1).messages().getFirst().text());
+        assertFalse(new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true),
+                "{\"entities\":[],\"relationships\":[]}").extractionPrompt(unit, List.of("Person"), List.of())
+                .contains("earlier passages"));
+    }
+
+    @Test
+    void descriptionSummariesAreOffByDefaultAndOneCallWhenOn() {
+        ScriptedPort off = new ScriptedPort();
+        ScriptedPort on = new ScriptedPort(PromptedLlmPort.Options.defaults().withDescriptionSummaries(true),
+                "{\"description\": \"Ada wrote the first program.\"}");
+
+        assertFalse(off.summarizesDescriptions());
+        assertEquals("Ada wrote. Ada met Bob.", off.summarizeDescription("Ada", "Ada wrote. Ada met Bob."));
+        assertTrue(off.requests.isEmpty());
+        assertTrue(on.summarizesDescriptions());
+        assertEquals("Ada wrote the first program.", on.summarizeDescription("Ada", "Ada wrote. Ada met Bob."));
+        PromptedLlmPort.CompletionRequest request = on.requests.getFirst();
+        assertEquals(PromptedLlmPort.Purpose.DESCRIPTION_SUMMARY, request.purpose());
+        assertEquals(PromptedLlmPort.Schemas.DESCRIPTION_SUMMARY, request.jsonSchema());
+        assertTrue(request.lastUserText().contains("at most 1000 characters"));
+        assertTrue(request.lastUserText().endsWith("Element: Ada\nNotes:\nAda wrote. Ada met Bob."));
+    }
+
+    @Test
     void withoutGleaningsExtractionIsOneCall() {
         ScriptedPort port = new ScriptedPort(PromptedLlmPort.Options.defaults().withExtraction(true),
                 "{\"entities\":[{\"name\":\"Ada\",\"type\":\"Person\"}],\"relationships\":[]}",

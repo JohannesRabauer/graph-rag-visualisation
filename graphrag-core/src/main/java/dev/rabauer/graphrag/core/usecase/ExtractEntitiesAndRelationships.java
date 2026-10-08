@@ -9,12 +9,14 @@ import dev.rabauer.graphrag.core.port.GraphStorePort;
 import dev.rabauer.graphrag.core.port.LlmPort;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
 
 /**
@@ -29,8 +31,21 @@ import java.util.function.Consumer;
  * {@code false}, makes no extraction call: every Text Unit is still split and
  * persisted, but nothing is extracted. Exact graphs built without a model go
  * through {@link ImportKnowledgeGraph} instead.
+ *
+ * <p>With a port whose {@link LlmPort#summarizesDescriptions()} is true, the
+ * run keeps up to {@value #SUMMARY_INPUT_LIMIT} characters of each element's
+ * distinct description sentences instead of
+ * {@link GraphElementMerger#DESCRIPTION_LIMIT}; what it persists per unit is
+ * still cut to that limit. At the end of the run, each Entity and Relationship
+ * whose description outgrew the limit is summarised by the port once and
+ * persisted again.
  */
 public class ExtractEntitiesAndRelationships {
+
+    /** How many already-resolved Entity names each unit's extraction is told. */
+    static final int MAX_NAME_HINTS = 50;
+    /** How much description a run keeps per element for a summarising port. */
+    static final int SUMMARY_INPUT_LIMIT = 8_000;
 
     private final LlmPort llmPort;
     private final GraphStorePort graphStorePort;
@@ -76,11 +91,11 @@ public class ExtractEntitiesAndRelationships {
         Map<String, Entity> entities = new LinkedHashMap<>();
         Map<String, Relationship> relationships = new LinkedHashMap<>();
         for (TextUnit unit : TextUnitSplitter.split(corpus)) {
-            GraphExtraction extraction = extractUnit(unit, new ArrayList<>());
+            GraphExtraction extraction = extractUnit(unit, resolver, new ArrayList<>());
             accumulateResolved(extraction, resolver, entities, relationships, null,
-                    new RetypeSink(relationships, null, null));
+                    new RetypeSink(relationships, null, null, descriptionLimit()), descriptionLimit());
         }
-        return new GraphExtraction(new ArrayList<>(entities.values()), new ArrayList<>(relationships.values()));
+        return summarizeOverflowing(entities.values(), relationships.values());
     }
 
     public void run(Corpus corpus) {
@@ -130,14 +145,17 @@ public class ExtractEntitiesAndRelationships {
         Map<String, Relationship> mergedRelationships = new LinkedHashMap<>();
         for (int i = 0; i < total; i++) {
             TextUnit unit = units.get(i);
-            GraphExtraction extraction = extractUnit(unit, failures);
+            GraphExtraction extraction = extractUnit(unit, resolver, failures);
             Map<String, Entity> changedEntities = new LinkedHashMap<>();
             Map<String, Relationship> changedRelationships = new LinkedHashMap<>();
             Map<String, Entity> retypedEntities = new LinkedHashMap<>();
             accumulateResolved(extraction, resolver, mergedEntities, mergedRelationships, changedEntities,
-                    new RetypeSink(mergedRelationships, changedRelationships, retypedEntities));
+                    new RetypeSink(mergedRelationships, changedRelationships, retypedEntities, descriptionLimit()),
+                    descriptionLimit());
+            retypedEntities.replaceAll((identity, entity) -> capped(entity));
             GraphExtraction mergedExtraction = new GraphExtraction(
-                    new ArrayList<>(changedEntities.values()), new ArrayList<>(changedRelationships.values()));
+                    changedEntities.values().stream().map(ExtractEntitiesAndRelationships::capped).toList(),
+                    changedRelationships.values().stream().map(ExtractEntitiesAndRelationships::capped).toList());
 
             graphStorePort.persistTextUnits(corpus.id(), List.of(unit));
             for (Map.Entry<String, Entity> retyped : retypedEntities.entrySet()) {
@@ -165,14 +183,92 @@ public class ExtractEntitiesAndRelationships {
                 }
             }
         }
+        persistSummaries(corpus.id(), mergedEntities.values(), mergedRelationships.values());
         return new ExtractionReport(total, failures);
+    }
+
+    private int descriptionLimit() {
+        return llmPort.summarizesDescriptions() ? SUMMARY_INPUT_LIMIT : GraphElementMerger.DESCRIPTION_LIMIT;
+    }
+
+    private static boolean overflows(String description) {
+        return description != null && description.length() > GraphElementMerger.DESCRIPTION_LIMIT;
+    }
+
+    /** Summarises the overflowing elements of a run and persists them again. */
+    private void persistSummaries(String corpusId, Collection<Entity> entities,
+                                  Collection<Relationship> relationships) {
+        if (!llmPort.summarizesDescriptions()) {
+            return;
+        }
+        GraphExtraction summarized = summarizeOverflowing(
+                entities.stream().filter(entity -> overflows(entity.description())).toList(),
+                relationships.stream().filter(relationship -> overflows(relationship.description())).toList());
+        if (!summarized.entities().isEmpty() || !summarized.relationships().isEmpty()) {
+            graphStorePort.persist(corpusId, summarized);
+        }
+    }
+
+    /**
+     * The elements with descriptions within the limit: an overflowing one
+     * summarised by the port (when it summarises descriptions), otherwise cut.
+     * A failed summary fails the run under {@link FailurePolicy#FAIL_RUN}
+     * and keeps the cut description under {@link FailurePolicy#ISOLATE_ITEM}.
+     */
+    private GraphExtraction summarizeOverflowing(Collection<Entity> entities, Collection<Relationship> relationships) {
+        List<Entity> summarizedEntities = entities.stream()
+                .map(entity -> overflows(entity.description())
+                        ? entity.with(entity.name(), entity.type(), summarize(entity.name(), entity.description()),
+                                entity.sourceTextUnitIds())
+                        : entity)
+                .toList();
+        List<Relationship> summarizedRelationships = relationships.stream()
+                .map(relationship -> overflows(relationship.description())
+                        ? relationship.with(relationship.source(), relationship.sourceType(), relationship.target(),
+                                relationship.targetType(), summarize(relationship.source() + " -["
+                                        + relationship.type() + "]-> " + relationship.target(),
+                                        relationship.description()),
+                                relationship.sourceTextUnitIds(), relationship.weight())
+                        : relationship)
+                .toList();
+        return new GraphExtraction(summarizedEntities, summarizedRelationships);
+    }
+
+    private String summarize(String elementName, String description) {
+        if (!llmPort.summarizesDescriptions()) {
+            return GraphElementMerger.capDescription(description);
+        }
+        try {
+            return GraphElementMerger.capDescription(llmPort.summarizeDescription(elementName, description));
+        } catch (RuntimeException e) {
+            if (failurePolicy == FailurePolicy.ISOLATE_ITEM) {
+                return GraphElementMerger.capDescription(description);
+            }
+            throw new IllegalStateException("Summarising the description of '" + elementName + "' failed: "
+                    + e.getMessage(), e);
+        }
+    }
+
+    private static Entity capped(Entity entity) {
+        return overflows(entity.description()) ? entity.with(entity.name(), entity.type(),
+                GraphElementMerger.capDescription(entity.description()), entity.sourceTextUnitIds()) : entity;
+    }
+
+    private static Relationship capped(Relationship relationship) {
+        return overflows(relationship.description()) ? relationship.with(relationship.source(),
+                relationship.sourceType(), relationship.target(), relationship.targetType(),
+                GraphElementMerger.capDescription(relationship.description()), relationship.sourceTextUnitIds(),
+                relationship.weight()) : relationship;
     }
 
     private static void accumulateResolved(GraphExtraction extraction, EntityResolver resolver,
                                            Map<String, Entity> mergedEntities,
                                            Map<String, Relationship> mergedRelationships,
                                            Map<String, Entity> changedEntities,
-                                           RetypeSink retypeSink) {
+                                           RetypeSink retypeSink, int descriptionLimit) {
+        BinaryOperator<Entity> mergeEntities = (left, right) -> GraphElementMerger.merge(left, right, descriptionLimit);
+        BinaryOperator<Relationship> mergeRelationships =
+                (left, right) -> GraphElementMerger.merge(left, right, descriptionLimit);
         for (Entity entity : extraction.entities()) {
             EntityResolver.ResolvedEntity resolved = resolver.resolve(entity);
             Optional<String> previousIdentity = resolved.previousIdentity();
@@ -184,12 +280,11 @@ public class ExtractEntitiesAndRelationships {
                 if (previous != null) {
                     Entity rekeyedPrevious = previous.with(resolved.entity().name(), resolved.entity().type(),
                             previous.description(), previous.sourceTextUnitIds());
-                    mergedEntities.merge(resolved.entity().normalizedIdentity(), rekeyedPrevious,
-                            GraphElementMerger::merge);
+                    mergedEntities.merge(resolved.entity().normalizedIdentity(), rekeyedPrevious, mergeEntities);
                 }
             }
             String key = resolved.entity().normalizedIdentity();
-            Entity merged = mergedEntities.merge(key, resolved.entity(), GraphElementMerger::merge);
+            Entity merged = mergedEntities.merge(key, resolved.entity(), mergeEntities);
             if (changedEntities != null) {
                 changedEntities.put(key, merged);
             }
@@ -203,7 +298,7 @@ public class ExtractEntitiesAndRelationships {
         for (Relationship relationship : extraction.relationships()) {
             Relationship resolved = resolver.resolve(relationship);
             String key = relationshipKey(resolved);
-            Relationship merged = mergedRelationships.merge(key, resolved, GraphElementMerger::merge);
+            Relationship merged = mergedRelationships.merge(key, resolved, mergeRelationships);
             if (retypeSink != null && retypeSink.changedRelationships != null) {
                 retypeSink.changedRelationships.put(key, merged);
             }
@@ -212,7 +307,11 @@ public class ExtractEntitiesAndRelationships {
 
     private record RetypeSink(Map<String, Relationship> mergedRelationships,
                               Map<String, Relationship> changedRelationships,
-                              Map<String, Entity> retypedEntities) {
+                              Map<String, Entity> retypedEntities, int descriptionLimit) {
+
+        private Relationship merge(Relationship left, Relationship right) {
+            return GraphElementMerger.merge(left, right, descriptionLimit);
+        }
 
         private void rekeyRelationships(String previousIdentity, Entity resolved) {
             Map<String, Relationship> replacements = new LinkedHashMap<>();
@@ -222,9 +321,9 @@ public class ExtractEntitiesAndRelationships {
                 if (updated != entry.getValue()) {
                     replacedKeys.add(entry.getKey());
                     String updatedKey = relationshipKey(updated);
-                    replacements.merge(updatedKey, updated, GraphElementMerger::merge);
+                    replacements.merge(updatedKey, updated, this::merge);
                     if (changedRelationships != null) {
-                        changedRelationships.merge(updatedKey, updated, GraphElementMerger::merge);
+                        changedRelationships.merge(updatedKey, updated, this::merge);
                     }
                 }
             }
@@ -252,13 +351,18 @@ public class ExtractEntitiesAndRelationships {
                 relationship.description(), relationship.sourceTextUnitIds(), relationship.weight());
     }
 
-    private GraphExtraction extractUnit(TextUnit unit, List<ExtractionReport.UnitFailure> failures) {
+    /**
+     * Extracts one unit, telling the port the {@value #MAX_NAME_HINTS}
+     * most-mentioned names resolved so far in this run.
+     */
+    private GraphExtraction extractUnit(TextUnit unit, EntityResolver resolver,
+                                        List<ExtractionReport.UnitFailure> failures) {
         if (!llmPort.extractsEntities()) {
             return GraphExtraction.empty();
         }
         GraphExtraction raw;
         try {
-            raw = llmPort.extract(unit, entityTypes);
+            raw = llmPort.extract(unit, entityTypes, resolver.mostMentionedNames(MAX_NAME_HINTS));
         } catch (RuntimeException e) {
             if (failurePolicy == FailurePolicy.ISOLATE_ITEM) {
                 failures.add(new ExtractionReport.UnitFailure(unit.id(), unit.documentName(), unit.ordinal() + 1,

@@ -121,6 +121,53 @@ public interface LlmPort {
     }
 
     /**
+     * Whether {@link #summarizeDescription(String, String)} calls a model.
+     * When true, {@code ExtractEntitiesAndRelationships} keeps every distinct
+     * description sentence of a run and has an Entity's or Relationship's
+     * description summarised once, at the end of the run, when it outgrew
+     * {@code GraphElementMerger.DESCRIPTION_LIMIT}. The default is
+     * {@code false}: later sentences that do not fit are dropped.
+     */
+    default boolean summarizesDescriptions() {
+        return false;
+    }
+
+    /**
+     * One description of an Entity or Relationship from the merged
+     * descriptions of all its sightings, short enough for
+     * {@code GraphElementMerger.DESCRIPTION_LIMIT}. Only called when
+     * {@link #summarizesDescriptions()} is true; the caller cuts a longer
+     * reply. The default returns {@code description} unchanged.
+     *
+     * @param elementName the Entity's name, or {@code source -[type]-> target}
+     *                    for a Relationship
+     * @param description the merged descriptions, one sentence after another
+     * @return the summary; never null
+     */
+    default String summarizeDescription(String elementName, String description) {
+        return description == null ? "" : description;
+    }
+
+    /**
+     * {@link #extract(TextUnit, List)} told the names of the Entities found
+     * earlier in the same extraction run, most-mentioned first, so a model
+     * can reuse them instead of inventing spelling variants.
+     *
+     * <p>The default ignores the names and delegates to
+     * {@link #extract(TextUnit, List)}, so existing ports and lambdas keep
+     * working.
+     *
+     * @param unit             the passage to extract from; never null
+     * @param entityTypes      the allowed Entity types, in order; never null
+     * @param knownEntityNames names already found in this run, capped by the
+     *                         caller; never null, empty for the first unit
+     * @return the entities and relationships found in {@code unit}; never null
+     */
+    default GraphExtraction extract(TextUnit unit, List<String> entityTypes, List<String> knownEntityNames) {
+        return extract(unit, entityTypes);
+    }
+
+    /**
      * A one-sentence Community summary. The default is deterministic:
      * "This community centers on" plus up to four distinct member names.
      */

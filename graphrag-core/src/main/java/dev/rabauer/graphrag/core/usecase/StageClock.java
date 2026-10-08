@@ -89,6 +89,11 @@ final class StageClock {
         }
 
         @Override
+        public GraphExtraction extract(TextUnit unit, List<String> entityTypes, List<String> knownEntityNames) {
+            return timeLlm(() -> delegate.extract(unit, entityTypes, knownEntityNames));
+        }
+
+        @Override
         public String summarizeCommunity(Collection<Entity> members) {
             return timeLlm(() -> delegate.summarizeCommunity(members));
         }
@@ -127,6 +132,16 @@ final class StageClock {
         @Override
         public boolean derivesSubQuestions() {
             return delegate.derivesSubQuestions();
+        }
+
+        @Override
+        public boolean summarizesDescriptions() {
+            return delegate.summarizesDescriptions();
+        }
+
+        @Override
+        public String summarizeDescription(String elementName, String description) {
+            return timeLlm(() -> delegate.summarizeDescription(elementName, description));
         }
 
         @Override
