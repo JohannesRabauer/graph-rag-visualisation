@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The contract of an {@link EmbeddingPort}: non-empty, finite vectors of one
  * dimension for any text (including blank text), the same vector for the same
- * text when the model is deterministic, and — for a port that reports
+ * text when the model is deterministic, {@link EmbeddingPort#embedAll(List)}
+ * giving the vectors of {@code embed} one per text in order, and — for a port that reports
  * {@link EmbeddingPort#isSemantic()} — nearby meanings closer than unrelated
  * ones. Extend it and return the port from {@link #port()}.
  */
@@ -53,6 +54,25 @@ public abstract class EmbeddingPortContract {
             }
             assertEquals(dimensions, vector.length, "dimension for '" + text + "'");
         }
+    }
+
+    @Test
+    void embedAllReturnsOneVectorPerTextInOrder() {
+        EmbeddingPort port = port();
+        List<String> texts = List.of("OrderService#placeOrder", "A longer sentence about orders and payments.", "");
+
+        List<float[]> vectors = port.embedAll(texts);
+
+        assertNotNull(vectors, "embedAll returned null");
+        assertEquals(texts.size(), vectors.size(), "one vector per text");
+        for (int i = 0; i < texts.size(); i++) {
+            assertNotNull(vectors.get(i), "vector for '" + texts.get(i) + "'");
+            assertEquals(port.embed(texts.get(i)).length, vectors.get(i).length, "dimension for '" + texts.get(i) + "'");
+            if (deterministic()) {
+                assertArrayEquals(port.embed(texts.get(i)), vectors.get(i), 1e-5f, "vector for '" + texts.get(i) + "'");
+            }
+        }
+        assertTrue(port.embedAll(List.of()).isEmpty(), "no texts, no vectors");
     }
 
     @Test

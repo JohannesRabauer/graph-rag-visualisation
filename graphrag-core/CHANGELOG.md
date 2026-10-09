@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The summary-reuse content hash covers the statistics when they say more than the listed members do, so a Community whose size or module split changed is summarised again.
   - The seven-argument `DetectCommunities.Options` constructor is kept.
 
+- **Batched embeddings.** New `EmbeddingPort.embedAll(List<String>)`; the default calls `embed` for each text in order, so existing ports and lambdas keep working. A port with a batch call (Ollama `/api/embed`, OpenAI) should override it with one request. `EmbedGraphElements` now sends its texts through `embedAll`, `EmbedGraphElements.Options.batchSize()` at a time (default 32), instead of one `embed` call per Entity and Community; a port returning another number of vectors than texts fails with `IllegalStateException`. `OpenAiEmbeddingPort` overrides `embedAll` with one request per batch.
+  - **What a Community is embedded as.** The default stays the summary alone. `EmbedGraphElements.Options.withCommunityTitle(true)` embeds `title + ": " + summary`, and `withCommunityKeyMembers(n)` appends `"Key members: A, B, ..."`, the `n` members with the most Relationship weight inside the Community first. A new constructor `EmbedGraphElements(store, port, options)` takes the options; the two-argument one is kept. Re-embed a corpus (`run`, `embedCommunities`) after changing them, so stored vectors and the question's vector are compared on like text.
+  - The testkit's `EmbeddingPortContract` gains a test that `embedAll` returns one vector per text, in order, equal to `embed`'s for a deterministic port. Ports that keep the default pass it.
+
 ### Changed
 
 - **Better `PromptedLlmPort` prompts.**
