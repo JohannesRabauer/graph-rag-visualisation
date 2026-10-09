@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Without a summarising port, nothing changes.
 - **`PromptedLlmPort.compareAnswers`.** The GraphRAG-vs-Vector verdict is now written by the model (`Purpose.VERDICT`, `Schemas.VERDICT`, output-token limit `Options.verdictTokens()`, default 256). Before, it was always the rule-based text. An unusable reply fails with `LlmReplyException`, and `CompareAnswers` falls back to the rule-based verdict as before.
 
+- **Local expansion can be limited per hop and ordered by the caller.** `LocalRetrievalOptions` gains the components `maxRelationshipsPerHop` and `maxNewNodesPerHop` (both default `Integer.MAX_VALUE`: no change) and `relationshipComparator` (a `Comparator<Relationship>`, default `null`: use `ordering`), with `withMaxRelationshipsPerHop`, `withMaxNewNodesPerHop` and `withRelationshipComparator`. The 13-argument constructor is kept. A new `RelationshipOrdering.NEW_NODES_FIRST` puts Relationships that reach a not-yet-included Entity before those between included ones. Before, one global cap and a weight-only ordering let heavy Relationships among the seeds use the cap up before a new Entity was reached, so hops beyond the first never ran, and a hub outranked everything. `maxNewNodesPerHop` skips a Relationship that would reach more new Entities than the hop has left, so a hub cannot take over a hop; the comparator replaces the ordering for every hop.
+
 ### Changed
 
 - **Better `PromptedLlmPort` prompts.**
