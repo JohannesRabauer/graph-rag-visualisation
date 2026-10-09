@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-09
+
 ### Added
 
 - **Gleaning for `PromptedLlmPort` extraction.** `PromptedLlmPort.Options.withGleanings(n)` (default `0`) runs up to `n` more turns of the extraction conversation per Text Unit. Each turn asks only for the Entities and Relationships missed so far (`PromptedLlmPort.GLEANING_PROMPT`), and the results are merged by identity. Gleaning stops early when a turn adds nothing new or its reply cannot be used; what was found so far is kept. Each turn costs one more call per Text Unit.
