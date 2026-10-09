@@ -86,7 +86,7 @@ usable fallback; only the abstract methods listed below are required.
 | `GraphReadPort` | Reads the knowledge graph: everything the query use cases need. | none (every method has a default; implement the corpus-scoped reads you have) |
 | `GraphWritePort` | Persists the knowledge graph and detects Communities. | `persistEntities(Collection)`, `persistRelationships(Collection)`, `detectCommunities(String)` |
 | `GraphStorePort` | Both of the above (`extends GraphReadPort, GraphWritePort`), with the default `detectCommunities`. | `void persistEntities(Collection<Entity> entities)`, `void persistRelationships(Collection<Relationship> relationships)` |
-| `EmbeddingPort` | Turns chunk text into a dense embedding vector. | `float[] embed(String text)` |
+| `EmbeddingPort` | Turns chunk text into a dense embedding vector. `embedAll(List<String>)` (default: loops `embed`) is the batch call; override it when the model has one. | `float[] embed(String text)` |
 | `VectorStorePort` | Persists and queries a corpus's embedded chunks and its fitted 2D projection model. | `void persistChunks(String corpusId, Collection<EmbeddedChunk> chunks)` |
 
 `GraphStorePort.detectCommunities(String corpusId)` is the grouping that
@@ -232,6 +232,11 @@ exactly as before (sequential, unlimited, the first failure propagates).
 | `maxWallTime` | unlimited | Time budget; summaries not finished by then are `SKIPPED_BUDGET`. |
 | `failurePolicy` | `FAIL_RUN` | `ISOLATE_ITEM`: a failing summary is `FAILED` (with its error) and the run continues. |
 | `reuseSummaries` | off | Reuse a stored Community's summary when its content hash matches (attributes `contentHash`, `summaryStatus`). |
+| `summaryMemberOrder` | stored entity order | A `Comparator<Entity>` that sorts the members before the first `maxSummaryMembers` are handed to the port. Without it a large Community is summarized from the members the store lists first. The Community keeps every member. |
+| `maxSummaryMembers` | 25 | Members handed to the port per Community. |
+| `hierarchyLevel` | `-1` (coarsest) | Which level of the detector's hierarchy (`CommunityDetector.detectHierarchy`; 0 = finest) becomes the Communities. |
+| `maxCommunitySize` | 0 (no limit) | Larger groups are split along the finer levels, down to level 0. With a level or a size and no `detector`, the core's modularity detector is used instead of the store's own grouping. |
+| `statsAttributes` | `module`, `package` | Entity attributes counted for the `CommunityStats` the port gets (`LlmPort.summarizeCommunity(members, relationships, stats)`: full size, counts by attribute). |
 
 Every detected Community and membership is persisted in every case; one whose
 summary failed or was skipped gets the deterministic title and summary, and
@@ -279,10 +284,33 @@ answer context is now built by the same expansion engine with
   method names, other name segments, near misses (one or two edits) and
   shared camel-case words, plus plain question words against name words.
   Besides the Entity name it matches the `qualifiedName`, `simpleName` and
-  `signature` attributes.
+  `signature` attributes. Package segments (the lower-case segments in front
+  of the first upper-case one) are not among a name's words and score only 3
+  as a token, so `BrokerService` does not match every class in a package
+  called `broker`. The normalised names are indexed once per corpus: reuse one
+  matcher instance across questions.
 - `HybridSeedMatcher` — reciprocal-rank fusion (`1/(60 + rank)`) of any
   matchers; `SeedMatchers.forCode(embeddings)` fuses identifiers with
   semantic seeds.
+
+**Scores are only comparable within one matcher** (identifier 0 to 100 and
+more, fusion about 0.03, keyword counts), so never add raw scores of different
+matchers. Compose by rank with `HybridSeedMatcher` / `SeedMatchers.fuseByRank`,
+or on a common scale with `SeedMatchers.normalized(matcher)` and
+`SeedMatchers.weightedSum(matchers, weights)`. `SeedMatchers.validated(matcher)`
+checks the contract (finite scores, best first, at most `limit`) while you
+develop a matcher.
+
+### Reading a large corpus
+
+The retrieval use cases read by identity (`entities(corpusId, identities)`,
+`relationshipsTouching`): `RetrieveGlobalContext` reads the Communities and
+memberships, then only the members of the picked Communities, and
+`ImportKnowledgeGraph` looks up only the missing Relationship endpoints. Override
+those two reads with indexed lookups in your store. A matcher that scores every
+Entity still reads them all; wrap the store in
+`new CachingGraphReadPort(store)` (call `invalidate(corpusId)` after writes, or
+pass a maximum age) to read each corpus once.
 
 ### Local expansion options
 
@@ -299,7 +327,10 @@ answer context is now built by the same expansion engine with
 | `maxItems` | 100 | Items overall. |
 | `includeRelationshipTypes` / `excludeRelationshipTypes` | all / none | Case-insensitive type filters (e.g. only `CALLS`). |
 | `minWeight` | 1 | Weight threshold (e.g. call counts). |
-| `ordering` | `WEIGHT_DESC` | `WEIGHT_DESC`, `WEIGHT_ASC` or `STORED`; ties keep stored order. |
+| `ordering` | `WEIGHT_DESC` | `WEIGHT_DESC`, `WEIGHT_ASC`, `STORED` or `NEW_NODES_FIRST` (Relationships that reach a not-yet-included Entity first); ties keep stored order. |
+| `maxRelationshipsPerHop` | unlimited | The most Relationships one hop adds, so heavy edges among the seeds cannot use the global cap up before a new Entity is reached. |
+| `maxNewNodesPerHop` | unlimited | The most Entities one hop may newly reach; keeps a hub from taking over a hop. |
+| `relationshipComparator` | none | A `Comparator<Relationship>` that orders every hop's candidates instead of `ordering`. |
 | `direction` | `BOTH` | `OUTGOING` (what it calls) or `INCOMING` (its callers). |
 | `includeNeighborEntities` | true | Reached Entities become items (with locators). |
 | `includeMemberTextUnits` | true | Every included Entity's own Text Units are ranked, not only the seeds'. |
