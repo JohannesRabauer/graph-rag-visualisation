@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`CachingGraphReadPort`**, a read view that keeps the whole-corpus reads of another `GraphReadPort` (`entities`, `relationships`, `communities`, `communityMemberships` per corpus id). Questions that score every Entity (the keyword and identifier matchers) then cost one store read per corpus instead of one per question, and a store need not cache a corpus itself. Targeted reads, Text Units and the similarity lookups always go to the store. Entries live until `invalidate(corpusId)` / `invalidateAll()` (call after writes) or, with the constructors taking a `Duration`, until they are older than the maximum age. It passes the testkit's `GraphReadPortContract`.
 
+- **A score contract for `SeedMatcher`, and helpers to compose matchers.** Scores of different matchers are on different scales (identifier 0 to 100 and more, reciprocal-rank fusion about 0.03, keyword counts), so they were easy to add up wrongly. `SeedMatcher` and `SeedMatch` now document the contract (finite scores, higher is better, best first, comparable only within one matcher's result), and:
+  - `SeedMatchers.fuseByRank(rankings, k, limit)` is the reciprocal-rank fusion `HybridSeedMatcher` already did, as a helper. Only the order of each list counts. `HybridSeedMatcher` uses it and now also ranks a matcher that returns its matches out of order by their scores, instead of by position.
+  - `SeedMatchers.normalized(matcher)` scales a matcher's scores to the range 0 to 1 (best = 1, ratios kept; a linear map when scores can be negative).
+  - `SeedMatchers.weightedSum(matchers, weights)` adds the normalised scores per Entity, weighted, for when the strength of a match matters and not only its rank.
+  - `SeedMatchers.validated(matcher)` throws `IllegalStateException` for a result that is null, longer than the limit, not finite or not best first, for tests and for applications that compose matchers they did not write.
+  - `SeedMatch.withScore(double)`.
+  Existing matchers keep their scores and behaviour.
+
 ### Changed
 
 - **Better `PromptedLlmPort` prompts.**
