@@ -52,6 +52,19 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
+      # The runner's default Maven moved to newer default plugins (install 3.2.0, ...) and
+      # the Central bundle then fails validation ("content that does NOT have a .pom file").
+      # 2.0.1 was released with Maven 3.9.x, so use exactly that line.
+      - name: Use Maven 3.9.11
+        run: |
+          curl -fsSL -o /tmp/maven.tar.gz https://archive.apache.org/dist/maven/maven-3/3.9.11/binaries/apache-maven-3.9.11-bin.tar.gz
+          echo "$(curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.9.11/binaries/apache-maven-3.9.11-bin.tar.gz.sha512)  /tmp/maven.tar.gz" | sha512sum -c -
+          sudo tar -xzf /tmp/maven.tar.gz -C /opt
+          echo "/opt/apache-maven-3.9.11/bin" >> "$GITHUB_PATH"
+
+      - name: Show the Maven version
+        run: mvn -v
+
       # The testkit depends on graphrag-core at ${project.version}, so both
       # move together.
       - name: Set the version
