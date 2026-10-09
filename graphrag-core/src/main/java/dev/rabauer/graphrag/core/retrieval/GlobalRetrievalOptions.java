@@ -8,8 +8,11 @@ package dev.rabauer.graphrag.core.retrieval;
  * keyword overlap with {@code title + summary} plus, with
  * {@code matchMembers}, the seed scores of its members that the
  * {@link SeedMatcher} finds (so an identifier in the question finds the
- * Community containing that class). Communities scoring above zero are kept,
- * highest first, id as tiebreak.
+ * Community containing that class). The two parts are on different scales
+ * (integer keyword counts, a matcher's own scores), so each is divided by the
+ * best Community's value first: a Community scores between 0 and 2, whatever
+ * the matcher (identifier, fused, keyword). Communities scoring above zero are
+ * kept, highest first, id as tiebreak.
  *
  * @param maxCommunities             the most Communities (at least 1)
  * @param memberEntitiesPerCommunity the most member Entities per Community

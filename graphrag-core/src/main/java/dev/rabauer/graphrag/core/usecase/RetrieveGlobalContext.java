@@ -131,10 +131,14 @@ public class RetrieveGlobalContext {
 
     /**
      * The candidate Communities: semantic (score {@code 1/rank}) when the port
-     * is semantic and the corpus has Community embeddings, else keyword overlap
-     * with {@code title + summary} plus member seed scores; above zero only,
-     * highest first, id as tiebreak, at most {@code maxCommunities}. Fills
-     * {@code memberScores} with the member seed scores it used.
+     * is semantic and the corpus has Community embeddings, else the keyword
+     * overlap with {@code title + summary} plus the member seed scores. Both
+     * parts are scaled to [0, 1] by the best Community's value (so a fused
+     * matcher's scores of about 0.03 count as much as an identifier matcher's
+     * 100 or the integer keyword counts), and a Community scores their sum;
+     * above zero only, highest first, id as tiebreak, at most
+     * {@code maxCommunities}. Fills {@code memberScores} with the raw member
+     * seed scores it used.
      */
     static List<Scored> candidates(GraphReadPort graph, EmbeddingPort embeddingPort, SeedMatcher memberMatcher,
                                    String question, String corpusId, GlobalRetrievalOptions options,
@@ -154,14 +158,27 @@ public class RetrieveGlobalContext {
             }
         }
         Set<String> tokens = KeywordMatcher.tokenize(question);
-        List<Scored> scored = new ArrayList<>();
-        for (Community community : context.communities()) {
-            double score = KeywordMatcher.score(community.title() + " " + community.summary(), tokens);
+        // Keyword counts (integers) and member seed scores (any scale: 100 for identifiers, ~0.03 when fused)
+        // are each scaled by their best Community, so both parts are in [0, 1] and add up fairly.
+        double[] keywordScores = new double[context.communities().size()];
+        double[] memberTotals = new double[keywordScores.length];
+        double bestKeyword = 0;
+        double bestMember = 0;
+        for (int i = 0; i < keywordScores.length; i++) {
+            Community community = context.communities().get(i);
+            keywordScores[i] = KeywordMatcher.score(community.title() + " " + community.summary(), tokens);
             for (String member : context.membersOf(community.id())) {
-                score += memberScores.getOrDefault(member, 0.0);
+                memberTotals[i] += memberScores.getOrDefault(member, 0.0);
             }
+            bestKeyword = Math.max(bestKeyword, keywordScores[i]);
+            bestMember = Math.max(bestMember, memberTotals[i]);
+        }
+        List<Scored> scored = new ArrayList<>();
+        for (int i = 0; i < keywordScores.length; i++) {
+            double score = (bestKeyword > 0 ? keywordScores[i] / bestKeyword : 0)
+                    + (bestMember > 0 ? memberTotals[i] / bestMember : 0);
             if (score > 0) {
-                scored.add(new Scored(community, score));
+                scored.add(new Scored(context.communities().get(i), score));
             }
         }
         scored.sort(Comparator.comparingDouble(Scored::score).reversed()
