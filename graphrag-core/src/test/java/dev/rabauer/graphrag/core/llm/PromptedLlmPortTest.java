@@ -94,9 +94,9 @@ class PromptedLlmPortTest {
 
         assertEquals("About orders.", summary.summary());
         assertEquals(2, port.requests.size());
-        List<PromptedLlmPort.Message> retry = port.requests.get(1).messages();
+        List<PromptedLlmPort.CompletionRequest.Message> retry = port.requests.get(1).messages();
         assertEquals(List.of(PromptedLlmPort.Role.USER, PromptedLlmPort.Role.ASSISTANT, PromptedLlmPort.Role.USER),
-                retry.stream().map(PromptedLlmPort.Message::role).toList());
+                retry.stream().map(PromptedLlmPort.CompletionRequest.Message::role).toList());
         assertEquals("It is about orders.", retry.get(1).text());
         assertTrue(retry.get(2).text().contains("did not contain a JSON object"));
         assertTrue(retry.get(2).text().contains(PromptedLlmPort.Schemas.COMMUNITY_SUMMARY));
@@ -323,9 +323,9 @@ class PromptedLlmPortTest {
         assertEquals("A mathematician. Met Bob.", extraction.entities().getFirst().description());
         assertEquals(1, extraction.relationships().size());
         assertEquals(3, port.requests.size());
-        List<PromptedLlmPort.Message> second = port.requests.get(1).messages();
+        List<PromptedLlmPort.CompletionRequest.Message> second = port.requests.get(1).messages();
         assertEquals(List.of(PromptedLlmPort.Role.USER, PromptedLlmPort.Role.ASSISTANT, PromptedLlmPort.Role.USER),
-                second.stream().map(PromptedLlmPort.Message::role).toList());
+                second.stream().map(PromptedLlmPort.CompletionRequest.Message::role).toList());
         assertTrue(second.get(1).text().contains("A mathematician."));
         assertEquals(PromptedLlmPort.GLEANING_PROMPT, second.get(2).text());
         assertEquals(PromptedLlmPort.Purpose.EXTRACTION, port.requests.get(1).purpose());

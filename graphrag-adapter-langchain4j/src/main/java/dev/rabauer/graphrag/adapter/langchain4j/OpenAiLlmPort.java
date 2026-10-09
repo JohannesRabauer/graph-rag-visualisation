@@ -140,7 +140,7 @@ public class OpenAiLlmPort extends PromptedLlmPort {
                 ? "" : response.aiMessage().text();
     }
 
-    private static ChatMessage toChatMessage(Message message) {
+    private static ChatMessage toChatMessage(CompletionRequest.Message message) {
         return switch (message.role()) {
             case SYSTEM -> SystemMessage.from(message.text());
             case USER -> UserMessage.from(message.text());
