@@ -88,6 +88,14 @@
 
   <build>
     <plugins>
+      <!-- Pinned: the Central Publishing plugin hooks into install, and the 3.2.0 that a newer
+           runner Maven picks by default leaves a stray metadata file in the bundle, so Central
+           rejects it ("content that does NOT have a .pom file"). 3.1.4 is what released 2.0.1. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-install-plugin</artifactId>
+        <version>3.1.4</version>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
