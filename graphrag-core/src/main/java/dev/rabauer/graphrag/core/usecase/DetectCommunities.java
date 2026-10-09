@@ -4,6 +4,7 @@ import dev.rabauer.graphrag.core.community.CommunityDetector;
 import dev.rabauer.graphrag.core.community.GraphCommunities;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityMembership;
+import dev.rabauer.graphrag.core.domain.CommunityStats;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.Corpus;
 import dev.rabauer.graphrag.core.domain.Entity;
@@ -70,10 +71,35 @@ import java.util.function.BiConsumer;
  * content hash for incremental re-runs. Every Community is persisted in every
  * case; one whose summary failed or was skipped gets the deterministic title
  * and summary.</p>
+ *
+ * <p><b>What a summary is written from.</b> The port gets, per Community, the
+ * first {@link Options#maxSummaryMembers()} members (default
+ * {@value #MAX_SUMMARY_MEMBERS}) <em>in stored entity order</em>, so for a large
+ * Community the summary covers whichever members the store lists first.
+ * {@link Options#summaryMemberOrder()} sorts the members first (for example by
+ * a ranking attribute) and so chooses which ones are summarized; it changes
+ * nothing about the Community's membership. The port also gets a
+ * {@link CommunityStats}: the Community's full size and its member counts by
+ * {@link Options#statsAttributes() attribute} (default {@code module} and
+ * {@code package}), through
+ * {@link LlmPort#summarizeCommunity(Collection, Collection, CommunityStats)}.</p>
+ *
+ * <p><b>Flat or hierarchical.</b> By default the Communities are one flat
+ * partition (the store's, or the detector's coarsest level).
+ * {@link Options#hierarchyLevel()} picks another level of the detector's
+ * hierarchy (for the modularity detector, {@code detectHierarchy}: level 0 is
+ * the finest), and {@link Options#maxCommunitySize()} splits oversized
+ * Communities along the finer levels. Either one makes the run use the
+ * detector's hierarchy; without a {@link Options#detector()} that is the core's
+ * modularity detector, not the store's own grouping.</p>
  */
 public class DetectCommunities {
 
-    /** At most this many members (in entity order) are handed to the LLM per Community. */
+    /**
+     * By default at most this many members are handed to the LLM per Community,
+     * in stored entity order ({@link Options#maxSummaryMembers()},
+     * {@link Options#summaryMemberOrder()}).
+     */
     static final int MAX_SUMMARY_MEMBERS = 25;
     /** At most this many internal Relationships (highest weight first) are handed to the LLM per Community. */
     static final int MAX_SUMMARY_RELATIONSHIPS = 30;
@@ -197,9 +223,7 @@ public class DetectCommunities {
         }
 
         List<Relationship> allRelationships = storedRelationships(corpusId);
-        List<List<String>> identityGroups = options.detector() == null
-                ? graphStorePort.detectCommunities(corpusId)
-                : GraphCommunities.detect(options.detector(), entities, allRelationships);
+        List<List<String>> identityGroups = identityGroups(corpusId, entities, allRelationships);
         List<List<Entity>> groups = orderedGroups(entities, identityGroups).stream()
                 .filter(members -> distinctIdentities(members) >= options.minCommunitySize())
                 .toList();
@@ -210,9 +234,12 @@ public class DetectCommunities {
         List<Draft> drafts = new ArrayList<>();
         int index = 1;
         for (List<Entity> members : groups) {
-            List<Entity> capped = members.stream().limit(MAX_SUMMARY_MEMBERS).toList();
+            List<Entity> listed = options.summaryMemberOrder() == null ? members
+                    : members.stream().sorted(options.summaryMemberOrder()).toList();
+            List<Entity> capped = listed.stream().limit(options.maxSummaryMembers()).toList();
             drafts.add(new Draft("community-" + index++, members, capped,
-                    internalRelationships(capped, allRelationships)));
+                    internalRelationships(capped, allRelationships),
+                    CommunityStats.of(members, capped.size(), options.statsAttributes())));
         }
 
         List<Summarized> summarized = summarizeAll(drafts, started, progress, reusable);
@@ -259,6 +286,27 @@ public class DetectCommunities {
                 communities, outcomes, elapsedMs(started));
     }
 
+    /**
+     * The grouping: the store's own, or the {@link Options#detector()} flat; with
+     * a {@linkplain Options#hierarchyLevel() level} or a
+     * {@linkplain Options#maxCommunitySize() maximum size} chosen, one
+     * partition cut out of the detector's hierarchy (the core's modularity
+     * detector when no detector is set, since a store's native grouping has no
+     * levels).
+     */
+    private List<List<String>> identityGroups(String corpusId, List<Entity> entities,
+                                              List<Relationship> relationships) {
+        if (options.usesHierarchy()) {
+            CommunityDetector detector = options.detector() == null ? GraphCommunities.defaultDetector()
+                    : options.detector();
+            return GraphCommunities.select(GraphCommunities.detectHierarchy(detector, entities, relationships),
+                    options.hierarchyLevel(), options.maxCommunitySize());
+        }
+        return options.detector() == null
+                ? graphStorePort.detectCommunities(corpusId)
+                : GraphCommunities.detect(options.detector(), entities, relationships);
+    }
+
     private static CommunityDetectionResult emptyResult(String corpusId, long started) {
         return new CommunityDetectionResult(corpusId, CommunityDetectionResult.Status.EMPTY, List.of(), List.of(),
                 elapsedMs(started));
@@ -272,7 +320,7 @@ public class DetectCommunities {
 
     /** One detected group before it is summarized. */
     private record Draft(String id, List<Entity> members, List<Entity> cappedMembers,
-                         List<Relationship> internalRelationships) {
+                         List<Relationship> internalRelationships, CommunityStats stats) {
     }
 
     /** One group's summary and how it was obtained. */
@@ -368,15 +416,19 @@ public class DetectCommunities {
     }
 
     /**
-     * Summarizes one Community from its first {@value #MAX_SUMMARY_MEMBERS} members
-     * and its internal Relationships (both endpoints among those passed members), the
-     * {@value #MAX_SUMMARY_RELATIONSHIPS} highest-weight first, ties in stored order.
+     * Summarizes one Community from its first {@link Options#maxSummaryMembers()}
+     * members (default {@value #MAX_SUMMARY_MEMBERS}, in stored entity order unless
+     * {@link Options#summaryMemberOrder()} sorts them) and its internal Relationships
+     * (both endpoints among those passed members), the {@value #MAX_SUMMARY_RELATIONSHIPS}
+     * highest-weight first, ties in stored order, together with the
+     * {@link CommunityStats} of the whole Community.
      * A port returning null gets the deterministic title and summary (no second call).
      */
     private Summarized summarizeOne(Draft draft) {
         CommunitySummary generated;
         try {
-            generated = llmPort.summarizeCommunity(draft.cappedMembers(), draft.internalRelationships());
+            generated = llmPort.summarizeCommunity(draft.cappedMembers(), draft.internalRelationships(),
+                    draft.stats());
         } catch (RuntimeException e) {
             if (options.failurePolicy() == FailurePolicy.FAIL_RUN) {
                 throw e;
@@ -433,7 +485,16 @@ public class DetectCommunities {
      * the port, each sorted, so the hash ignores storage order.
      */
     static String contentHash(List<Entity> cappedMembers, List<Relationship> internalRelationships) {
+        return contentHash(cappedMembers, internalRelationships, null);
+    }
+
+    /** As above, plus the size and attribute counts when they say more than the listed members do. */
+    static String contentHash(List<Entity> cappedMembers, List<Relationship> internalRelationships,
+                              CommunityStats stats) {
         List<String> lines = new ArrayList<>();
+        if (stats != null && stats.isInformative()) {
+            lines.add("S|" + stats.memberCount() + "|" + stats.attributeCounts());
+        }
         for (Entity member : cappedMembers) {
             lines.add("E|" + member.normalizedIdentity() + "|" + member.description());
         }
@@ -455,7 +516,7 @@ public class DetectCommunities {
     }
 
     private static String contentHash(Draft draft) {
-        return contentHash(draft.cappedMembers(), draft.internalRelationships());
+        return contentHash(draft.cappedMembers(), draft.internalRelationships(), draft.stats());
     }
 
     // -- Grouping -------------------------------------------------------------------
@@ -560,25 +621,57 @@ public class DetectCommunities {
     /**
      * How a run detects and summarizes.
      *
-     * @param minCommunitySize the minimum number of distinct members (at least 1)
-     * @param detector         the grouping to use instead of
-     *                         {@link GraphStorePort#detectCommunities(String)};
-     *                         null uses the store's
-     * @param parallelism      the most summaries in flight at once (at least 1);
-     *                         only used when the port's
-     *                         {@link LlmPort#summarizesCommunities()} is true
-     * @param maxSummaries     the most port calls per run (at least 0); the rest
-     *                         are {@link SummaryStatus#SKIPPED_BUDGET}
-     * @param maxWallTime      the run's time budget; summaries not finished by
-     *                         then are {@link SummaryStatus#SKIPPED_BUDGET}; null
-     *                         means unlimited
-     * @param failurePolicy    whether a failing summary stops the run
-     * @param reuseSummaries   whether to reuse a stored Community's summary when
-     *                         its content hash matches (and record the hash and
-     *                         summary status as Community attributes)
+     * @param minCommunitySize   the minimum number of distinct members (at least 1)
+     * @param detector           the grouping to use instead of
+     *                           {@link GraphStorePort#detectCommunities(String)};
+     *                           null uses the store's
+     * @param parallelism        the most summaries in flight at once (at least 1);
+     *                           only used when the port's
+     *                           {@link LlmPort#summarizesCommunities()} is true
+     * @param maxSummaries       the most port calls per run (at least 0); the rest
+     *                           are {@link SummaryStatus#SKIPPED_BUDGET}
+     * @param maxWallTime        the run's time budget; summaries not finished by
+     *                           then are {@link SummaryStatus#SKIPPED_BUDGET}; null
+     *                           means unlimited
+     * @param failurePolicy      whether a failing summary stops the run
+     * @param reuseSummaries     whether to reuse a stored Community's summary when
+     *                           its content hash matches (and record the hash and
+     *                           summary status as Community attributes)
+     * @param summaryMemberOrder which members of a Community the summary is
+     *                           written from, and in which order: the members
+     *                           are sorted with it (stable) and the first
+     *                           {@code maxSummaryMembers} are handed to the port.
+     *                           null (the default) keeps the stored entity
+     *                           order, so the summary covers the first members
+     *                           stored. Only the summary is affected: a
+     *                           Community still has every member, in entity
+     *                           order
+     * @param maxSummaryMembers  the most members handed to the port per Community
+     *                           (at least 1; default {@value DetectCommunities#MAX_SUMMARY_MEMBERS})
+     * @param hierarchyLevel     which level of the detector's hierarchy becomes
+     *                           the Communities: 0 is the finest, a negative
+     *                           value (the default, -1) the coarsest, a level
+     *                           beyond the last also the coarsest. With a level
+     *                           (or a {@code maxCommunitySize}) and no
+     *                           {@code detector}, the core's modularity detector
+     *                           is used instead of the store's own grouping,
+     *                           because that one has no levels
+     * @param maxCommunitySize   the most members per Community (at least 0; 0 =
+     *                           no limit): a larger group is replaced by the parts
+     *                           of the next finer level, down to level 0, where
+     *                           it stays whole
+     * @param statsAttributes    the Entity attributes counted for
+     *                           {@link CommunityStats} (default {@code module} and
+     *                           {@code package}); an attribute no member has is
+     *                           left out
      */
     public record Options(int minCommunitySize, CommunityDetector detector, int parallelism, int maxSummaries,
-                          Duration maxWallTime, FailurePolicy failurePolicy, boolean reuseSummaries) {
+                          Duration maxWallTime, FailurePolicy failurePolicy, boolean reuseSummaries,
+                          Comparator<Entity> summaryMemberOrder, int maxSummaryMembers, int hierarchyLevel,
+                          int maxCommunitySize, List<String> statsAttributes) {
+
+        /** The attributes counted by default. */
+        public static final List<String> DEFAULT_STATS_ATTRIBUTES = List.of("module", "package");
 
         public Options {
             if (minCommunitySize < 1) {
@@ -593,51 +686,115 @@ public class DetectCommunities {
             if (maxWallTime != null && maxWallTime.isNegative()) {
                 throw new IllegalArgumentException("maxWallTime must not be negative, was " + maxWallTime);
             }
+            if (maxSummaryMembers < 1) {
+                throw new IllegalArgumentException("maxSummaryMembers must be at least 1, was " + maxSummaryMembers);
+            }
+            if (hierarchyLevel < -1) {
+                throw new IllegalArgumentException("hierarchyLevel must be -1 (coarsest) or at least 0, was "
+                        + hierarchyLevel);
+            }
+            if (maxCommunitySize < 0) {
+                throw new IllegalArgumentException("maxCommunitySize must not be negative, was " + maxCommunitySize);
+            }
             failurePolicy = failurePolicy == null ? FailurePolicy.FAIL_RUN : failurePolicy;
+            statsAttributes = statsAttributes == null ? DEFAULT_STATS_ATTRIBUTES : List.copyOf(statsAttributes);
+        }
+
+        /**
+         * The options before member order, hierarchy and statistics existed:
+         * stored member order, 25 members, the coarsest level, no size limit and
+         * the default statistics attributes.
+         */
+        public Options(int minCommunitySize, CommunityDetector detector, int parallelism, int maxSummaries,
+                       Duration maxWallTime, FailurePolicy failurePolicy, boolean reuseSummaries) {
+            this(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, failurePolicy, reuseSummaries,
+                    null, MAX_SUMMARY_MEMBERS, -1, 0, DEFAULT_STATS_ATTRIBUTES);
         }
 
         /**
          * The behaviour of the existing constructors: minimum size
          * {@value DetectCommunities#MIN_COMMUNITY_SIZE}, the store's grouping,
-         * sequential, unlimited, failures stop the run, no reuse.
+         * sequential, unlimited, failures stop the run, no reuse, summaries from
+         * the first {@value DetectCommunities#MAX_SUMMARY_MEMBERS} members in stored
+         * order, the coarsest level, no size limit.
          */
         public static Options defaults() {
             return new Options(MIN_COMMUNITY_SIZE, null, 1, Integer.MAX_VALUE, null, FailurePolicy.FAIL_RUN, false);
         }
 
+        /** Whether a hierarchy level or a maximum size is chosen, so the grouping must come from a hierarchy. */
+        boolean usesHierarchy() {
+            return hierarchyLevel >= 0 || maxCommunitySize > 0;
+        }
+
         public Options withMinCommunitySize(int value) {
             return new Options(value, detector, parallelism, maxSummaries, maxWallTime, failurePolicy,
-                    reuseSummaries);
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize,
+                    statsAttributes);
         }
 
         public Options withDetector(CommunityDetector value) {
             return new Options(minCommunitySize, value, parallelism, maxSummaries, maxWallTime, failurePolicy,
-                    reuseSummaries);
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize,
+                    statsAttributes);
         }
 
         public Options withParallelism(int value) {
             return new Options(minCommunitySize, detector, value, maxSummaries, maxWallTime, failurePolicy,
-                    reuseSummaries);
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize,
+                    statsAttributes);
         }
 
         public Options withMaxSummaries(int value) {
             return new Options(minCommunitySize, detector, parallelism, value, maxWallTime, failurePolicy,
-                    reuseSummaries);
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize,
+                    statsAttributes);
         }
 
         public Options withMaxWallTime(Duration value) {
             return new Options(minCommunitySize, detector, parallelism, maxSummaries, value, failurePolicy,
-                    reuseSummaries);
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize,
+                    statsAttributes);
         }
 
         public Options withFailurePolicy(FailurePolicy value) {
             return new Options(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, value,
-                    reuseSummaries);
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize,
+                    statsAttributes);
         }
 
         public Options withReuseSummaries(boolean value) {
             return new Options(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, failurePolicy,
-                    value);
+                    value, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize,
+                    statsAttributes);
+        }
+
+        /** Sorts the members before the first {@link #maxSummaryMembers()} are taken; null = stored order. */
+        public Options withSummaryMemberOrder(Comparator<Entity> value) {
+            return new Options(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, failurePolicy,
+                    reuseSummaries, value, maxSummaryMembers, hierarchyLevel, maxCommunitySize, statsAttributes);
+        }
+
+        public Options withMaxSummaryMembers(int value) {
+            return new Options(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, failurePolicy,
+                    reuseSummaries, summaryMemberOrder, value, hierarchyLevel, maxCommunitySize, statsAttributes);
+        }
+
+        /** The hierarchy level the Communities come from: 0 = finest, -1 = coarsest. */
+        public Options withHierarchyLevel(int value) {
+            return new Options(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, failurePolicy,
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, value, maxCommunitySize, statsAttributes);
+        }
+
+        /** The most members per Community; larger groups are split along the hierarchy; 0 = no limit. */
+        public Options withMaxCommunitySize(int value) {
+            return new Options(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, failurePolicy,
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, value, statsAttributes);
+        }
+
+        public Options withStatsAttributes(List<String> value) {
+            return new Options(minCommunitySize, detector, parallelism, maxSummaries, maxWallTime, failurePolicy,
+                    reuseSummaries, summaryMemberOrder, maxSummaryMembers, hierarchyLevel, maxCommunitySize, value);
         }
     }
 }

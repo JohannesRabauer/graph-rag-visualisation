@@ -114,6 +114,7 @@ public final class ModularityCommunityDetector implements CommunityDetector {
      * one id (one level with singletons when there are no usable edges). Each level
      * obeys the {@link CommunityDetector#detect} contract.
      */
+    @Override
     public List<List<List<String>>> detectHierarchy(List<String> nodeIds, List<WeightedEdge> edges) {
         Input input = Input.of(nodeIds, edges);
         if (input.reported == 0) {

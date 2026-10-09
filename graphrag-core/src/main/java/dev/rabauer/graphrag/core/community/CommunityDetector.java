@@ -20,4 +20,16 @@ public interface CommunityDetector {
      * @return the communities, never {@code null}
      */
     List<List<String>> detect(List<String> nodeIds, List<WeightedEdge> edges);
+
+    /**
+     * The partition at every level of detail, finest first and coarsest last;
+     * each level obeys the {@link #detect} contract. The default has one
+     * level, the result of {@link #detect} (none without nodes), so a detector
+     * without levels needs no change. {@link ModularityCommunityDetector}
+     * returns its aggregation levels.
+     */
+    default List<List<List<String>>> detectHierarchy(List<String> nodeIds, List<WeightedEdge> edges) {
+        List<List<String>> groups = detect(nodeIds, edges);
+        return groups.isEmpty() ? List.of() : List.of(groups);
+    }
 }

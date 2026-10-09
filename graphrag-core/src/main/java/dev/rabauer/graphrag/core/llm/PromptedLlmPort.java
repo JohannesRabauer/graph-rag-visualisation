@@ -2,6 +2,7 @@ package dev.rabauer.graphrag.core.llm;
 
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityPoint;
+import dev.rabauer.graphrag.core.domain.CommunityStats;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonStats;
@@ -298,15 +299,67 @@ public abstract class PromptedLlmPort implements LlmPort {
 
     @Override
     public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
+        return summarize(members, relationships, null);
+    }
+
+    /** Also tells the model how big the Community is and how it splits by module or package. */
+    @Override
+    public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships,
+                                               CommunityStats stats) {
+        return summarize(members, relationships, stats);
+    }
+
+    private CommunitySummary summarize(Collection<Entity> members, Collection<Relationship> relationships,
+                                       CommunityStats stats) {
         if (members == null || members.isEmpty()) {
             return LlmPort.super.summarizeCommunity(members, relationships);
         }
-        return call(Purpose.COMMUNITY_SUMMARY, communitySummaryPrompt(members, relationships),
+        return call(Purpose.COMMUNITY_SUMMARY, communitySummaryPrompt(members, relationships, stats),
                 Schemas.COMMUNITY_SUMMARY, options.summaryTokens(), PromptedLlmPort::parseSummary);
     }
 
     String communitySummaryPrompt(Collection<Entity> members, Collection<Relationship> relationships) {
-        StringBuilder lines = new StringBuilder("Members:\n");
+        return communitySummaryPrompt(members, relationships, null);
+    }
+
+    /** At most this many values are named per counted attribute in the prompt. */
+    static final int MAX_STATS_VALUES = 6;
+
+    /**
+     * The size and composition lines of the prompt: empty unless the
+     * Community has members that are not listed or attribute counts, so a
+     * small Community's prompt is unchanged.
+     */
+    static String statsText(CommunityStats stats) {
+        if (stats == null || !stats.isInformative()) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder();
+        text.append("The group has ").append(stats.memberCount()).append(" members in total");
+        if (stats.memberCount() > stats.listedMembers()) {
+            text.append("; only ").append(stats.listedMembers()).append(" are listed below, so describe the whole "
+                    + "group by its size and composition and name the listed members as examples");
+        }
+        text.append(".\n");
+        stats.attributeCounts().forEach((key, counts) -> {
+            text.append("Members by ").append(key).append(": ");
+            int shown = 0;
+            for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+                if (shown++ == MAX_STATS_VALUES) {
+                    text.append(", and ").append(counts.size() - MAX_STATS_VALUES).append(" more");
+                    break;
+                }
+                text.append(shown > 1 ? ", " : "").append(entry.getKey()).append(" (").append(entry.getValue())
+                        .append(')');
+            }
+            text.append(".\n");
+        });
+        return text.append('\n').toString();
+    }
+
+    String communitySummaryPrompt(Collection<Entity> members, Collection<Relationship> relationships,
+                                  CommunityStats stats) {
+        StringBuilder lines = new StringBuilder(statsText(stats)).append("Members:\n");
         int index = 1;
         for (Entity member : members) {
             lines.append(index++).append(". ").append(member.name()).append(" (").append(member.type()).append(')');

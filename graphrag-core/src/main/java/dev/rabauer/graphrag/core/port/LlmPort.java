@@ -3,6 +3,7 @@ package dev.rabauer.graphrag.core.port;
 import dev.rabauer.graphrag.core.domain.Chunk;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityPoint;
+import dev.rabauer.graphrag.core.domain.CommunityStats;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
@@ -228,6 +229,24 @@ public interface LlmPort {
      */
     default CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
         return new CommunitySummary(CommunitySummary.deterministicTitle(members), summarizeCommunity(members));
+    }
+
+    /**
+     * {@link #summarizeCommunity(Collection, Collection)} with the size and
+     * composition of the whole Community: {@code members} is capped (and may
+     * be ordered by the caller), {@code stats} describes all of it: how many
+     * members it has and how they split by module or package.
+     * {@code DetectCommunities} calls this overload.
+     *
+     * <p>The default ignores {@code stats} and calls the two-argument method,
+     * so existing implementations and lambdas keep working. A port that wraps
+     * another must forward this overload too, as {@code StageClock} does.
+     *
+     * @param stats the Community's size and attribute counts; never null
+     */
+    default CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships,
+                                                CommunityStats stats) {
+        return summarizeCommunity(members, relationships);
     }
 
     /**

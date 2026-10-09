@@ -3,6 +3,7 @@ package dev.rabauer.graphrag.core.usecase;
 import dev.rabauer.graphrag.core.domain.Chunk;
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityPoint;
+import dev.rabauer.graphrag.core.domain.CommunityStats;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
@@ -103,6 +104,12 @@ final class StageClock {
         public CommunitySummary summarizeCommunity(Collection<Entity> members,
                                                    Collection<Relationship> relationships) {
             return timeLlm(() -> delegate.summarizeCommunity(members, relationships));
+        }
+
+        @Override
+        public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships,
+                                                   CommunityStats stats) {
+            return timeLlm(() -> delegate.summarizeCommunity(members, relationships, stats));
         }
 
         @Override
