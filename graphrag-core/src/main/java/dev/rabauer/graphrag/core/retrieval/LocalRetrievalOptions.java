@@ -1,5 +1,8 @@
 package dev.rabauer.graphrag.core.retrieval;
 
+import dev.rabauer.graphrag.core.domain.Relationship;
+
+import java.util.Comparator;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -10,8 +13,11 @@ import java.util.stream.Collectors;
  * <p>Expansion is breadth-first: hop {@code h} takes the Relationships
  * touching the Entities reached at hop {@code h-1} (the seeds at hop 1) that
  * pass the type filters, the weight threshold and the direction, sorted by
- * {@code ordering}, and adds each with the endpoint(s) it reaches, until a cap
- * is hit. Text Units are added last, ranked by +1 per seed citing them,
+ * {@code ordering} (or by {@code relationshipComparator}), and adds each with
+ * the endpoint(s) it reaches, until a cap is hit. Besides the global caps, a hop
+ * can be limited by {@code maxRelationshipsPerHop} and {@code maxNewNodesPerHop},
+ * so that heavy Relationships among the seeds, or one hub, cannot use up the
+ * budget before later hops run. Text Units are added last, ranked by +1 per seed citing them,
  * +weight per included Relationship citing them and, with
  * {@code includeMemberTextUnits}, +1 per other included Entity citing them.
  *
@@ -33,12 +39,40 @@ import java.util.stream.Collectors;
  * @param includeMemberTextUnits   whether every included Entity's own Text
  *                                 Units (for code: their snippets) are ranked,
  *                                 not only the seeds'
+ * @param maxRelationshipsPerHop   the most Relationships one hop adds (at
+ *                                 least 0; {@link Integer#MAX_VALUE} = only the
+ *                                 global {@code maxRelationships} applies)
+ * @param maxNewNodesPerHop        the most Entities one hop may newly reach (at
+ *                                 least 0; {@link Integer#MAX_VALUE} = no
+ *                                 limit). A Relationship that would reach more
+ *                                 is skipped; Relationships between included
+ *                                 Entities are not affected
+ * @param relationshipComparator   the scoring hook: when not null it orders the
+ *                                 candidate Relationships of every hop (best
+ *                                 first, ties in stored order) instead of
+ *                                 {@code ordering}; null = use {@code ordering}
  */
 public record LocalRetrievalOptions(int seedLimit, int maxHops, int maxNodes, int maxRelationships, int maxTextUnits,
                                     int maxItems, Set<String> includeRelationshipTypes,
                                     Set<String> excludeRelationshipTypes, int minWeight,
                                     RelationshipOrdering ordering, Direction direction,
-                                    boolean includeNeighborEntities, boolean includeMemberTextUnits) {
+                                    boolean includeNeighborEntities, boolean includeMemberTextUnits,
+                                    int maxRelationshipsPerHop, int maxNewNodesPerHop,
+                                    Comparator<Relationship> relationshipComparator) {
+
+    /**
+     * The options without the per-hop caps and the comparator: no per-hop
+     * limit and the {@code ordering} alone.
+     */
+    public LocalRetrievalOptions(int seedLimit, int maxHops, int maxNodes, int maxRelationships, int maxTextUnits,
+                                 int maxItems, Set<String> includeRelationshipTypes,
+                                 Set<String> excludeRelationshipTypes, int minWeight,
+                                 RelationshipOrdering ordering, Direction direction,
+                                 boolean includeNeighborEntities, boolean includeMemberTextUnits) {
+        this(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems, includeRelationshipTypes,
+                excludeRelationshipTypes, minWeight, ordering, direction, includeNeighborEntities,
+                includeMemberTextUnits, Integer.MAX_VALUE, Integer.MAX_VALUE, null);
+    }
 
     public LocalRetrievalOptions {
         requireAtLeast("seedLimit", seedLimit, 1);
@@ -47,6 +81,8 @@ public record LocalRetrievalOptions(int seedLimit, int maxHops, int maxNodes, in
         requireAtLeast("maxRelationships", maxRelationships, 0);
         requireAtLeast("maxTextUnits", maxTextUnits, 0);
         requireAtLeast("maxItems", maxItems, 1);
+        requireAtLeast("maxRelationshipsPerHop", maxRelationshipsPerHop, 0);
+        requireAtLeast("maxNewNodesPerHop", maxNewNodesPerHop, 0);
         includeRelationshipTypes = lowerCase(includeRelationshipTypes);
         excludeRelationshipTypes = lowerCase(excludeRelationshipTypes);
         ordering = ordering == null ? RelationshipOrdering.WEIGHT_DESC : ordering;
@@ -84,79 +120,109 @@ public record LocalRetrievalOptions(int seedLimit, int maxHops, int maxNodes, in
     public LocalRetrievalOptions withSeedLimit(int value) {
         return new LocalRetrievalOptions(value, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withMaxHops(int value) {
         return new LocalRetrievalOptions(seedLimit, value, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withMaxNodes(int value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, value, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withMaxRelationships(int value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, value, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withMaxTextUnits(int value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, value, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withMaxItems(int value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, value,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withIncludeRelationshipTypes(Set<String> value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 value, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withExcludeRelationshipTypes(Set<String> value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, value, minWeight, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withMinWeight(int value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, value, ordering, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withOrdering(RelationshipOrdering value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, value, direction,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withDirection(Direction value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, value,
-                includeNeighborEntities, includeMemberTextUnits);
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop,
+                relationshipComparator);
     }
 
     public LocalRetrievalOptions withIncludeNeighborEntities(boolean value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                value, includeMemberTextUnits);
+                value, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop, relationshipComparator);
     }
 
     public LocalRetrievalOptions withIncludeMemberTextUnits(boolean value) {
         return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
                 includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
-                includeNeighborEntities, value);
+                includeNeighborEntities, value, maxRelationshipsPerHop, maxNewNodesPerHop, relationshipComparator);
+    }
+
+    public LocalRetrievalOptions withMaxRelationshipsPerHop(int value) {
+        return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
+                includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
+                includeNeighborEntities, includeMemberTextUnits, value, maxNewNodesPerHop, relationshipComparator);
+    }
+
+    public LocalRetrievalOptions withMaxNewNodesPerHop(int value) {
+        return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
+                includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, value, relationshipComparator);
+    }
+
+    /** The scoring hook; null goes back to {@link #ordering()}. */
+    public LocalRetrievalOptions withRelationshipComparator(Comparator<Relationship> value) {
+        return new LocalRetrievalOptions(seedLimit, maxHops, maxNodes, maxRelationships, maxTextUnits, maxItems,
+                includeRelationshipTypes, excludeRelationshipTypes, minWeight, ordering, direction,
+                includeNeighborEntities, includeMemberTextUnits, maxRelationshipsPerHop, maxNewNodesPerHop, value);
     }
 
     private static void requireAtLeast(String name, int value, int minimum) {
@@ -181,7 +247,15 @@ public record LocalRetrievalOptions(int seedLimit, int maxHops, int maxNodes, in
         /** Lightest first; equal weights keep stored order. */
         WEIGHT_ASC,
         /** Stored order. */
-        STORED
+        STORED,
+        /**
+         * Relationships that reach an Entity not yet included first, heaviest
+         * first, then the ones between included Entities, heaviest first. Keeps
+         * heavy Relationships among the seeds from using the budget before a
+         * new Entity is reached. Depends on the walk, so a
+         * {@code relationshipComparator} cannot express it.
+         */
+        NEW_NODES_FIRST
     }
 
     /** Which Relationships of a reached Entity are followed. */

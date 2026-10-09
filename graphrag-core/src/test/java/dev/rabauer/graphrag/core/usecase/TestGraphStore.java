@@ -29,6 +29,7 @@ class TestGraphStore implements GraphStorePort {
     final Map<String, Map<String, CommunityMembership>> memberships = new LinkedHashMap<>();
     final Map<String, Map<String, float[]>> entityEmbeddings = new LinkedHashMap<>();
     final Map<String, Map<String, float[]>> communityEmbeddings = new LinkedHashMap<>();
+    /** How often a whole corpus of Entities was read ({@link #entities(String)}). */
     int entityReads;
 
     @Override
@@ -125,6 +126,34 @@ class TestGraphStore implements GraphStorePort {
     @Override
     public Collection<Relationship> relationships(String corpusId) {
         return List.copyOf(scoped(relationships, corpusId).values());
+    }
+
+    /** Targeted, like an indexed store: does not count as a read of the whole corpus. */
+    @Override
+    public Optional<Entity> entity(String corpusId, String identity) {
+        return Optional.ofNullable(scoped(entities, corpusId).get(identity));
+    }
+
+    @Override
+    public List<Entity> entities(String corpusId, Collection<String> identities) {
+        List<Entity> found = new ArrayList<>();
+        for (Map.Entry<String, Entity> entry : scoped(entities, corpusId).entrySet()) {
+            if (identities.contains(entry.getKey())) {
+                found.add(entry.getValue());
+            }
+        }
+        return found;
+    }
+
+    @Override
+    public List<Relationship> relationshipsTouching(String corpusId, Collection<String> identities) {
+        List<Relationship> found = new ArrayList<>();
+        for (Relationship relationship : scoped(relationships, corpusId).values()) {
+            if (identities.contains(relationship.sourceIdentity()) || identities.contains(relationship.targetIdentity())) {
+                found.add(relationship);
+            }
+        }
+        return found;
     }
 
     @Override

@@ -2,6 +2,7 @@ package dev.rabauer.graphrag.core.llm;
 
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityPoint;
+import dev.rabauer.graphrag.core.domain.CommunityStats;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonStats;
@@ -35,7 +36,9 @@ import java.util.function.Function;
  * application implements only {@link #complete(CompletionRequest)} on its own
  * client (Spring AI, LangChain4j, plain HTTP).
  *
- * <p>Every call asks for one JSON object and passes its JSON Schema in
+ * <p>Every call asks for one JSON object ({@link CompletionRequest#jsonExpected()}
+ * is true, so the client can switch on its JSON mode: Ollama {@code format},
+ * OpenAI {@code response_format}) and passes its JSON Schema in
  * {@link CompletionRequest#jsonSchema()}, so a client that supports
  * schema-constrained output (Ollama {@code format}, OpenAI
  * {@code response_format: json_schema}) can enforce it; the prompt also shows
@@ -145,7 +148,7 @@ public abstract class PromptedLlmPort implements LlmPort {
         List<String> types = entityTypes == null || entityTypes.isEmpty() ? EntityTypes.ALL : entityTypes;
         String schema = Schemas.extraction(types);
         Exchange<GraphExtraction> first = exchange(Purpose.EXTRACTION,
-                List.of(new Message(Role.USER, extractionPrompt(unit, types, knownEntityNames))), schema,
+                List.of(new CompletionRequest.Message(Role.USER, extractionPrompt(unit, types, knownEntityNames))), schema,
                 options.extractionTokens(),
                 object -> parseExtraction(object, types));
         return glean(first, types, schema);
@@ -195,17 +198,17 @@ public abstract class PromptedLlmPort implements LlmPort {
         Map<String, Entity> entities = new LinkedHashMap<>();
         Map<String, Relationship> relationships = new LinkedHashMap<>();
         boolean grew = addExtraction(first.value(), entities, relationships);
-        List<Message> conversation = new ArrayList<>(first.messages());
+        List<CompletionRequest.Message> conversation = new ArrayList<>(first.messages());
         for (int round = 0; round < options.gleanings() && grew; round++) {
-            conversation.add(new Message(Role.USER, GLEANING_PROMPT));
+            conversation.add(new CompletionRequest.Message(Role.USER, GLEANING_PROMPT));
             String reply = complete(new CompletionRequest(Purpose.EXTRACTION, List.copyOf(conversation), schema,
-                    options.extractionTokens()));
+                    options.extractionTokens(), options.jsonMode()));
             Optional<GraphExtraction> more = LenientJson.parseObject(reply)
                     .flatMap(result -> parseExtraction(result.object(), types));
             if (more.isEmpty()) {
                 break;
             }
-            conversation.add(new Message(Role.ASSISTANT, reply));
+            conversation.add(new CompletionRequest.Message(Role.ASSISTANT, reply));
             grew = addExtraction(more.get(), entities, relationships);
         }
         return new GraphExtraction(List.copyOf(entities.values()), List.copyOf(relationships.values()));
@@ -298,15 +301,67 @@ public abstract class PromptedLlmPort implements LlmPort {
 
     @Override
     public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
+        return summarize(members, relationships, null);
+    }
+
+    /** Also tells the model how big the Community is and how it splits by module or package. */
+    @Override
+    public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships,
+                                               CommunityStats stats) {
+        return summarize(members, relationships, stats);
+    }
+
+    private CommunitySummary summarize(Collection<Entity> members, Collection<Relationship> relationships,
+                                       CommunityStats stats) {
         if (members == null || members.isEmpty()) {
             return LlmPort.super.summarizeCommunity(members, relationships);
         }
-        return call(Purpose.COMMUNITY_SUMMARY, communitySummaryPrompt(members, relationships),
+        return call(Purpose.COMMUNITY_SUMMARY, communitySummaryPrompt(members, relationships, stats),
                 Schemas.COMMUNITY_SUMMARY, options.summaryTokens(), PromptedLlmPort::parseSummary);
     }
 
     String communitySummaryPrompt(Collection<Entity> members, Collection<Relationship> relationships) {
-        StringBuilder lines = new StringBuilder("Members:\n");
+        return communitySummaryPrompt(members, relationships, null);
+    }
+
+    /** At most this many values are named per counted attribute in the prompt. */
+    static final int MAX_STATS_VALUES = 6;
+
+    /**
+     * The size and composition lines of the prompt: empty unless the
+     * Community has members that are not listed or attribute counts, so a
+     * small Community's prompt is unchanged.
+     */
+    static String statsText(CommunityStats stats) {
+        if (stats == null || !stats.isInformative()) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder();
+        text.append("The group has ").append(stats.memberCount()).append(" members in total");
+        if (stats.memberCount() > stats.listedMembers()) {
+            text.append("; only ").append(stats.listedMembers()).append(" are listed below, so describe the whole "
+                    + "group by its size and composition and name the listed members as examples");
+        }
+        text.append(".\n");
+        stats.attributeCounts().forEach((key, counts) -> {
+            text.append("Members by ").append(key).append(": ");
+            int shown = 0;
+            for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+                if (shown++ == MAX_STATS_VALUES) {
+                    text.append(", and ").append(counts.size() - MAX_STATS_VALUES).append(" more");
+                    break;
+                }
+                text.append(shown > 1 ? ", " : "").append(entry.getKey()).append(" (").append(entry.getValue())
+                        .append(')');
+            }
+            text.append(".\n");
+        });
+        return text.append('\n').toString();
+    }
+
+    String communitySummaryPrompt(Collection<Entity> members, Collection<Relationship> relationships,
+                                  CommunityStats stats) {
+        StringBuilder lines = new StringBuilder(statsText(stats)).append("Members:\n");
         int index = 1;
         for (Entity member : members) {
             lines.append(index++).append(". ").append(member.name()).append(" (").append(member.type()).append(')');
@@ -556,28 +611,29 @@ public abstract class PromptedLlmPort implements LlmPort {
      */
     private <T> T call(Purpose purpose, String prompt, String schema, int maxTokens,
                        Function<Map<String, Object>, Optional<T>> parse) {
-        return exchange(purpose, List.of(new Message(Role.USER, prompt)), schema, maxTokens, parse).value();
+        return exchange(purpose, List.of(new CompletionRequest.Message(Role.USER, prompt)), schema, maxTokens, parse).value();
     }
 
     /**
      * {@link #call} from a given conversation; also returns the conversation
      * up to and including the reply that was used.
      */
-    private <T> Exchange<T> exchange(Purpose purpose, List<Message> conversation, String schema, int maxTokens,
+    private <T> Exchange<T> exchange(Purpose purpose, List<CompletionRequest.Message> conversation, String schema, int maxTokens,
                                      Function<Map<String, Object>, Optional<T>> parse) {
-        List<Message> messages = new ArrayList<>(conversation);
+        List<CompletionRequest.Message> messages = new ArrayList<>(conversation);
         String reply = "";
         int attempts = options.correctiveRetry() ? 2 : 1;
         for (int attempt = 1; attempt <= attempts; attempt++) {
-            reply = complete(new CompletionRequest(purpose, List.copyOf(messages), schema, maxTokens));
+            reply = complete(new CompletionRequest(purpose, List.copyOf(messages), schema, maxTokens,
+                    options.jsonMode()));
             Optional<LenientJson.Result> parsed = LenientJson.parseObject(reply);
             Optional<T> value = parsed.flatMap(result -> parse.apply(result.object()));
             if (value.isPresent()) {
-                messages.add(new Message(Role.ASSISTANT, reply));
+                messages.add(new CompletionRequest.Message(Role.ASSISTANT, reply));
                 return new Exchange<>(value.get(), List.copyOf(messages));
             }
-            messages.add(new Message(Role.ASSISTANT, reply == null ? "" : reply));
-            messages.add(new Message(Role.USER, (parsed.isEmpty()
+            messages.add(new CompletionRequest.Message(Role.ASSISTANT, reply == null ? "" : reply));
+            messages.add(new CompletionRequest.Message(Role.USER, (parsed.isEmpty()
                     ? "Your reply did not contain a JSON object."
                     : "Your JSON object was missing required fields.")
                     + " Reply again with only one JSON object matching this JSON Schema, no prose, no markdown:\n"
@@ -588,7 +644,7 @@ public abstract class PromptedLlmPort implements LlmPort {
     }
 
     /** A parsed reply and the conversation that produced it. */
-    private record Exchange<T>(T value, List<Message> messages) {
+    private record Exchange<T>(T value, List<CompletionRequest.Message> messages) {
     }
 
     private static String label(RetrievalStep.Kind kind) {
@@ -634,14 +690,6 @@ public abstract class PromptedLlmPort implements LlmPort {
         ASSISTANT
     }
 
-    /** One message of the conversation sent to the model. */
-    public record Message(Role role, String text) {
-        public Message {
-            Objects.requireNonNull(role, "role");
-            text = text == null ? "" : text;
-        }
-    }
-
     /**
      * One completion to run.
      *
@@ -652,12 +700,38 @@ public abstract class PromptedLlmPort implements LlmPort {
      *                        must match; pass it to the model's structured-output
      *                        option when the client supports one
      * @param maxOutputTokens a suggested output-token limit
+     * @param jsonExpected    whether the reply must be one JSON object: map it to
+     *                        the client's JSON mode (Ollama {@code format: "json"},
+     *                        OpenAI {@code response_format}); true for every
+     *                        request the port builds unless
+     *                        {@link Options#jsonMode()} is switched off
      */
-    public record CompletionRequest(Purpose purpose, List<Message> messages, String jsonSchema, int maxOutputTokens) {
+    public record CompletionRequest(Purpose purpose, List<CompletionRequest.Message> messages, String jsonSchema, int maxOutputTokens,
+                                    boolean jsonExpected) {
+
+        /** A request that expects JSON ({@link #jsonExpected()} is true). */
+        public CompletionRequest(Purpose purpose, List<CompletionRequest.Message> messages, String jsonSchema, int maxOutputTokens) {
+            this(purpose, messages, jsonSchema, maxOutputTokens, true);
+        }
+
         public CompletionRequest {
             Objects.requireNonNull(purpose, "purpose");
             messages = messages == null ? List.of() : List.copyOf(messages);
             jsonSchema = jsonSchema == null ? "" : jsonSchema;
+        }
+
+        /**
+         * One message of the conversation sent to the model. It is nested in
+         * {@link CompletionRequest} rather than in {@link PromptedLlmPort}, so a
+         * subclass does not inherit a member type called {@code Message} that
+         * hides the {@code Message} of the client library it imports (Spring AI,
+         * for example).
+         */
+        public record Message(Role role, String text) {
+            public Message {
+                Objects.requireNonNull(role, "role");
+                text = text == null ? "" : text;
+            }
         }
 
         /** The last user message: the prompt on the first attempt, the correction on the retry. */
@@ -688,10 +762,23 @@ public abstract class PromptedLlmPort implements LlmPort {
      * @param descriptionSummaries whether {@link #summarizeDescription(String, String)}
      *                          calls the model (off by default; one call per
      *                          element whose merged description outgrew its limit)
+     * @param jsonMode          whether requests carry
+     *                          {@link CompletionRequest#jsonExpected()} {@code true},
+     *                          so a client can switch on its JSON mode (on by
+     *                          default; switch it off for a model or client that
+     *                          misbehaves in JSON mode)
      */
     public record Options(boolean extraction, boolean synthesis, boolean correctiveRetry, int extractionTokens,
                           int summaryTokens, int subQuestionTokens, int answerTokens, int gleanings,
-                          int verdictTokens, boolean descriptionSummaries) {
+                          int verdictTokens, boolean descriptionSummaries, boolean jsonMode) {
+
+        /** With JSON mode on ({@link #jsonMode()}). */
+        public Options(boolean extraction, boolean synthesis, boolean correctiveRetry, int extractionTokens,
+                       int summaryTokens, int subQuestionTokens, int answerTokens, int gleanings,
+                       int verdictTokens, boolean descriptionSummaries) {
+            this(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
+                    answerTokens, gleanings, verdictTokens, descriptionSummaries, true);
+        }
 
         public Options {
             if (gleanings < 0) {
@@ -703,7 +790,7 @@ public abstract class PromptedLlmPort implements LlmPort {
         public Options(boolean extraction, boolean synthesis, boolean correctiveRetry, int extractionTokens,
                        int summaryTokens, int subQuestionTokens, int answerTokens) {
             this(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, 0, 256, false);
+                    answerTokens, 0, 256, false, true);
         }
 
         /**
@@ -711,34 +798,43 @@ public abstract class PromptedLlmPort implements LlmPort {
          * retry, no gleaning and no description summaries.
          */
         public static Options defaults() {
-            return new Options(false, false, true, 4096, 512, 512, 1024, 0, 256, false);
+            return new Options(false, false, true, 4096, 512, 512, 1024, 0, 256, false, true);
         }
 
         public Options withExtraction(boolean value) {
             return new Options(value, synthesis, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, gleanings, verdictTokens, descriptionSummaries);
+                    answerTokens, gleanings, verdictTokens, descriptionSummaries, jsonMode);
         }
 
         public Options withSynthesis(boolean value) {
             return new Options(extraction, value, correctiveRetry, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, gleanings, verdictTokens, descriptionSummaries);
+                    answerTokens, gleanings, verdictTokens, descriptionSummaries, jsonMode);
         }
 
         public Options withCorrectiveRetry(boolean value) {
             return new Options(extraction, synthesis, value, extractionTokens, summaryTokens, subQuestionTokens,
-                    answerTokens, gleanings, verdictTokens, descriptionSummaries);
+                    answerTokens, gleanings, verdictTokens, descriptionSummaries, jsonMode);
         }
 
         /** {@code count} extra extraction turns for missed elements; 1 is usually enough. */
         public Options withGleanings(int count) {
             return new Options(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens,
-                    subQuestionTokens, answerTokens, count, verdictTokens, descriptionSummaries);
+                    subQuestionTokens, answerTokens, count, verdictTokens, descriptionSummaries, jsonMode);
         }
 
         /** Whether descriptions that outgrow their limit are summarised by the model. */
         public Options withDescriptionSummaries(boolean value) {
             return new Options(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens,
-                    subQuestionTokens, answerTokens, gleanings, verdictTokens, value);
+                    subQuestionTokens, answerTokens, gleanings, verdictTokens, value, jsonMode);
+        }
+
+        /**
+         * Whether every request tells the client that it expects one JSON object
+         * ({@link CompletionRequest#jsonExpected()}); on by default.
+         */
+        public Options withJsonMode(boolean value) {
+            return new Options(extraction, synthesis, correctiveRetry, extractionTokens, summaryTokens,
+                    subQuestionTokens, answerTokens, gleanings, verdictTokens, descriptionSummaries, value);
         }
     }
 

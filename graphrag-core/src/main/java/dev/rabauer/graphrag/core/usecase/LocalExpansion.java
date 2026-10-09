@@ -77,19 +77,29 @@ final class LocalExpansion {
                     candidates.add(relationship);
                 }
             }
-            sort(candidates, options.ordering());
+            sort(candidates, options, included.keySet());
             Map<String, Entity> entityByIdentity = null;
 
             Set<String> next = new LinkedHashSet<>();
+            int hopRelationships = 0;
+            int hopNewNodes = 0;
             for (Relationship relationship : candidates) {
                 if (includedRelationships.size() >= options.maxRelationships()
                         || touches.size() >= options.maxItems()) {
                     full = true;
                     break;
                 }
+                if (hopRelationships >= options.maxRelationshipsPerHop()) {
+                    break;
+                }
+                int fresh = newEndpoints(relationship, included.keySet());
+                if (fresh > options.maxNewNodesPerHop() - hopNewNodes) {
+                    continue;
+                }
                 if (!includedEdges.add(edgeKey(relationship))) {
                     continue;
                 }
+                hopRelationships++;
                 includedRelationships.add(relationship);
                 touches.add(relationshipTouch(relationship, hop));
                 for (String endpoint : List.of(relationship.sourceIdentity(), relationship.targetIdentity())) {
@@ -107,6 +117,7 @@ final class LocalExpansion {
                     }
                     included.put(endpoint, reached);
                     next.add(endpoint);
+                    hopNewNodes++;
                     if (options.includeNeighborEntities() && touches.size() < options.maxItems()) {
                         touches.add(entityTouch(reached, 0, hop));
                     }
@@ -165,11 +176,27 @@ final class LocalExpansion {
         };
     }
 
-    private static void sort(List<Relationship> relationships, LocalRetrievalOptions.RelationshipOrdering ordering) {
-        // List.sort is stable, so equal weights keep their stored order.
-        switch (ordering) {
+    /** How many distinct endpoints of {@code relationship} are not included yet. */
+    private static int newEndpoints(Relationship relationship, Set<String> included) {
+        boolean source = !included.contains(relationship.sourceIdentity());
+        boolean target = !included.contains(relationship.targetIdentity())
+                && !relationship.targetIdentity().equals(relationship.sourceIdentity());
+        return (source ? 1 : 0) + (target ? 1 : 0);
+    }
+
+    /** The hop's candidates, best first: by the caller's comparator, else by the ordering; ties keep stored order. */
+    private static void sort(List<Relationship> relationships, LocalRetrievalOptions options, Set<String> included) {
+        // List.sort is stable, so equal scores keep their stored order.
+        if (options.relationshipComparator() != null) {
+            relationships.sort(options.relationshipComparator());
+            return;
+        }
+        switch (options.ordering()) {
             case WEIGHT_DESC -> relationships.sort(Comparator.comparingInt(Relationship::weight).reversed());
             case WEIGHT_ASC -> relationships.sort(Comparator.comparingInt(Relationship::weight));
+            case NEW_NODES_FIRST -> relationships.sort(Comparator
+                    .comparingInt((Relationship relationship) -> newEndpoints(relationship, included) > 0 ? 0 : 1)
+                    .thenComparing(Comparator.comparingInt(Relationship::weight).reversed()));
             case STORED -> {
                 // Stored order.
             }

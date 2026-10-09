@@ -1,13 +1,10 @@
 package dev.rabauer.graphrag.core.retrieval;
 
-import dev.rabauer.graphrag.core.domain.Entity;
 import dev.rabauer.graphrag.core.port.GraphReadPort;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -15,7 +12,9 @@ import java.util.Objects;
  * for up to {@code candidates} seeds, and an Entity's fused score is the sum of
  * {@code 1 / (k + rank)} over the matchers that returned it (rank 1-based).
  * Ties keep the order in which Entities were first seen (first matcher
- * first). Typical use: {@code new HybridSeedMatcher(List.of(new
+ * first). Only the order of each matcher's result counts, never its scores,
+ * so matchers on different scales (identifier 0 to 100, semantic 1/rank,
+ * keyword counts) fuse fairly; see {@link SeedMatchers#fuseByRank}. Typical use: {@code new HybridSeedMatcher(List.of(new
  * IdentifierSeedMatcher(), new SemanticSeedMatcher(embeddings)))}.
  */
 public final class HybridSeedMatcher implements SeedMatcher {
@@ -55,22 +54,15 @@ public final class HybridSeedMatcher implements SeedMatcher {
         if (limit < 1) {
             return List.of();
         }
-        Map<String, Entity> entities = new LinkedHashMap<>();
-        Map<String, Double> scores = new LinkedHashMap<>();
+        List<List<SeedMatch>> rankings = new ArrayList<>();
         for (SeedMatcher matcher : matchers) {
-            List<SeedMatch> ranked = matcher.match(question, corpusId, graph, Math.max(limit, candidates));
-            for (int rank = 0; rank < ranked.size(); rank++) {
-                Entity entity = ranked.get(rank).entity();
-                String identity = entity.normalizedIdentity();
-                entities.putIfAbsent(identity, entity);
-                scores.merge(identity, 1.0 / (k + rank + 1), Double::sum);
-            }
+            List<SeedMatch> matches = matcher.match(question, corpusId, graph, Math.max(limit, candidates));
+            // Only the order counts, never the scale. A matcher that breaks the best-first contract
+            // is ranked by its scores (stable, so equal scores keep their order).
+            List<SeedMatch> ranked = new ArrayList<>(matches);
+            ranked.sort(Comparator.comparingDouble(SeedMatch::score).reversed());
+            rankings.add(ranked);
         }
-        List<SeedMatch> fused = new ArrayList<>();
-        for (Map.Entry<String, Double> entry : scores.entrySet()) {
-            fused.add(new SeedMatch(entities.get(entry.getKey()), entry.getValue(), "hybrid"));
-        }
-        fused.sort(Comparator.comparingDouble(SeedMatch::score).reversed());
-        return List.copyOf(fused.subList(0, Math.min(limit, fused.size())));
+        return SeedMatchers.fuseByRank(rankings, k, limit);
     }
 }

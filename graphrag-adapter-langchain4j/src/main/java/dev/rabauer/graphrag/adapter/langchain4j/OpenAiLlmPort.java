@@ -2,6 +2,7 @@ package dev.rabauer.graphrag.adapter.langchain4j;
 
 import dev.rabauer.graphrag.core.domain.Community;
 import dev.rabauer.graphrag.core.domain.CommunityPoint;
+import dev.rabauer.graphrag.core.domain.CommunityStats;
 import dev.rabauer.graphrag.core.domain.CommunitySummary;
 import dev.rabauer.graphrag.core.domain.ComparisonFacts;
 import dev.rabauer.graphrag.core.domain.ComparisonVerdict;
@@ -139,7 +140,7 @@ public class OpenAiLlmPort extends PromptedLlmPort {
                 ? "" : response.aiMessage().text();
     }
 
-    private static ChatMessage toChatMessage(Message message) {
+    private static ChatMessage toChatMessage(CompletionRequest.Message message) {
         return switch (message.role()) {
             case SYSTEM -> SystemMessage.from(message.text());
             case USER -> UserMessage.from(message.text());
@@ -157,6 +158,12 @@ public class OpenAiLlmPort extends PromptedLlmPort {
     @Override
     public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships) {
         return failingVisibly(() -> super.summarizeCommunity(members, relationships));
+    }
+
+    @Override
+    public CommunitySummary summarizeCommunity(Collection<Entity> members, Collection<Relationship> relationships,
+                                               CommunityStats stats) {
+        return failingVisibly(() -> super.summarizeCommunity(members, relationships, stats));
     }
 
     @Override
