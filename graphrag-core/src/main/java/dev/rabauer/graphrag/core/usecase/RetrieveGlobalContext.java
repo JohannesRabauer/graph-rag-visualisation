@@ -32,6 +32,14 @@ import java.util.Set;
  * question (see {@link GlobalRetrievalOptions}) and returns, per Community, a
  * {@code COMMUNITY} item, its best member Entities and its most relevant
  * member Text Units, with the full trace — no answer is synthesized.
+ *
+ * <p>A question reads the corpus's Communities and memberships, then only the
+ * Entities and Relationships of the picked Communities' members, by identity
+ * ({@code entities(corpusId, identities)}, {@code relationshipsTouching}). It
+ * never reads the whole Entity or Relationship set itself; the member
+ * {@link SeedMatcher} may (the keyword and identifier matchers score every
+ * Entity), which a {@link dev.rabauer.graphrag.core.port.CachingGraphReadPort}
+ * turns into one read per corpus.</p>
  */
 public class RetrieveGlobalContext {
 
@@ -87,19 +95,22 @@ public class RetrieveGlobalContext {
                     RetrievalResult.Status.NO_MATCH, NO_MATCH_REASON, List.of(), List.of());
         }
 
+        // Only the members of the picked Communities are read, by identity.
+        MemberData memberData = context.memberData(graph, corpusId,
+                candidates.stream().map(candidate -> candidate.community().id()).toList());
         List<LocalExpansion.Touch> touches = new ArrayList<>();
         Set<String> addedUnits = new HashSet<>();
         for (Scored candidate : candidates) {
             touches.add(communityTouch(candidate.community(), candidate.score()));
             Set<String> members = context.membersOf(candidate.community().id());
-            List<Entity> ranked = rankedMembers(members, context, memberScores);
+            List<Entity> ranked = rankedMembers(members, memberData, memberScores);
             for (Entity member : ranked.subList(0, Math.min(effective.memberEntitiesPerCommunity(), ranked.size()))) {
                 touches.add(LocalExpansion.entityTouch(member, memberScores.getOrDefault(
                         member.normalizedIdentity(), 0.0), 0));
             }
             int added = 0;
-            for (String unitId : AnswerGlobalSearch.rankedMemberUnits(members, context.entityByIdentity(),
-                    context.relationships())) {
+            for (String unitId : AnswerGlobalSearch.rankedMemberUnits(members, memberData.entityByIdentity(),
+                    memberData.relationships())) {
                 if (added >= effective.textUnitsPerCommunity()) {
                     break;
                 }
@@ -187,10 +198,10 @@ public class RetrieveGlobalContext {
     }
 
     /** Members by seed score, then by the weight of their Relationships inside the Community, then stored order. */
-    private static List<Entity> rankedMembers(Set<String> members, CommunityContext context,
+    private static List<Entity> rankedMembers(Set<String> members, MemberData memberData,
                                               Map<String, Double> memberScores) {
         Map<String, Integer> internalWeight = new HashMap<>();
-        for (Relationship relationship : context.relationships()) {
+        for (Relationship relationship : memberData.relationships()) {
             if (members.contains(relationship.sourceIdentity()) && members.contains(relationship.targetIdentity())) {
                 internalWeight.merge(relationship.sourceIdentity(), relationship.weight(), Integer::sum);
                 internalWeight.merge(relationship.targetIdentity(), relationship.weight(), Integer::sum);
@@ -198,7 +209,7 @@ public class RetrieveGlobalContext {
         }
         List<Entity> ranked = new ArrayList<>();
         for (String identity : members) {
-            Entity entity = context.entityByIdentity().get(identity);
+            Entity entity = memberData.entityByIdentity().get(identity);
             if (entity != null) {
                 ranked.add(entity);
             }
@@ -218,33 +229,49 @@ public class RetrieveGlobalContext {
                 RetrievalStep.Kind.COMMUNITY, text, null), text, score, 0, null);
     }
 
-    /** The corpus's Communities, memberships, Entities and Relationships, read once. */
-    record CommunityContext(List<Community> communities, Map<String, Set<String>> membersByCommunity,
-                            Map<String, Entity> entityByIdentity, List<Relationship> relationships) {
+    /**
+     * The corpus's Communities and their memberships, read once. These are small next to the
+     * Entities and Relationships, which are read afterwards, by identity, for the picked
+     * Communities only ({@link #memberData}).
+     */
+    record CommunityContext(List<Community> communities, Map<String, Set<String>> membersByCommunity) {
 
         static CommunityContext load(GraphReadPort graph, String corpusId) {
             List<Community> communities = nonNull(graph.communities(corpusId));
             if (communities.isEmpty()) {
-                return new CommunityContext(List.of(), Map.of(), Map.of(), List.of());
+                return new CommunityContext(List.of(), Map.of());
             }
             Map<String, Set<String>> members = new LinkedHashMap<>();
             for (CommunityMembership membership : nonNull(graph.communityMemberships(corpusId))) {
                 members.computeIfAbsent(membership.communityId(), ignored -> new LinkedHashSet<>())
                         .add(membership.entityIdentity());
             }
-            Map<String, Entity> entities = new LinkedHashMap<>();
-            for (Entity entity : nonNull(graph.entities(corpusId))) {
-                entities.putIfAbsent(entity.normalizedIdentity(), entity);
-            }
-            return new CommunityContext(communities, members, entities, nonNull(graph.relationships(corpusId)));
+            return new CommunityContext(communities, members);
         }
 
         Set<String> membersOf(String communityId) {
             return membersByCommunity.getOrDefault(communityId, Set.of());
         }
 
+        /** The Entities of the members of {@code communityIds}, and the Relationships touching them. */
+        MemberData memberData(GraphReadPort graph, String corpusId, Collection<String> communityIds) {
+            Set<String> wanted = new LinkedHashSet<>();
+            for (String communityId : communityIds) {
+                wanted.addAll(membersOf(communityId));
+            }
+            Map<String, Entity> entities = new LinkedHashMap<>();
+            for (Entity entity : nonNull(graph.entities(corpusId, wanted))) {
+                entities.putIfAbsent(entity.normalizedIdentity(), entity);
+            }
+            return new MemberData(entities, nonNull(graph.relationshipsTouching(corpusId, wanted)));
+        }
+
         private static <T> List<T> nonNull(Collection<T> values) {
             return values == null ? List.of() : values.stream().filter(Objects::nonNull).toList();
         }
+    }
+
+    /** The Entities (by identity) and Relationships around the members of some Communities. */
+    record MemberData(Map<String, Entity> entityByIdentity, List<Relationship> relationships) {
     }
 }

@@ -186,7 +186,7 @@ public class AnswerGlobalSearch {
      * added, asks the LLM, and resolves its citations.
      */
     private GlobalSearchAnswer synthesizedAnswer(String question, String corpusId, List<Community> top) {
-        Members members = Members.load(graphStorePort, corpusId);
+        Members members = Members.load(graphStorePort, corpusId, top.stream().map(Community::id).toList());
         List<RetrievalStep> steps = new ArrayList<>();
         List<LocalContextAssembler.Item> items = new ArrayList<>();
         Map<String, Citation> citationsByUnit = new LinkedHashMap<>();
@@ -246,7 +246,8 @@ public class AnswerGlobalSearch {
                     name + ": " + point.text() + " (importance " + point.score() + ")", null));
             pointCommunities.add(point.communityId());
         }
-        Members members = Members.load(graphStorePort, corpusId);
+        Members members = Members.load(graphStorePort, corpusId,
+                pointCommunities.stream().limit(MAX_PASSAGE_COMMUNITIES).toList());
         Map<String, Citation> citationsByUnit = new LinkedHashMap<>();
         pointCommunities.stream().limit(MAX_PASSAGE_COMMUNITIES).forEach(communityId -> addMemberTextUnits(
                 corpusId, byId.get(communityId), members, steps, items, citationsByUnit));
@@ -300,11 +301,14 @@ public class AnswerGlobalSearch {
                 .toList();
     }
 
-    /** The member identities per Community, the Entities by identity, and the Relationships of a corpus. */
+    /**
+     * The member identities per Community, and the Entities and Relationships of the members of
+     * the Communities that are used, read by identity (the store is not asked for its whole corpus).
+     */
     private record Members(Map<String, Set<String>> byCommunity, Map<String, Entity> entityByIdentity,
                            Collection<Relationship> relationships) {
 
-        static Members load(GraphReadPort graph, String corpusId) {
+        static Members load(GraphReadPort graph, String corpusId, Collection<String> communityIds) {
             Map<String, Set<String>> byCommunity = new HashMap<>();
             for (CommunityMembership membership : LocalContextAssembler.orEmpty(
                     graph.communityMemberships(corpusId))) {
@@ -313,14 +317,18 @@ public class AnswerGlobalSearch {
                             .add(membership.entityIdentity());
                 }
             }
+            Set<String> wanted = new LinkedHashSet<>();
+            for (String communityId : communityIds) {
+                wanted.addAll(byCommunity.getOrDefault(communityId, Set.of()));
+            }
             Map<String, Entity> entityByIdentity = new HashMap<>();
-            for (Entity entity : LocalContextAssembler.orEmpty(graph.entities(corpusId))) {
+            for (Entity entity : LocalContextAssembler.orEmpty(graph.entities(corpusId, wanted))) {
                 if (entity != null) {
                     entityByIdentity.putIfAbsent(entity.normalizedIdentity(), entity);
                 }
             }
             return new Members(byCommunity, entityByIdentity,
-                    LocalContextAssembler.orEmpty(graph.relationships(corpusId)));
+                    LocalContextAssembler.orEmpty(graph.relationshipsTouching(corpusId, wanted)));
         }
     }
 

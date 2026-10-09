@@ -163,7 +163,11 @@ public class ImportKnowledgeGraph {
         return merged;
     }
 
-    /** Endpoint identities found in neither the import nor the store; reads the store only when needed. */
+    /**
+     * Endpoint identities found in neither the import nor the store. The store is asked for
+     * exactly those identities ({@code entities(corpusId, identities)}), and only when there
+     * are some, so a large corpus is never read whole for this.
+     */
     private Set<String> missingEndpoints(String corpusId, Map<String, Entity> entities,
                                          Collection<Relationship> relationships) {
         Set<String> missing = new HashSet<>();
@@ -177,7 +181,7 @@ public class ImportKnowledgeGraph {
         if (missing.isEmpty()) {
             return missing;
         }
-        Collection<Entity> stored = graphStorePort.entities(corpusId);
+        Collection<Entity> stored = graphStorePort.entities(corpusId, missing);
         if (stored != null) {
             for (Entity entity : stored) {
                 if (entity != null) {
