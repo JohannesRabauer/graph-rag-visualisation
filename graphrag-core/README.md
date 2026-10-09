@@ -23,7 +23,7 @@ Neo4j Java Driver, or LangChain4j, and the build enforces that ban.
 <dependency>
     <groupId>dev.rabauer.graphrag</groupId>
     <artifactId>graphrag-core</artifactId>
-    <version>2.0.1</version>
+    <version>2.1.0</version>
 </dependency>
 ```
 
@@ -563,7 +563,7 @@ ships JUnit 5 contract tests an adapter extends, plus fixtures:
 <dependency>
     <groupId>dev.rabauer.graphrag</groupId>
     <artifactId>graphrag-core-testkit</artifactId>
-    <version>2.0.1</version>
+    <version>2.1.0</version>
     <scope>test</scope>
 </dependency>
 ```

@@ -33,7 +33,7 @@
     <!-- graphrag-core is released independently under the dev.rabauer.graphrag
          groupId/version; this property lets dependents track its version
          from one place instead of four synchronized literals. -->
-    <graphrag-core.version>2.1.0-SNAPSHOT</graphrag-core.version>
+    <graphrag-core.version>2.2.0-SNAPSHOT</graphrag-core.version>
   </properties>
 
   <build>
