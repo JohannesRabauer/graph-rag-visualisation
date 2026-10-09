@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OpenAiLlmPort` (adapter, not released with the core) is now a `PromptedLlmPort`. It uses the core's prompts, schemas and lenient parsing, and only implements `complete`, sending the conversation in OpenAI JSON mode. Every failure is still an `OpenAiLlmPort.LlmCallFailedException`: a network error, a reply cut off by the output-token limit, or a reply that stays unusable. `summarizesCommunities()` is now true. DRIFT sub-questions stay deterministic. A blank Community summary now fails instead of falling back to the templated one. There is a new constructor taking `PromptedLlmPort.Options`, and the web app reads `GRAPHRAG_EXTRACTION_GLEANINGS` (default 0) and `GRAPHRAG_DESCRIPTION_SUMMARIES` (default false).
 - **Breaking for record patterns:** `PromptedLlmPort.Options` gains the record components `gleanings`, `verdictTokens` and `descriptionSummaries`. The seven-argument constructor is kept; it means no gleaning, 256 verdict tokens and no description summaries. A negative `gleanings` throws `IllegalArgumentException`.
 
+### Fixed
+
+- **`IdentifierSeedMatcher` no longer counts package segments.** The lower-case segments in front of the first upper-case one (`org.pulsar.broker` in `org.pulsar.broker.service.BrokerService`) are not among a name's words, and a token equal to one scores only 3 (below the minimum of 6). Before, `BrokerService` half-matched (12.5) every class in a package called `broker`, and a plain word such as "broker" matched all of them. A qualified token that is the start of a name (`com.acme.order`) now scores 30 for the classes in that package. Names without an upper-case segment (Python, Go) have no package and score as before.
+- **`IdentifierSeedMatcher` indexes the normalised names once per corpus.** It keeps the forms of the Entities it saw last per corpus id and reuses them while `entities(corpusId)` returns equal Entities in the same order, so a question no longer normalises every name again (about 10 s cold for 2.4k Entities). Any change to the Entities rebuilds that corpus's index. Reuse one matcher instance.
+
 ## [2.0.1] - 2026-10-06
 
 ### Added
