@@ -264,4 +264,34 @@ class Neo4jCorpusRegistryTest {
 
         assertDoesNotThrow(() -> registry.activate("nonexistent-" + System.nanoTime()));
     }
+
+    @Test
+    void deleteRemovesTheEntryAndReportsWhetherItExisted() {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+        Corpus corpus = newCorpus("corpus-delete-" + System.nanoTime());
+        Corpus other = newCorpus("corpus-delete-other-" + System.nanoTime());
+        registry.put(corpus);
+        registry.put(other);
+
+        assertTrue(registry.delete(corpus.id()));
+
+        assertTrue(registry.get(corpus.id()).isEmpty());
+        assertTrue(registry.get(other.id()).isPresent());
+        assertFalse(registry.delete(corpus.id()));
+        assertFalse(registry.delete("corpus-never-existed"));
+        assertFalse(registry.delete(null));
+        assertFalse(registry.delete(" "));
+    }
+
+    @Test
+    void deleteAlsoForgetsTheOfflineFlag() {
+        Neo4jCorpusRegistry registry = new Neo4jCorpusRegistry(driver);
+        Corpus corpus = newCorpus("corpus-delete-offline-" + System.nanoTime());
+        registry.put(corpus);
+        registry.markOffline(corpus.id());
+
+        registry.delete(corpus.id());
+
+        assertFalse(registry.isOffline(corpus.id()));
+    }
 }

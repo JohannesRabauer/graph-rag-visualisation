@@ -281,6 +281,38 @@ body {
   overflow-y: auto;
 }
 
+.corpus-history-item {
+  display: flex;
+  align-items: stretch;
+}
+
+.corpus-history-item .corpus-history-row {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.corpus-history-row-delete {
+  flex-shrink: 0;
+  padding: 0 var(--space-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--ink-400);
+}
+
+.corpus-history-row-delete:hover {
+  color: var(--active);
+  background: var(--accent-soft);
+}
+
+.corpus-history-row-delete:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .corpus-history-row {
   display: flex;
   align-items: center;
@@ -953,6 +985,27 @@ body {
 
 .trace-pane-mode:empty {
   display: none;
+}
+
+.trace-pane-download {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-600);
+  font-family: var(--font-tag);
+  font-size: var(--font-tag-size);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.trace-pane-download[hidden] {
+  display: none;
+}
+
+.trace-pane-download:hover {
+  color: var(--ink-900);
+  background: var(--chrome);
 }
 
 .trace-pane-close {
@@ -4062,4 +4115,15 @@ body {
     animation: none !important;
     transition: none !important;
   }
+}
+
+.node-detail-source-remove {
+  margin: 0.4rem 0.4rem 0 0;
+  font: inherit;
+  font-size: 0.75rem;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 0.4rem;
+  cursor: pointer;
 }

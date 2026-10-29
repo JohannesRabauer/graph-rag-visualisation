@@ -41,6 +41,7 @@ import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -164,6 +165,23 @@ class CorpusControllerTest {
         // assertion above and by PdfDocumentParserAdapter's own unit tests.
         assertThat(stored).isPresent();
         assertThat(stored.get().documentNames()).containsExactly("report.pdf");
+    }
+
+    @Test
+    void uploadingAMarkdownFileReturns201AndRegistersTheCorpus() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "Notes.MD", "text/markdown", "# Title\n\nSome **bold** text.\n".getBytes(StandardCharsets.UTF_8));
+
+        String responseBody = mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.documentNames[0]").value("Notes.MD"))
+                .andExpect(jsonPath("$.documentCount").value(1))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+        assertThat(corpusRegistry.get(corpusId)).isPresent();
     }
 
     @Test
@@ -1432,6 +1450,71 @@ class CorpusControllerTest {
         assertThat(retrievalTraceStore.get(traceId).orElseThrow().steps()).isEmpty();
     }
 
+    private String seedTwoDocumentCorpus() {
+        Corpus corpus = new Corpus("remove-source-corpus", List.of(
+                new UploadedDocument("alpha.txt", "alpha"), new UploadedDocument("beta.txt", "beta")));
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
+        String id = corpus.id();
+        graphStorePort.persistTextUnits(id, List.of(
+                new TextUnit("tu-alpha", id, "alpha.txt", 0, "Ada met Bob."),
+                new TextUnit("tu-beta", id, "beta.txt", 0, "Carol met Dan.")));
+        graphStorePort.persistEntities(id, List.of(
+                new dev.rabauer.graphrag.core.domain.Entity("Ada", "Person", "d", List.of("tu-alpha")),
+                new dev.rabauer.graphrag.core.domain.Entity("Bob", "Person", "d", List.of("tu-alpha")),
+                new dev.rabauer.graphrag.core.domain.Entity("Carol", "Person", "d", List.of("tu-beta")),
+                new dev.rabauer.graphrag.core.domain.Entity("Dan", "Person", "d", List.of("tu-beta"))));
+        graphStorePort.persistRelationships(id, List.of(
+                new dev.rabauer.graphrag.core.domain.Relationship("Ada", "Person", "knows", "Bob", "Person",
+                        "d", List.of("tu-alpha"), 1),
+                new dev.rabauer.graphrag.core.domain.Relationship("Carol", "Person", "knows", "Dan", "Person",
+                        "d", List.of("tu-beta"), 1)));
+        vectorStorePort.persistChunks(id, List.of(
+                new dev.rabauer.graphrag.core.domain.EmbeddedChunk(
+                        new dev.rabauer.graphrag.core.domain.Chunk("ch-alpha", id, 0, "Ada met Bob.", "alpha.txt"),
+                        new float[]{1f, 0f}, new double[]{0, 0}),
+                new dev.rabauer.graphrag.core.domain.EmbeddedChunk(
+                        new dev.rabauer.graphrag.core.domain.Chunk("ch-beta", id, 0, "Carol met Dan.", "beta.txt"),
+                        new float[]{0f, 1f}, new double[]{1, 1})));
+        return id;
+    }
+
+    @Test
+    void removingASourceDeletesItsPassagesEntitiesRelationshipsAndVectorsOnly() throws Exception {
+        String id = seedTwoDocumentCorpus();
+
+        mockMvc.perform(delete("/api/corpora/" + id + "/sources/alpha.txt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentName").value("alpha.txt"))
+                .andExpect(jsonPath("$.removedTextUnits").value(1))
+                .andExpect(jsonPath("$.removedRelationships").value(1));
+
+        assertThat(graphStorePort.textUnits(id)).extracting(TextUnit::documentName).containsExactly("beta.txt");
+        assertThat(graphStorePort.entities(id)).extracting(dev.rabauer.graphrag.core.domain.Entity::name)
+                .containsExactlyInAnyOrder("Carol", "Dan");
+        assertThat(graphStorePort.relationships(id)).hasSize(1);
+        assertThat(vectorStorePort.chunks(id)).extracting(ec -> ec.chunk().id()).containsExactly("ch-beta");
+    }
+
+    @Test
+    void removingASourceFromAnUnknownCorpusReturns404() throws Exception {
+        mockMvc.perform(delete("/api/corpora/no-such-corpus/sources/alpha.txt"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void removingAnUnknownDocumentReturns404AndChangesNothing() throws Exception {
+        String id = seedTwoDocumentCorpus();
+
+        mockMvc.perform(delete("/api/corpora/" + id + "/sources/missing.txt"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
+
+        assertThat(graphStorePort.textUnits(id)).hasSize(2);
+        assertThat(graphStorePort.entities(id)).hasSize(4);
+    }
+
     private static LlmPort stubLlmPort() {
         return corpus -> new GraphExtraction(List.of(), List.of());
     }
@@ -1663,6 +1746,61 @@ class CorpusControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value(
                         "No corpus was found for id nonexistent-corpus"));
+    }
+
+    @Test
+    void deletingACorpusRemovesItsGraphVectorsAndRegistryEntryButNotOtherCorpora() throws Exception {
+        String bodyA = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusIdA = JsonPath.read(bodyA, "$.corpusId");
+        String bodyB = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusIdB = JsonPath.read(bodyB, "$.corpusId");
+        waitForProgressEvent(corpusIdA, "ingestion-complete");
+        waitForProgressEvent(corpusIdB, "ingestion-complete");
+        assertThat(graphStorePort.entities(corpusIdA)).isNotEmpty();
+        assertThat(vectorStorePort.chunks(corpusIdA)).isNotEmpty();
+
+        mockMvc.perform(delete("/api/corpora/{corpusId}", corpusIdA))
+                .andExpect(status().isNoContent());
+
+        assertThat(corpusRegistry.get(corpusIdA)).isEmpty();
+        assertThat(corpusRegistry.isOffline(corpusIdA)).isFalse();
+        assertThat(graphStorePort.entities(corpusIdA)).isEmpty();
+        assertThat(graphStorePort.textUnits(corpusIdA)).isEmpty();
+        assertThat(graphStorePort.communities(corpusIdA)).isEmpty();
+        assertThat(vectorStorePort.chunks(corpusIdA)).isEmpty();
+        assertThat(corpusRegistry.get(corpusIdB)).isPresent();
+        assertThat(graphStorePort.entities(corpusIdB)).isNotEmpty();
+
+        // gone for good: a second delete and an activate are 404
+        mockMvc.perform(delete("/api/corpora/{corpusId}", corpusIdA))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/corpora/{corpusId}/activate", corpusIdA))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deletingAnUnknownCorpusReturns404WithAPlainLanguageError() throws Exception {
+        mockMvc.perform(delete("/api/corpora/{corpusId}", "nonexistent-corpus"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("No corpus was found for id nonexistent-corpus"));
+    }
+
+    @Test
+    void deletingACorpusThatIsStillBuildingReturns409AndChangesNothing() throws Exception {
+        Corpus building = new Corpus("building-" + System.nanoTime(),
+                List.of(new UploadedDocument("a.txt", "content")));
+        corpusRegistry.put(building);
+
+        mockMvc.perform(delete("/api/corpora/{corpusId}", building.id()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").exists());
+
+        assertThat(corpusRegistry.get(building.id())).isPresent();
+        corpusRegistry.delete(building.id());
     }
 
     @Test

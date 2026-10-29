@@ -139,6 +139,27 @@ public abstract class GraphStorePortContract extends GraphReadPortContract {
     }
 
     @Test
+    void deletingACorpusRemovesItsWholeGraphAndKeepsTheOthers() {
+        if (!supportsDeletion()) {
+            return;
+        }
+        store.deleteCorpus(graph.corpusId());
+
+        assertTrue(store.entities(graph.corpusId()).isEmpty());
+        assertTrue(store.relationships(graph.corpusId()).isEmpty());
+        assertTrue(store.textUnits(graph.corpusId()).isEmpty());
+        assertTrue(store.communities(graph.corpusId()).isEmpty());
+        assertTrue(store.communityMemberships(graph.corpusId()).isEmpty());
+        assertEquals(1, store.entities(graph.otherCorpusId()).size());
+        assertEquals(1, store.textUnits(graph.otherCorpusId()).size());
+
+        // deleting an unknown or an already deleted corpus is a no-op
+        store.deleteCorpus(graph.corpusId());
+        store.deleteCorpus("unknown-corpus");
+        assertEquals(1, store.entities(graph.otherCorpusId()).size());
+    }
+
+    @Test
     void removingASourceDeletesItsElementsAndReportsStaleCommunities() {
         if (!supportsDeletion()) {
             return;

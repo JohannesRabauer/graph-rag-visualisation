@@ -272,6 +272,18 @@ public class InMemoryGraphStoreAdapter implements GraphStorePort {
     }
 
     @Override
+    public void deleteCorpus(String corpusId) {
+        if (corpusId == null) {
+            return;
+        }
+        textUnitsByCorpusId.remove(corpusId);
+        entitiesByCorpusId.remove(corpusId);
+        relationshipsByCorpusId.remove(corpusId);
+        communitiesByCorpusId.remove(corpusId);
+        communityMembershipsByCorpusId.remove(corpusId);
+    }
+
+    @Override
     public List<Entity> entities() {
         return new ArrayList<>(entities.values());
     }

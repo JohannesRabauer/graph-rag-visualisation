@@ -35,6 +35,7 @@
         <li><a href="#modes">Search modes</a></li>
         <li><a href="#grounding">Grounding</a></li>
         <li><a href="#compare">Compare</a></li>
+        <li><a href="#compare-all">Four-way</a></li>
         <li><a href="#architecture">Architecture</a></li>
         <li><a href="#run">Run it</a></li>
         <li><a href="#library">Library</a></li>
@@ -519,6 +520,38 @@
     </div>
   </section>
 
+  <!-- ================================================================ COMPARE ALL FOUR -->
+  <section class="section section--panel" id="compare-all">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Step 5 · Four methods, one question</span>
+        <h2>Local, Global, DRIFT and Vector Search on one question</h2>
+        <p class="lede">When an answer is wrong, the question is where it went wrong. The four-way comparison runs all four retrieval methods on the same question and lines up their answers, their time and their evidence, so the miss can be traced to retrieval, ranking or generation.</p>
+      </div>
+
+      <div class="two-col reveal">
+        <figure class="shot shot--lg">
+          <div class="shot-bar"><i></i><i></i><i></i><span>localhost:8080 — four-way comparison</span></div>
+          <img src="assets/compare-all.png" alt="The Compare tab in four-way mode: columns for Local, Global, DRIFT and Vector Search, each with its answer, a time bar split into retrieval, embedding and LLM, and its traversal footprint" width="1280" height="720" loading="lazy">
+          <figcaption>The four-way view after one question on the offline demo dataset: one column per method with its answer, time split and traversal footprint. The evidence table sits below the columns.</figcaption>
+        </figure>
+        <div>
+          <h3>One column per method</h3>
+          <p>Click "Compare all four retrieval methods" under any answer. The methods run one after the other, and a method that fails is reported in its column instead of stopping the rest.</p>
+          <div class="figures">
+            <div class="figure"><b>Answer</b>with its citations, or the reason it has none</div>
+            <div class="figure"><b>Time by stage</b>retrieval, embedding and LLM, measured around the ports</div>
+            <div class="figure"><b>Traversal footprint</b>entities, relationships, communities or chunks touched</div>
+            <div class="figure"><b>Replay</b>each method's trace, step by step</div>
+          </div>
+          <h3 style="margin-top:22px">The evidence table</h3>
+          <p>One row per passage, one column per method, saying how far the passage got: not retrieved, ranked below the vector cut-off, in the context, or cited. Mark the passage that holds the right answer as expected, and each column names the stage where it got lost: <b>retrieval</b>, <b>ranking</b> or <b>generation</b>. "Download log (JSON)" saves everything, every traversal step included.</p>
+          <p>The screenshot comes from the offline demo, where a deterministic stub stands in for the model. With an OpenAI key the answers are written by the model and the graph modes cite their passages.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ================================================================ GLOSSARY -->
   <section class="section section--tight section--panel" id="glossary">
     <div class="container">
@@ -742,7 +775,50 @@ OPENAI_API_KEY=sk-... docker compose up"><pre><span class="c"># clone and start 
 <span class="k">&lt;/dependency&gt;</span></pre></div>
           <div class="codeblock" data-copy="implementation(&quot;dev.rabauer.graphrag:graphrag-core:2.0.0&quot;)"><pre><span class="c">// Gradle: build.gradle.kts</span>
 <span class="k">implementation</span>(<span class="s">"dev.rabauer.graphrag:graphrag-core:2.0.0"</span>)</pre></div>
+          <h3 style="margin-top:30px;font-size:20px;font-weight:800">A first run, offline</h3>
+          <p>Wire the ports with small in-memory stand-ins and run the pipeline. This is the quick start from the core's README; it needs no database and no API key, and prints a Local Search answer.</p>
+          <div class="codeblock" data-copy="DocumentParserPort parser = filename -&gt; filename != null &amp;&amp; filename.endsWith(&quot;.txt&quot;);
+LlmPort llm = corpus -&gt; new GraphExtraction(
+        List.of(new Entity(&quot;Ada Lovelace&quot;, &quot;Person&quot;)), List.of());
+
+List&lt;Entity&gt; entities = new ArrayList&lt;&gt;();
+List&lt;Relationship&gt; relationships = new ArrayList&lt;&gt;();
+GraphStorePort graph = new GraphStorePort() {   // in memory, for the demo
+    @Override public void persistEntities(Collection&lt;Entity&gt; e) { entities.addAll(e); }
+    @Override public void persistRelationships(Collection&lt;Relationship&gt; r) { relationships.addAll(r); }
+    @Override public Collection&lt;Entity&gt; entities(String corpusId) { return entities; }
+    @Override public Collection&lt;Relationship&gt; relationships(String corpusId) { return relationships; }
+};
+
+Corpus corpus = new IngestCorpus(List.of(parser)).ingest(List.of(
+        new UploadedDocument(&quot;bio.txt&quot;, &quot;Ada Lovelace worked on the Analytical Engine.&quot;)));
+new ExtractEntitiesAndRelationships(llm, graph).run(corpus);
+new DetectCommunities(graph).run(corpus);
+
+LocalSearchAnswer answer = new AnswerLocalSearch(graph).answer(&quot;Ada Lovelace&quot;, corpus.id());
+System.out.println(answer.answer());   // In this corpus graph, the closest local match is Ada Lovelace (Person)."><pre><span class="c">// imports: dev.rabauer.graphrag.core.domain.*, .core.port.*, .core.usecase.*, java.util.*</span>
+DocumentParserPort parser = filename -&gt; filename != null &amp;&amp; filename.endsWith(<span class="s">".txt"</span>);
+LlmPort llm = corpus -&gt; new GraphExtraction(
+        List.of(new Entity(<span class="s">"Ada Lovelace"</span>, <span class="s">"Person"</span>)), List.of());
+
+List&lt;Entity&gt; entities = new ArrayList&lt;&gt;();
+List&lt;Relationship&gt; relationships = new ArrayList&lt;&gt;();
+GraphStorePort graph = new GraphStorePort() {   <span class="c">// in memory, for the demo</span>
+    @Override public void persistEntities(Collection&lt;Entity&gt; e) { entities.addAll(e); }
+    @Override public void persistRelationships(Collection&lt;Relationship&gt; r) { relationships.addAll(r); }
+    @Override public Collection&lt;Entity&gt; entities(String corpusId) { return entities; }
+    @Override public Collection&lt;Relationship&gt; relationships(String corpusId) { return relationships; }
+};
+
+Corpus corpus = new IngestCorpus(List.of(parser)).ingest(List.of(
+        new UploadedDocument(<span class="s">"bio.txt"</span>, <span class="s">"Ada Lovelace worked on the Analytical Engine."</span>)));
+new ExtractEntitiesAndRelationships(llm, graph).run(corpus);
+new DetectCommunities(graph).run(corpus);
+
+LocalSearchAnswer answer = new AnswerLocalSearch(graph).answer(<span class="s">"Ada Lovelace"</span>, corpus.id());
+System.out.println(answer.answer());   <span class="c">// In this corpus graph, the closest local match is Ada Lovelace (Person).</span></pre></div>
           <ul class="checklist" style="margin-top:22px">
+            <li>Writing an adapter? <code>graphrag-core-testkit</code> (same version, test scope) has the JUnit 5 contract tests for the read, store, vector and embedding ports, plus a reference in-memory graph store.</li>
             <li>A Maven Enforcer rule fails the build if Spring, the Neo4j driver or LangChain4j leak into the core.</li>
             <li>Implementing a port means implementing its abstract methods only. Defaults cover the rest.</li>
             <li>Every use case returns its full Retrieval Trace, so your own UI can replay it.</li>
@@ -750,6 +826,7 @@ OPENAI_API_KEY=sk-... docker compose up"><pre><span class="c"># clone and start 
           </ul>
           <div class="hero-actions" style="margin-top:26px">
             <a class="btn btn-primary" href="https://github.com/JohannesRabauer/graph-rag-visualisation/tree/main/graphrag-core">Read the core's README</a>
+            <a class="btn btn-secondary" href="https://github.com/JohannesRabauer/graph-rag-visualisation/blob/main/graphrag-core/README.md#testkit-proving-an-adapter-correct">Testkit for adapter authors</a>
             <a class="btn btn-secondary" href="https://central.sonatype.com/artifact/dev.rabauer.graphrag/graphrag-core">On Maven Central</a>
             <a class="btn btn-secondary" href="https://github.com/JohannesRabauer/graph-rag-visualisation/blob/main/graphrag-core/CHANGELOG.md">Changelog</a>
           </div>

@@ -15,3 +15,8 @@ server:
     # rejected body is larger than this (default 2 MB). Keep it above the
     # request limit so a user who picks a too-large file sees the message.
     max-swallow-size: 100MB
+
+graphrag:
+  traces:
+    # Retrieval traces kept in memory; least recently used is evicted first.
+    max: 500
