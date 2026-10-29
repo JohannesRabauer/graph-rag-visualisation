@@ -85,9 +85,9 @@ class CorpusControllerCompareAllTest {
                 new EmbeddedChunk(new Chunk(corpusId + "::chunk-1", corpusId, 1, "Unrelated text.", "other.txt"),
                         new float[]{0.2f, 0.8f}, new double[]{-0.5, 0.5})));
 
-        CorpusController controller = new CorpusController(null, registry, List.of(), null, null, llmPort, graph,
+        CorpusControllers controller = new CorpusControllers(null, registry, List.of(), null, null, llmPort, graph,
                 new RetrievalTraceStore(), null, new AnswerVectorBaseline(QUERY, vectors, llmPort), vectors, null);
-        return new Fixture(MockMvcBuilders.standaloneSetup(controller).build(), corpusId);
+        return new Fixture(controller.mockMvc(), corpusId);
     }
 
     private static String compareAll(Fixture f, String body, int expectedStatus) throws Exception {
@@ -164,7 +164,7 @@ class CorpusControllerCompareAllTest {
 
         assertThat((String) JsonPath.read(body, "$.runs[2].outcome")).isEqualTo("FAILED");
         assertThat((String) JsonPath.read(body, "$.runs[2].reason"))
-                .isEqualTo(CorpusController.ANSWER_SYNTHESIS_FAILURE_MESSAGE);
+                .isEqualTo(CorpusMessages.ANSWER_SYNTHESIS_FAILURE_MESSAGE);
         assertThat((String) JsonPath.read(body, "$.runs[0].outcome")).isEqualTo("ANSWERED");
         assertThat((String) JsonPath.read(body, "$.runs[3].outcome")).isEqualTo("ANSWERED");
         assertThat((String) JsonPath.read(body, "$.summary")).contains("DRIFT failed");
@@ -187,10 +187,10 @@ class CorpusControllerCompareAllTest {
         registry.markReady("compare-all-offline");
         registry.markOffline("compare-all-offline");
         InMemoryVectorStoreAdapter vectors = new InMemoryVectorStoreAdapter();
-        CorpusController controller = new CorpusController(null, registry, List.of(), null, null, null,
+        CorpusControllers controller = new CorpusControllers(null, registry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null,
                 new AnswerVectorBaseline(QUERY, vectors, null), vectors, null);
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        MockMvc mvc = controller.mockMvc();
 
         for (String corpusId : List.of("compare-all-building", "compare-all-failed", "compare-all-offline")) {
             mvc.perform(post("/api/corpora/{id}/compare-all", corpusId)

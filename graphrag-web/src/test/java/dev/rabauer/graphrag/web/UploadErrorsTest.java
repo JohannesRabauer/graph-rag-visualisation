@@ -115,8 +115,8 @@ class UploadErrorsTest {
                 });
     }
 
-    private static CorpusController controller(List<DocumentParserPort> parsers) {
-        return new CorpusController(mock(IngestCorpus.class), mock(Neo4jCorpusRegistry.class), parsers, null,
-                null, null, null, null, mock(ConstructVectorIndex.class), null, null, null);
+    private static CorpusIngestController controller(List<DocumentParserPort> parsers) {
+        return new CorpusIngestController(mock(IngestCorpus.class), mock(Neo4jCorpusRegistry.class), parsers, null,
+                null, null, null, mock(ConstructVectorIndex.class), null, null);
     }
 }

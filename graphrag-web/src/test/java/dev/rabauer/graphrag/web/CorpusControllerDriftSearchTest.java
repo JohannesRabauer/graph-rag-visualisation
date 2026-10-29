@@ -38,7 +38,7 @@ class CorpusControllerDriftSearchTest {
         graphStore.persistRelationships(corpus.id(), List.of(
                 new Relationship("Sherlock Holmes", "Person", "INVESTIGATES", "Irene Adler", "Person")));
 
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -74,7 +74,7 @@ class CorpusControllerDriftSearchTest {
                 new Community("community-1", "This community centers on Baker Street and violin practice.")));
 
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, stubLlmPort(), graphStore, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -116,7 +116,7 @@ class CorpusControllerDriftSearchTest {
                 new Community("community-2", "This community centers on Professor Moriarty and networks.")));
         graphStore.persistEntities(secondCorpus.id(), List.of(new Entity("Professor Moriarty", "Person")));
 
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, stubLlmPort(), graphStore, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(

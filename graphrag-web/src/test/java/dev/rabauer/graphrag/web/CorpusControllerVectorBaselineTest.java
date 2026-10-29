@@ -22,7 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Plain unit tests for the VECTOR query branch wiring in {@link CorpusController}.
+ * Plain unit tests for the VECTOR query branch wiring in {@link CorpusControllers}.
  *
  * <p>Mirrors the pattern of {@link CorpusControllerGlobalSearchTest} and
  * {@link CorpusControllerDriftSearchTest}: constructs the controller directly
@@ -50,7 +50,7 @@ class CorpusControllerVectorBaselineTest {
                         new double[]{0.0, 0.0})));
 
         AnswerVectorBaseline answerVectorBaseline = new AnswerVectorBaseline(embeddingPort, vectorStore, null);
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), retrievalTraceStore, null, answerVectorBaseline, vectorStore);
 
@@ -97,7 +97,7 @@ class CorpusControllerVectorBaselineTest {
         // Empty vector store — no chunks built yet.
         AnswerVectorBaseline answerVectorBaseline = new AnswerVectorBaseline(
                 new LangChain4jEmbeddingPort(), new InMemoryVectorStoreAdapter(), null);
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), retrievalTraceStore, null, answerVectorBaseline, null);
 
@@ -140,7 +140,7 @@ class CorpusControllerVectorBaselineTest {
         };
     }
 
-    private static CorpusController synthesizingController(String corpusId,
+    private static CorpusControllers synthesizingController(String corpusId,
                                                            dev.rabauer.graphrag.core.port.LlmPort llmPort) {
         Neo4jCorpusRegistry corpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         corpusRegistry.put(new Corpus(corpusId, List.of(new UploadedDocument("doc.txt", "Some content."))));
@@ -151,13 +151,13 @@ class CorpusControllerVectorBaselineTest {
                 new float[]{1f, 0f}, new double[]{0.0, 0.0})));
         AnswerVectorBaseline answerVectorBaseline =
                 new AnswerVectorBaseline(text -> new float[]{1f, 0f}, vectorStore, llmPort);
-        return new CorpusController(null, corpusRegistry, List.of(), null, null, llmPort,
+        return new CorpusControllers(null, corpusRegistry, List.of(), null, null, llmPort,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, answerVectorBaseline, vectorStore);
     }
 
     @Test
     void vectorModeNotInContextReturnsTheNoAnswerShapeWithTheQueryProjection() {
-        CorpusController controller = synthesizingController("corpus-vector-nic",
+        CorpusControllers controller = synthesizingController("corpus-vector-nic",
                 synthesizing(new dev.rabauer.graphrag.core.domain.SynthesizedAnswer(true, "")));
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -179,7 +179,7 @@ class CorpusControllerVectorBaselineTest {
 
     @Test
     void vectorModeCitedAnswerReturnsChunkCitations() {
-        CorpusController controller = synthesizingController("corpus-vector-cited",
+        CorpusControllers controller = synthesizingController("corpus-vector-cited",
                 synthesizing(new dev.rabauer.graphrag.core.domain.SynthesizedAnswer(false, "Holmes did [1].")));
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -209,7 +209,7 @@ class CorpusControllerVectorBaselineTest {
                 new EmbeddedChunk(new Chunk(corpus.id() + "::chunk-0", corpus.id(), 0, "alpha"),
                         new float[]{1f, 0f}, new double[]{1.5, -2.0})));
 
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver()), List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null, vectorStore);
 
@@ -229,7 +229,7 @@ class CorpusControllerVectorBaselineTest {
 
     @Test
     void vectorSpaceEndpointReturnsEmptyChunksWhenIndexIsNotBuiltYet() {
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver()), List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null,
                 new InMemoryVectorStoreAdapter());
@@ -247,7 +247,7 @@ class CorpusControllerVectorBaselineTest {
         corpusRegistry.put(corpus);
         corpusRegistry.markReady(corpus.id());
 
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null, null);
 
