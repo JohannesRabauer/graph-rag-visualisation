@@ -1,3 +1,8 @@
 spring:
   application:
     name: graphrag-lens
+
+graphrag:
+  traces:
+    # Retrieval traces kept in memory; least recently used is evicted first.
+    max: 500
