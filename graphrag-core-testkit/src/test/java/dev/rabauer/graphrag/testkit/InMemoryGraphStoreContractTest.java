@@ -9,4 +9,14 @@ class InMemoryGraphStoreContractTest extends GraphStorePortContract {
     protected GraphStorePort newStore() {
         return new InMemoryGraphStore();
     }
+
+    @Override
+    protected boolean supportsDeletion() {
+        return true;
+    }
+
+    @Override
+    protected boolean supportsSimilarity() {
+        return true;
+    }
 }
