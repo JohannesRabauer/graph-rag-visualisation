@@ -41,6 +41,7 @@ import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -200,6 +201,46 @@ class CorpusControllerTest {
                 "A Scandal in Bohemia.txt",
                 "The Adventure of the Speckled Band.txt",
                 "The Final Problem.txt");
+    }
+
+    @Test
+    void deletingASourceRemovesItsTextUnitsKeepsTheOtherDocumentAndAnswers404ForUnknowns() throws Exception {
+        MockMultipartFile alpha = new MockMultipartFile("files", "alpha-source.txt", "text/plain",
+                "Aria Solberg met Bruno Castellan. Bruno Castellan met Celia Dunmore.".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile beta = new MockMultipartFile("files", "beta-source.txt", "text/plain",
+                "Dario Fenwick met Elena Granger. Elena Granger met Felix Harrow.".getBytes(StandardCharsets.UTF_8));
+        String responseBody = mockMvc.perform(multipart("/api/corpora").file(alpha).file(beta))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+        verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS))
+                .emit(eq(corpusId), eq("ingestion-complete"), any());
+        assertThat(graphStorePort.textUnits(corpusId)).extracting(TextUnit::documentName)
+                .contains("alpha-source.txt", "beta-source.txt");
+
+        mockMvc.perform(delete("/api/corpora/" + corpusId + "/sources/alpha-source.txt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentName").value("alpha-source.txt"))
+                .andExpect(jsonPath("$.removedTextUnits").value(org.hamcrest.Matchers.greaterThan(0)));
+
+        assertThat(graphStorePort.textUnits(corpusId)).extracting(TextUnit::documentName)
+                .containsOnly("beta-source.txt");
+        assertThat(graphStorePort.entities(corpusId)).extracting(entity -> entity.name())
+                .noneMatch(name -> name.contains("Aria") || name.contains("Bruno") || name.contains("Celia"));
+
+        // The document is gone now, so a repeat is an unknown document.
+        mockMvc.perform(delete("/api/corpora/" + corpusId + "/sources/alpha-source.txt"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/corpora/" + corpusId + "/sources/never-uploaded.txt"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void deletingASourceOfAnUnknownCorpusAnswers404() throws Exception {
+        mockMvc.perform(delete("/api/corpora/no-such-corpus/sources/alpha-source.txt"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
     }
 
     @Test

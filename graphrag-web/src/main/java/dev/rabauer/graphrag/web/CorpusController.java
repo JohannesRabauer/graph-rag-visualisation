@@ -17,6 +17,7 @@ import dev.rabauer.graphrag.core.domain.Relationship;
 import dev.rabauer.graphrag.core.domain.RetrievalStep;
 import dev.rabauer.graphrag.core.domain.RetrievalTrace;
 import dev.rabauer.graphrag.core.domain.StageTiming;
+import dev.rabauer.graphrag.core.domain.Sources;
 import dev.rabauer.graphrag.core.domain.TextUnit;
 import dev.rabauer.graphrag.core.domain.UnreadableDocumentException;
 import dev.rabauer.graphrag.core.domain.UnsupportedFileTypeException;
@@ -42,7 +43,9 @@ import dev.rabauer.graphrag.core.usecase.GlobalSearchAnswer;
 import dev.rabauer.graphrag.core.usecase.IngestCorpus;
 import dev.rabauer.graphrag.core.usecase.LocalSearchAnswer;
 import dev.rabauer.graphrag.core.usecase.SemanticMatchingException;
+import dev.rabauer.graphrag.core.usecase.SourceRemoval;
 import dev.rabauer.graphrag.core.usecase.TextUnitProgress;
+import dev.rabauer.graphrag.core.usecase.UpdateSources;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +53,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -98,6 +102,8 @@ public class CorpusController {
             "The graph is still building for this corpus. Wait for “Knowledge Graph — Ready”, then ask your question.";
     private static final String GRAPH_FAILED_MESSAGE =
             "Graph construction failed for this corpus. Upload again or use the demo dataset to restart.";
+    private static final String OFFLINE_REMOVE_BLOCKED_MESSAGE =
+            "This is the offline demo corpus — it is read-only, so its documents cannot be removed.";
     private static final String OFFLINE_QUERY_BLOCKED_MESSAGE =
             "This is the offline demo corpus — its questions are pre-recorded, not live. Load a live corpus "
                     + "(upload your own, or the live Demo Dataset) to ask your own question.";
@@ -305,6 +311,50 @@ public class CorpusController {
                 "status", summary.status().name(),
                 "createdAt", summary.createdAt(),
                 "lastActivatedAt", summary.lastActivatedAt());
+    }
+
+    /**
+     * Removes one source document from a corpus: its Text Units, the Entities
+     * and Relationships only it supported and its vector chunks
+     * ({@link UpdateSources#removeBySource}), then re-detects the Communities.
+     * 404 for an unknown corpus or a document the corpus has no Text Units
+     * for; 409 while the graph is building or for the read-only offline demo.
+     */
+    @DeleteMapping("/api/corpora/{corpusId}/sources/{documentName}")
+    public ResponseEntity<Map<String, Object>> removeSource(@PathVariable("corpusId") String corpusId,
+                                                            @PathVariable("documentName") String documentName) {
+        Corpus corpus = corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        if (corpusStore.isOffline(corpusId)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", OFFLINE_REMOVE_BLOCKED_MESSAGE));
+        }
+        if (corpusStore.status(corpusId) == Neo4jCorpusRegistry.CorpusWorkflowStatus.BUILDING) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_BUILDING_MESSAGE));
+        }
+        boolean known = graphStorePort.textUnits(corpusId).stream()
+                .anyMatch(unit -> documentName.equals(Sources.of(unit)));
+        if (!known) {
+            throw new IllegalArgumentException("No document named " + documentName + " was found in this corpus.");
+        }
+
+        UpdateSources updateSources = new UpdateSources(graphStorePort, vectorStorePort, llmPort, embeddingPort);
+        SourceRemoval removal = updateSources.removeBySource(corpusId, documentName);
+        try {
+            updateSources.recomputeCommunities(corpusId);
+        } catch (RuntimeException ex) {
+            LOG.warn("Community detection failed after removing {} from corpus {}: {}", documentName, corpusId,
+                    ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error",
+                    "The document was removed, but community detection failed afterwards: " + ex.getMessage()));
+        }
+        return ResponseEntity.ok(Map.of(
+                "corpusId", corpusId,
+                "name", corpus.name(),
+                "documentName", documentName,
+                "removedTextUnits", removal.removedTextUnits(),
+                "removedEntities", removal.removedEntities().size(),
+                "removedRelationships", removal.removedRelationships(),
+                "removedChunks", removal.removedChunks()));
     }
 
     @PostMapping("/api/corpora")

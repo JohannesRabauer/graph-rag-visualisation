@@ -2451,6 +2451,21 @@ body {
   text-decoration: underline;
 }
 
+.node-detail-source-remove {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--danger, #b3261e);
+  font-family: var(--font-body);
+  font-size: var(--font-body-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.node-detail-source-remove:hover {
+  text-decoration: underline;
+}
+
 .node-detail-source-text {
   margin: 0;
   padding: var(--space-2);

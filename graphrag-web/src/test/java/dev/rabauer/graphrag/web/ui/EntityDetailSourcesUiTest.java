@@ -154,4 +154,43 @@ class EntityDetailSourcesUiTest extends UiTestSupport {
         assertThat(page.locator("#entity-detail-description-section")).isHidden();
         assertThat(page.locator("#entity-detail-sources-section")).isHidden();
     }
+
+    @Test
+    void removeDocumentActionConfirmsThenDeletesAndReloadsTheGraph() {
+        disableAutoRestore();
+        page.addInitScript(FAKE_EVENT_SOURCE);
+        page.navigate(baseUrl() + "/");
+        java.util.List<String> deleteUrls = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger graphLoads = new java.util.concurrent.atomic.AtomicInteger();
+        page.route("**/api/corpora/*/sources/**", (Route route) -> {
+            deleteUrls.add(route.request().method() + " " + route.request().url());
+            route.fulfill(new Route.FulfillOptions().setStatus(200).setContentType("application/json")
+                    .setBody("{\"corpusId\":\"c\",\"name\":\"Demo\",\"documentName\":\"engine.txt\"}"));
+        });
+        page.route("**/api/corpora/*/graph", (Route route) -> {
+            graphLoads.incrementAndGet();
+            route.fulfill(new Route.FulfillOptions().setStatus(200).setContentType("application/json")
+                    .setBody("{\"entities\":[],\"relationships\":[],\"communities\":[]}"));
+        });
+        page.locator("#demo-dataset-button").click();
+        page.waitForFunction("() => window.__fakeSources && window.__fakeSources.length > 0",
+                null, new Page.WaitForFunctionOptions().setTimeout(20000));
+        page.evaluate("() => window.__emitSse('entity-extracted', {identity: 'ada lovelace::person',"
+                + " name: 'Ada Lovelace', type: 'Person', description: 'First.',"
+                + " sources: [{textUnitId: 'tu-0', documentName: 'engine.txt', ordinal: 0}]})");
+        page.waitForFunction("() => window.GraphCanvas.simulateTap('ada lovelace::person')",
+                null, new Page.WaitForFunctionOptions().setTimeout(20000));
+
+        // Dismissing the confirmation sends nothing.
+        page.onceDialog(dialog -> dialog.dismiss());
+        page.locator(".node-detail-source-remove").click();
+        org.assertj.core.api.Assertions.assertThat(deleteUrls).isEmpty();
+
+        page.onceDialog(dialog -> dialog.accept());
+        page.locator(".node-detail-source-remove").click();
+        page.waitForCondition(() -> graphLoads.get() > 0);
+        org.assertj.core.api.Assertions.assertThat(deleteUrls).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(deleteUrls.get(0)).startsWith("DELETE ")
+                .endsWith("/sources/engine.txt");
+    }
 }

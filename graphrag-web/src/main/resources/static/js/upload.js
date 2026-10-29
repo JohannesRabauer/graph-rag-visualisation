@@ -1806,6 +1806,10 @@
     var details = activeEntityDetails[identity] || {};
     var sources = details.sources || [];
     entityDetailSources.textContent = '';
+    var staleActions = document.getElementById('entity-detail-source-actions');
+    if (staleActions) {
+      staleActions.remove();
+    }
     entityDetailSourcesSection.hidden = sources.length === 0 || !identity;
     if (entityDetailSourcesSection.hidden) {
       return;
@@ -1839,6 +1843,58 @@
       item.appendChild(passage);
       entityDetailSources.appendChild(item);
     });
+
+    if (!activeCorpusOffline) {
+      var actions = document.createElement('div');
+      actions.id = 'entity-detail-source-actions';
+      actions.className = 'node-detail-source-actions';
+      entityDetailSources.insertAdjacentElement('afterend', actions);
+      var seen = {};
+      sources.forEach(function (source) {
+        var documentName = source.documentName;
+        if (!documentName || seen[documentName]) {
+          return;
+        }
+        seen[documentName] = true;
+        var removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'node-detail-source-remove';
+        removeButton.textContent = 'Remove ' + documentName + ' from corpus';
+        removeButton.addEventListener('click', function () {
+          removeSourceDocument(corpusId, documentName);
+        });
+        actions.appendChild(removeButton);
+      });
+    }
+  }
+
+  // Deletes one source document of the corpus (after a confirmation), then
+  // rebuilds the graph view from the server.
+  function removeSourceDocument(corpusId, documentName) {
+    if (!window.confirm('Remove "' + documentName + '" from this corpus? Its passages and the entities and '
+        + 'relationships only it supports will be deleted and the communities recomputed.')) {
+      return;
+    }
+    hideErrorBanner();
+    fetch('/api/corpora/' + encodeURIComponent(corpusId) + '/sources/' + encodeURIComponent(documentName),
+        { method: 'DELETE' })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (body) {
+          if (!response.ok) {
+            throw new Error(body.error || 'The document could not be removed.');
+          }
+          return body;
+        });
+      })
+      .then(function (body) {
+        if (corpusId !== activeCorpusId) {
+          return;
+        }
+        activateCorpus({ id: corpusId, name: body.name, status: 'READY' });
+      })
+      .catch(function (error) {
+        showErrorBanner(error && error.message ? error.message : 'The document could not be removed.');
+      });
   }
 
   // Writes a passage's full text into `element` (textContent only), from the
