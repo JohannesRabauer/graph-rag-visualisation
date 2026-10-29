@@ -1453,14 +1453,15 @@ class CorpusControllerTest {
     }
 
     @Test
-    void uploadingAnUnsupportedFileTypeReturns400WithAPlainLanguageErrorNamingTheFile() throws Exception {
+    void uploadingAnUnsupportedFileTypeReturns415WithAProblemDetailNamingTheFile() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "files", "test.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "not really a docx".getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/corpora").file(file))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentTypeCompatibleWith("application/json"))
-                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("test.docx")));
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+                .andExpect(jsonPath("$.status").value(415))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("test.docx")));
     }
 
     @Test
@@ -1471,7 +1472,7 @@ class CorpusControllerTest {
     }
 
     @Test
-    void uploadingAMixOfSupportedAndUnsupportedFilesReturns400AndRegistersNoCorpus() throws Exception {
+    void uploadingAMixOfSupportedAndUnsupportedFilesReturns415AndRegistersNoCorpus() throws Exception {
         MockMultipartFile valid = new MockMultipartFile(
                 "files", "ok.txt", "text/plain", "hello".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile invalid = new MockMultipartFile(
@@ -1479,13 +1480,13 @@ class CorpusControllerTest {
 
         // Validation fails while reading the files, before ingestCorpus.ingest()/corpusRegistry.put()
         // ever runs, so no corpusId is ever minted for this request -- there is nothing to look
-        // up afterward to prove that. The 400 + file-naming error below is the observable contract,
+        // up afterward to prove that. The 415 + file-naming problem below is the observable contract,
         // plus a direct count of CorpusMeta nodes below to prove no corpus was registered.
         long corpusMetaCountBefore = countCorpusMetaNodes();
 
         mockMvc.perform(multipart("/api/corpora").file(valid).file(invalid))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("bad.docx")));
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("bad.docx")));
 
         assertThat(countCorpusMetaNodes()).isEqualTo(corpusMetaCountBefore);
     }

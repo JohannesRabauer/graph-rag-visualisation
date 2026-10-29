@@ -1,3 +1,17 @@
 spring:
   application:
     name: graphrag-lens
+  servlet:
+    multipart:
+      # Teaching tool: corpora are a handful of short texts or PDFs, and every
+      # passage costs LLM calls during extraction. 10 MB per file is far above
+      # any sensible teaching document; 25 MB per upload allows a few of them.
+      max-file-size: 10MB
+      max-request-size: 25MB
+
+server:
+  tomcat:
+    # Tomcat drops the connection instead of delivering the 413 answer when the
+    # rejected body is larger than this (default 2 MB). Keep it above the
+    # request limit so a user who picks a too-large file sees the message.
+    max-swallow-size: 100MB

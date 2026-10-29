@@ -2363,7 +2363,7 @@
       body: formData
     })
       .then(function (response) {
-        return response.json().then(function (body) {
+        return response.json().catch(function () { return null; }).then(function (body) {
           return { ok: response.ok, body: body };
         });
       })
@@ -2393,6 +2393,10 @@
   });
 
   function errorMessage(body) {
+    // RFC 9457 problem details carry the message in `detail`; older answers use `error`.
+    if (body && body.detail) {
+      return body.detail;
+    }
     return body && body.error ? body.error : 'Upload failed.';
   }
 
