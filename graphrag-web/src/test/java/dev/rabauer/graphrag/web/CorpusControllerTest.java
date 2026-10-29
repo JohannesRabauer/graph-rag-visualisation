@@ -168,6 +168,23 @@ class CorpusControllerTest {
     }
 
     @Test
+    void uploadingAMarkdownFileReturns201AndRegistersTheCorpus() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "Notes.MD", "text/markdown", "# Title\n\nSome **bold** text.\n".getBytes(StandardCharsets.UTF_8));
+
+        String responseBody = mockMvc.perform(multipart("/api/corpora").file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.documentNames[0]").value("Notes.MD"))
+                .andExpect(jsonPath("$.documentCount").value(1))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String corpusId = JsonPath.read(responseBody, "$.corpusId");
+        assertThat(corpusRegistry.get(corpusId)).isPresent();
+    }
+
+    @Test
     void uploadingMultipleTxtFilesRegistersAllOfThemOnOneCorpus() throws Exception {
         MockMultipartFile a = new MockMultipartFile("files", "a.txt", "text/plain", "a".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile b = new MockMultipartFile("files", "b.txt", "text/plain", "b".getBytes(StandardCharsets.UTF_8));

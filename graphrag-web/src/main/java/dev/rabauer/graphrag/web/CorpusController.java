@@ -76,7 +76,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Upload entry point for a Corpus. It accepts plain text and PDF uploads,
+ * Upload entry point for a Corpus. It accepts plain text, Markdown and PDF uploads,
  * validates support with the registered parser adapters, and extracts the text
  * payload each parser is responsible for before storing the resulting Corpus.
  */
