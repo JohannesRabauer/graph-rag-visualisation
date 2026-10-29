@@ -445,7 +445,7 @@ class CorpusControllerTest {
             String type = documentName.equals("jaguar-animal.txt") ? "Animal" : "Organization";
             return new GraphExtraction(List.of(new dev.rabauer.graphrag.core.domain.Entity("Jaguar", type)), List.of());
         };
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, flippingLlmPort, graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null);
         List<org.springframework.web.multipart.MultipartFile> files = List.of(
@@ -574,7 +574,7 @@ class CorpusControllerTest {
                         List.of());
             }
         };
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, failingOnSecondUnit, graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null);
         MockMultipartFile file = new MockMultipartFile(
@@ -584,7 +584,7 @@ class CorpusControllerTest {
         String corpusId = String.valueOf(response.getBody().get("corpusId"));
 
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
-                eq(Map.of("error", CorpusController.EXTRACTION_FAILURE_MESSAGE)));
+                eq(Map.of("error", CorpusMessages.EXTRACTION_FAILURE_MESSAGE)));
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
         assertThat(calledOrdinals).containsExactly(0, 1);
@@ -615,7 +615,7 @@ class CorpusControllerTest {
                                 + corpusId + ": There is no procedure with the name `gds.graph.project` registered");
                     }
                 };
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, extractingLlmPort, gdsUnavailable, new RetrievalTraceStore(),
                 constructVectorIndex, null, null);
         MockMultipartFile file = new MockMultipartFile(
@@ -625,7 +625,7 @@ class CorpusControllerTest {
         String corpusId = String.valueOf(response.getBody().get("corpusId"));
 
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
-                eq(Map.of("error", CorpusController.COMMUNITY_DETECTION_FAILURE_MESSAGE)));
+                eq(Map.of("error", CorpusMessages.COMMUNITY_DETECTION_FAILURE_MESSAGE)));
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("community-detected"), any());
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
@@ -656,7 +656,7 @@ class CorpusControllerTest {
                         "OpenAI community summarization call failed", new IllegalStateException("simulated outage"));
             }
         };
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, failingSummaries, graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null);
         MockMultipartFile file = new MockMultipartFile(
@@ -666,7 +666,7 @@ class CorpusControllerTest {
         String corpusId = String.valueOf(response.getBody().get("corpusId"));
 
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
-                eq(Map.of("error", CorpusController.EXTRACTION_FAILURE_MESSAGE)));
+                eq(Map.of("error", CorpusMessages.EXTRACTION_FAILURE_MESSAGE)));
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
     }
@@ -728,7 +728,7 @@ class CorpusControllerTest {
         }
     }
 
-    private String ingestAdaAndBabbage(CorpusController controller) {
+    private String ingestAdaAndBabbage(CorpusControllers controller) {
         MockMultipartFile file = new MockMultipartFile(
                 "files", "pioneers.txt", "text/plain", "Two pioneers of computing.".getBytes(StandardCharsets.UTF_8));
         String corpusId = String.valueOf(controller.upload(
@@ -745,7 +745,7 @@ class CorpusControllerTest {
     @Test
     void globalAndDriftSearchSeedByTheMostSimilarCommunityOnAnEmbeddedCorpus() {
         RetrievalTraceStore traces = new RetrievalTraceStore();
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, traces,
                 constructVectorIndex, null, null, new MeaningEmbeddingPort());
         String corpusId = ingestAdaAndBabbage(controller);
@@ -770,26 +770,26 @@ class CorpusControllerTest {
     @Test
     void aQueryTimeEmbeddingFailureReturnsThePlainLanguageErrorShapeForEveryGraphMode() throws Exception {
         MeaningEmbeddingPort port = new MeaningEmbeddingPort();
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, port);
         String corpusId = ingestAdaAndBabbage(controller);
         port.failing = true;
-        MockMvc standalone = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+        MockMvc standalone = controller.mockMvc();
 
         for (String mode : List.of("LOCAL", "GLOBAL", "DRIFT")) {
             standalone.perform(post("/api/corpora/" + corpusId + "/query")
                             .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                             .content("{\"question\": \"who invented software?\", \"mode\": \"" + mode + "\"}"))
                     .andExpect(status().isServiceUnavailable())
-                    .andExpect(jsonPath("$.error").value(CorpusController.SEMANTIC_MATCHING_FAILURE_MESSAGE));
+                    .andExpect(jsonPath("$.error").value(CorpusMessages.SEMANTIC_MATCHING_FAILURE_MESSAGE));
         }
     }
 
     @Test
     void theOfflineDemoNeverCallsTheConfiguredSemanticEmbeddingPort() {
         MeaningEmbeddingPort port = new MeaningEmbeddingPort();
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers,
                 new DemoDatasetService(), corpusProgressService, adaAndBabbageLlmPort(), graphStorePort,
                 new RetrievalTraceStore(), constructVectorIndex, null, vectorStorePort, port);
 
@@ -812,7 +812,7 @@ class CorpusControllerTest {
     @Test
     void aSemanticEmbeddingPortEmbedsEveryEntityAndCommunityAndLocalSearchSeedsByMeaning() {
         RetrievalTraceStore traces = new RetrievalTraceStore();
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, traces,
                 constructVectorIndex, null, null, new MeaningEmbeddingPort());
         MockMultipartFile file = new MockMultipartFile(
@@ -844,7 +844,7 @@ class CorpusControllerTest {
         dev.rabauer.graphrag.core.port.EmbeddingPort failing = text -> {
             throw new IllegalStateException("simulated embedding outage");
         };
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, failing);
         MockMultipartFile file = new MockMultipartFile(
@@ -854,14 +854,14 @@ class CorpusControllerTest {
                 List.<org.springframework.web.multipart.MultipartFile>of(file)).getBody().get("corpusId"));
 
         verify(corpusProgressService, timeout(PIPELINE_TIMEOUT_MS)).emit(eq(corpusId), eq("error"),
-                eq(Map.of("error", CorpusController.EMBEDDING_FAILURE_MESSAGE)));
+                eq(Map.of("error", CorpusMessages.EMBEDDING_FAILURE_MESSAGE)));
         verify(corpusProgressService, never()).emit(eq(corpusId), eq("ingestion-complete"), any());
         assertThat(corpusRegistry.status(corpusId)).isEqualTo(Neo4jCorpusRegistry.CorpusWorkflowStatus.FAILED);
     }
 
     @Test
     void theOfflineEmbeddingStubEmbedsNothingDuringIngestion() {
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null,
                 new dev.rabauer.graphrag.adapter.langchain4j.LangChain4jEmbeddingPort());
@@ -919,8 +919,8 @@ class CorpusControllerTest {
         };
     }
 
-    private static MockMvc standaloneFor(CorpusController controller) {
-        return org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+    private static MockMvc standaloneFor(CorpusControllers controller) {
+        return controller.mockMvc();
     }
 
     private static String localQuery(String question) {
@@ -937,7 +937,7 @@ class CorpusControllerTest {
             return new dev.rabauer.graphrag.core.domain.SynthesizedAnswer(false,
                     "Ada Lovelace worked with Charles Babbage [" + textUnitNumber + "][1].");
         });
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, port, graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, null);
         String corpusId = ingestAdaAndBabbage(controller);
@@ -968,7 +968,7 @@ class CorpusControllerTest {
     @Test
     void aNotInContextLocalAnswerReturnsTheNoAnswerShape() throws Exception {
         LlmPort port = synthesizingLlmPort(context -> new dev.rabauer.graphrag.core.domain.SynthesizedAnswer(true, ""));
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, port, graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, null);
         String corpusId = ingestAdaAndBabbage(controller);
@@ -990,7 +990,7 @@ class CorpusControllerTest {
             throw new dev.rabauer.graphrag.adapter.langchain4j.OpenAiLlmPort.LlmCallFailedException(
                     "simulated answer outage", null);
         });
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, port, graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, null);
         String corpusId = ingestAdaAndBabbage(controller);
@@ -999,13 +999,13 @@ class CorpusControllerTest {
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content(localQuery("Who was Ada Lovelace?")))
                 .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.error").value(CorpusController.ANSWER_SYNTHESIS_FAILURE_MESSAGE))
+                .andExpect(jsonPath("$.error").value(CorpusMessages.ANSWER_SYNTHESIS_FAILURE_MESSAGE))
                 .andExpect(jsonPath("$.answer").doesNotExist());
     }
 
     @Test
     void anOfflineLocalAnswerHasAnEmptyCitationsArray() throws Exception {
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, null);
         String corpusId = ingestAdaAndBabbage(controller);
@@ -1035,7 +1035,7 @@ class CorpusControllerTest {
 
     @Test
     void synthesizedGlobalAndDriftAnswersCiteTextUnitsThatAreTextUnitStepsOfTheirTrace() throws Exception {
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, synthesizingLlmPort(CorpusControllerTest::citeFirstTextUnit), graphStorePort,
                 new RetrievalTraceStore(), constructVectorIndex, null, null, null);
         String corpusId = ingestAdaAndBabbage(controller);
@@ -1072,7 +1072,7 @@ class CorpusControllerTest {
 
     @Test
     void notInContextGlobalAndDriftAnswersReturnTheNoAnswerShape() throws Exception {
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService,
                 synthesizingLlmPort(context -> new dev.rabauer.graphrag.core.domain.SynthesizedAnswer(true, "")),
                 graphStorePort, new RetrievalTraceStore(), constructVectorIndex, null, null, null);
@@ -1097,7 +1097,7 @@ class CorpusControllerTest {
             throw new dev.rabauer.graphrag.adapter.langchain4j.OpenAiLlmPort.LlmCallFailedException(
                     "simulated answer outage", null);
         });
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, port, graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, null);
         String corpusId = ingestAdaAndBabbage(controller);
@@ -1107,14 +1107,14 @@ class CorpusControllerTest {
                             .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                             .content(modeQuery("What did Ada Lovelace do?", mode)))
                     .andExpect(status().isBadGateway())
-                    .andExpect(jsonPath("$.error").value(CorpusController.ANSWER_SYNTHESIS_FAILURE_MESSAGE))
+                    .andExpect(jsonPath("$.error").value(CorpusMessages.ANSWER_SYNTHESIS_FAILURE_MESSAGE))
                     .andExpect(jsonPath("$.answer").doesNotExist());
         }
     }
 
     @Test
     void offlineGlobalAndDriftAnswersHaveAnEmptyCitationsArray() throws Exception {
-        CorpusController controller = new CorpusController(ingestCorpus, corpusRegistry, documentParsers, null,
+        CorpusControllers controller = new CorpusControllers(ingestCorpus, corpusRegistry, documentParsers, null,
                 corpusProgressService, adaAndBabbageLlmPort(), graphStorePort, new RetrievalTraceStore(),
                 constructVectorIndex, null, null, null);
         String corpusId = ingestAdaAndBabbage(controller);
@@ -1239,7 +1239,7 @@ class CorpusControllerTest {
         Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("building-corpus", List.of(new dev.rabauer.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusRegistry.put(corpus);
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -1254,7 +1254,7 @@ class CorpusControllerTest {
         Neo4jCorpusRegistry isolatedCorpusRegistry = new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver());
         Corpus corpus = new Corpus("building-corpus", List.of(new dev.rabauer.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusRegistry.put(corpus);
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -1271,7 +1271,7 @@ class CorpusControllerTest {
         Corpus corpus = new Corpus("failed-corpus", List.of(new dev.rabauer.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusRegistry.put(corpus);
         isolatedCorpusRegistry.markFailed(corpus.id());
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -1296,7 +1296,7 @@ class CorpusControllerTest {
         scopedGraphStore.persistEntities(corpusA.id(), List.of(new dev.rabauer.graphrag.core.domain.Entity("Irene Adler", "Person")));
         scopedGraphStore.persistEntities(corpusB.id(), List.of(new dev.rabauer.graphrag.core.domain.Entity("Professor Moriarty", "Person")));
 
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, isolatedCorpusRegistry, List.of(), null, null, null, scopedGraphStore, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -1429,7 +1429,7 @@ class CorpusControllerTest {
         isolatedCorpusRegistry.put(corpus);
         isolatedCorpusRegistry.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, isolatedCorpusRegistry, List.of(), null, null, stubLlmPort(), graphStorePort, retrievalTraceStore, null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -1525,7 +1525,7 @@ class CorpusControllerTest {
         Corpus corpus = new Corpus("ready-corpus", List.of(new dev.rabauer.graphrag.core.domain.UploadedDocument("doc.txt", "content")));
         isolatedCorpusRegistry.put(corpus);
         isolatedCorpusRegistry.markReady(corpus.id());
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, isolatedCorpusRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
@@ -1847,7 +1847,7 @@ class CorpusControllerTest {
     void emptyRegistryReturnsAnEmptyCorporaArrayRatherThanAnError() {
         Neo4jCorpusRegistry emptyRegistry = org.mockito.Mockito.mock(Neo4jCorpusRegistry.class);
         org.mockito.Mockito.when(emptyRegistry.list()).thenReturn(List.of());
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, emptyRegistry, List.of(), null, null, null, graphStorePort, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.corpora();
@@ -1886,7 +1886,7 @@ class CorpusControllerTest {
 
     /**
      * A {@link MockMultipartFile} whose {@code getBytes()} always throws, to
-     * exercise {@code CorpusController}'s {@code IOException} handling
+     * exercise {@code CorpusIngestController}'s {@code IOException} handling
      * without needing a real broken stream. Flows through {@code MockMvc}'s
      * multipart request unchanged (no re-parsing), so it reaches the
      * controller exactly as constructed here.

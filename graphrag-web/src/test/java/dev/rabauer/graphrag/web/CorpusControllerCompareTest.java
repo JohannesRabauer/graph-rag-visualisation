@@ -98,9 +98,9 @@ class CorpusControllerCompareTest {
         }
 
         RetrievalTraceStore traces = new RetrievalTraceStore();
-        CorpusController controller = new CorpusController(null, registry, List.of(), null, null, llmPort, graph,
+        CorpusControllers controller = new CorpusControllers(null, registry, List.of(), null, null, llmPort, graph,
                 traces, null, new AnswerVectorBaseline(QUERY, vectors, llmPort), vectors, null);
-        return new Fixture(MockMvcBuilders.standaloneSetup(controller).build(), corpusId, traces);
+        return new Fixture(controller.mockMvc(), corpusId, traces);
     }
 
     private static String compareBody(String question, String mode) {
@@ -262,7 +262,7 @@ class CorpusControllerCompareTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(compareBody("Who is Irene Adler?", "LOCAL")))
                 .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.error").value(CorpusController.ANSWER_SYNTHESIS_FAILURE_MESSAGE));
+                .andExpect(jsonPath("$.error").value(CorpusMessages.ANSWER_SYNTHESIS_FAILURE_MESSAGE));
     }
 
     @Test
@@ -294,10 +294,10 @@ class CorpusControllerCompareTest {
         registry.markReady("compare-offline-demo");
         registry.markOffline("compare-offline-demo");
         InMemoryVectorStoreAdapter vectors = new InMemoryVectorStoreAdapter();
-        CorpusController controller = new CorpusController(null, registry, List.of(), null, null, null,
+        CorpusControllers controller = new CorpusControllers(null, registry, List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null,
                 new AnswerVectorBaseline(QUERY, vectors, null), vectors, null);
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        MockMvc mvc = controller.mockMvc();
 
         for (String corpusId : List.of("compare-building", "compare-failed", "compare-offline-demo")) {
             mvc.perform(post("/api/corpora/{id}/compare", corpusId)

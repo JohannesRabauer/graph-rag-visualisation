@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * test method in that class (no per-Corpus isolation — an accepted,
  * pre-existing limitation), so it can never reliably observe an empty
  * {@code communities()} collection once any other test in the class has run.
- * This test sidesteps that entirely by constructing {@link CorpusController}
+ * This test sidesteps that entirely by constructing {@link CorpusControllers}
  * directly against a fresh, empty {@link InMemoryGraphStoreAdapter}.
  */
 class CorpusControllerGlobalSearchTest {
@@ -36,7 +36,7 @@ class CorpusControllerGlobalSearchTest {
         corpusRegistry.markReady(corpus.id());
         RetrievalTraceStore retrievalTraceStore = new RetrievalTraceStore();
 
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, null, new InMemoryGraphStoreAdapter(),
                 retrievalTraceStore, null, null, null);
 
@@ -67,7 +67,7 @@ class CorpusControllerGlobalSearchTest {
 
     @Test
     void fetchingAnUnknownTraceIdThrowsIllegalArgumentExceptionThatMapsTo404() {
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, new Neo4jCorpusRegistry(SharedNeo4jTestContainer.driver()), List.of(), null, null, null,
                 new InMemoryGraphStoreAdapter(), new RetrievalTraceStore(), null, null, null);
 
@@ -94,7 +94,7 @@ class CorpusControllerGlobalSearchTest {
                 new dev.rabauer.graphrag.core.domain.Community("community-2",
                         "This community centers on Professor Moriarty and networks.")));
 
-        CorpusController controller = new CorpusController(
+        CorpusControllers controller = new CorpusControllers(
                 null, corpusRegistry, List.of(), null, null, null, graphStore, new RetrievalTraceStore(), null, null, null);
 
         ResponseEntity<Map<String, Object>> response = controller.query(
