@@ -3522,9 +3522,66 @@
         });
       });
 
+      var deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'corpus-history-row-delete';
+      deleteButton.textContent = 'Delete';
+      deleteButton.setAttribute('aria-label', 'Delete corpus ' + (corpusMeta.name || corpusMeta.id));
+      deleteButton.addEventListener('click', function (event) {
+        event.stopPropagation();
+        deleteCorpus(corpusMeta);
+      });
+
+      row.className = 'corpus-history-item';
       row.appendChild(button);
+      row.appendChild(deleteButton);
       corpusHistoryList.appendChild(row);
     });
+  }
+
+  // Deletes a corpus (graph, vectors and registry entry) after a
+  // confirmation. The server has no notion of an active corpus, so when the
+  // active one is deleted this switches to the most recently activated of
+  // the rest, or back to the idle state when none is left.
+  function deleteCorpus(corpusMeta) {
+    var label = corpusMeta.name || corpusMeta.id;
+    if (!window.confirm('Delete the corpus "' + label + '" with its graph and vectors? This cannot be undone.')) {
+      return;
+    }
+    var wasActive = corpusMeta.id === activeCorpusId;
+    fetch('/api/corpora/' + encodeURIComponent(corpusMeta.id), { method: 'DELETE' })
+      .then(function (response) {
+        if (response.ok || response.status === 404) {
+          return null;
+        }
+        return response.json().catch(function () { return {}; }).then(function (body) {
+          throw new Error((body && body.error) || 'The corpus could not be deleted. Please try again.');
+        });
+      })
+      .then(function () {
+        return fetch('/api/corpora').then(function (response) { return response.json(); });
+      })
+      .then(function (body) {
+        var corpora = (body && body.corpora) || [];
+        if (corpora.length === 0 && corpusHistoryToggle) {
+          corpusHistoryToggle.hidden = true;
+          closeCorpusHistoryPopover();
+        }
+        renderCorpusHistoryRows(corpora);
+        if (wasActive) {
+          if (corpora.length === 0) {
+            resetToIdleState();
+          } else {
+            activateCorpus(corpora[0]);
+            fetch('/api/corpora/' + corpora[0].id + '/activate', { method: 'POST' }).catch(function (error) {
+              console.warn('Failed to record corpus activation', error);
+            });
+          }
+        }
+      })
+      .catch(function (error) {
+        showErrorBanner(error && error.message ? error.message : 'The corpus could not be deleted. Please try again.');
+      });
   }
 
   function openCorpusHistoryPopover() {

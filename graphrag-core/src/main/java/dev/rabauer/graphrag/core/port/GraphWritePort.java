@@ -161,4 +161,15 @@ public interface GraphWritePort {
     default void deleteCommunities(String corpusId) {
         throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete Communities");
     }
+
+    /**
+     * Deletes everything of {@code corpusId}: its Text Units, Entities,
+     * Relationships, Communities, memberships and embeddings. Other corpora
+     * are untouched; an unknown corpus is a no-op.
+     *
+     * @throws UnsupportedOperationException by default
+     */
+    default void deleteCorpus(String corpusId) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete a corpus");
+    }
 }
