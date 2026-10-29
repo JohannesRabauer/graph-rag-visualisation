@@ -2,6 +2,8 @@ package dev.rabauer.graphrag.web;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.servlet.autoconfigure.MultipartProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -13,6 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Covers the Acceptance Criteria for the resting state and the chat UI shell.
  */
 @WebMvcTest(MainController.class)
+// UploadErrorAdvice (a @ControllerAdvice, so part of the slice) reads the multipart limits.
+@EnableConfigurationProperties(MultipartProperties.class)
 class MainControllerTest {
 
     @Autowired
