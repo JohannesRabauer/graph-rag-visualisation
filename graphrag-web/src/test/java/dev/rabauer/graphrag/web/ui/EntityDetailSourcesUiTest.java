@@ -154,4 +154,50 @@ class EntityDetailSourcesUiTest extends UiTestSupport {
         assertThat(page.locator("#entity-detail-description-section")).isHidden();
         assertThat(page.locator("#entity-detail-sources-section")).isHidden();
     }
+
+    @Test
+    void removeDocumentActionConfirmsDeletesAndReloadsTheGraph() {
+        disableAutoRestore();
+        String body = "event: entity-extracted\n"
+                + "data: {\"type\":\"entity-extracted\",\"data\":"
+                + "{\"identity\":\"ada lovelace::person\",\"name\":\"Ada Lovelace\",\"type\":\"Person\","
+                + "\"description\":\"\",\"sources\":[{\"textUnitId\":\"tu-0\",\"documentName\":\"engine.txt\",\"ordinal\":0}]}}\n\n";
+        page.route("**/api/corpora/*/progress", (Route route) -> route.fulfill(
+                new Route.FulfillOptions().setStatus(200).setContentType("text/event-stream").setBody(body)));
+        java.util.List<String> deletes = new java.util.concurrent.CopyOnWriteArrayList<>();
+        page.route("**/api/corpora/*/sources/**", (Route route) -> {
+            deletes.add(route.request().method() + " " + route.request().url());
+            route.fulfill(new Route.FulfillOptions().setStatus(200).setContentType("application/json")
+                    .setBody("{\"removedTextUnits\":1}"));
+        });
+        page.route("**/api/corpora/*/graph", (Route route) -> route.fulfill(
+                new Route.FulfillOptions().setStatus(200).setContentType("application/json")
+                        .setBody("{\"entities\":[{\"identity\":\"bob::person\",\"name\":\"Bob\","
+                                + "\"type\":\"Person\",\"description\":\"\",\"sources\":[]}],"
+                                + "\"relationships\":[],\"communities\":[]}")));
+
+        page.navigate(baseUrl() + "/");
+        page.locator("#demo-dataset-button").click();
+        page.waitForFunction("() => window.GraphCanvas && window.GraphCanvas.simulateTap('ada lovelace::person')",
+                null, new Page.WaitForFunctionOptions().setTimeout(20000));
+
+        java.util.List<String> dialogs = new java.util.concurrent.CopyOnWriteArrayList<>();
+        page.onceDialog(dialog -> {
+            dialogs.add(dialog.message());
+            dialog.dismiss();
+        });
+        page.locator("#entity-detail-source-actions .node-detail-source-remove").click();
+        org.assertj.core.api.Assertions.assertThat(dialogs).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(dialogs.get(0)).contains("engine.txt");
+        org.assertj.core.api.Assertions.assertThat(deletes).isEmpty();
+
+        page.onceDialog(dialog -> dialog.accept());
+        page.locator("#entity-detail-source-actions .node-detail-source-remove").click();
+        page.waitForCondition(() -> !deletes.isEmpty());
+        org.assertj.core.api.Assertions.assertThat(deletes.get(0))
+                .startsWith("DELETE ").endsWith("/sources/engine.txt");
+        page.waitForFunction("() => window.GraphCanvas.simulateTap('bob::person')",
+                null, new Page.WaitForFunctionOptions().setTimeout(20000));
+        assertThat(page.locator("#entity-detail-name")).hasText("Bob");
+    }
 }

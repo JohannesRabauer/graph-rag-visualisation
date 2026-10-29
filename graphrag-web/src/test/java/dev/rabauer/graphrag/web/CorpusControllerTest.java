@@ -41,6 +41,7 @@ import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -1430,6 +1431,71 @@ class CorpusControllerTest {
         String traceId = String.valueOf(response.getBody().get("traceId"));
         assertThat(retrievalTraceStore.get(traceId)).isPresent();
         assertThat(retrievalTraceStore.get(traceId).orElseThrow().steps()).isEmpty();
+    }
+
+    private String seedTwoDocumentCorpus() {
+        Corpus corpus = new Corpus("remove-source-corpus", List.of(
+                new UploadedDocument("alpha.txt", "alpha"), new UploadedDocument("beta.txt", "beta")));
+        corpusRegistry.put(corpus);
+        corpusRegistry.markReady(corpus.id());
+        String id = corpus.id();
+        graphStorePort.persistTextUnits(id, List.of(
+                new TextUnit("tu-alpha", id, "alpha.txt", 0, "Ada met Bob."),
+                new TextUnit("tu-beta", id, "beta.txt", 0, "Carol met Dan.")));
+        graphStorePort.persistEntities(id, List.of(
+                new dev.rabauer.graphrag.core.domain.Entity("Ada", "Person", "d", List.of("tu-alpha")),
+                new dev.rabauer.graphrag.core.domain.Entity("Bob", "Person", "d", List.of("tu-alpha")),
+                new dev.rabauer.graphrag.core.domain.Entity("Carol", "Person", "d", List.of("tu-beta")),
+                new dev.rabauer.graphrag.core.domain.Entity("Dan", "Person", "d", List.of("tu-beta"))));
+        graphStorePort.persistRelationships(id, List.of(
+                new dev.rabauer.graphrag.core.domain.Relationship("Ada", "Person", "knows", "Bob", "Person",
+                        "d", List.of("tu-alpha"), 1),
+                new dev.rabauer.graphrag.core.domain.Relationship("Carol", "Person", "knows", "Dan", "Person",
+                        "d", List.of("tu-beta"), 1)));
+        vectorStorePort.persistChunks(id, List.of(
+                new dev.rabauer.graphrag.core.domain.EmbeddedChunk(
+                        new dev.rabauer.graphrag.core.domain.Chunk("ch-alpha", id, 0, "Ada met Bob.", "alpha.txt"),
+                        new float[]{1f, 0f}, new double[]{0, 0}),
+                new dev.rabauer.graphrag.core.domain.EmbeddedChunk(
+                        new dev.rabauer.graphrag.core.domain.Chunk("ch-beta", id, 0, "Carol met Dan.", "beta.txt"),
+                        new float[]{0f, 1f}, new double[]{1, 1})));
+        return id;
+    }
+
+    @Test
+    void removingASourceDeletesItsPassagesEntitiesRelationshipsAndVectorsOnly() throws Exception {
+        String id = seedTwoDocumentCorpus();
+
+        mockMvc.perform(delete("/api/corpora/" + id + "/sources/alpha.txt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentName").value("alpha.txt"))
+                .andExpect(jsonPath("$.removedTextUnits").value(1))
+                .andExpect(jsonPath("$.removedRelationships").value(1));
+
+        assertThat(graphStorePort.textUnits(id)).extracting(TextUnit::documentName).containsExactly("beta.txt");
+        assertThat(graphStorePort.entities(id)).extracting(dev.rabauer.graphrag.core.domain.Entity::name)
+                .containsExactlyInAnyOrder("Carol", "Dan");
+        assertThat(graphStorePort.relationships(id)).hasSize(1);
+        assertThat(vectorStorePort.chunks(id)).extracting(ec -> ec.chunk().id()).containsExactly("ch-beta");
+    }
+
+    @Test
+    void removingASourceFromAnUnknownCorpusReturns404() throws Exception {
+        mockMvc.perform(delete("/api/corpora/no-such-corpus/sources/alpha.txt"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void removingAnUnknownDocumentReturns404AndChangesNothing() throws Exception {
+        String id = seedTwoDocumentCorpus();
+
+        mockMvc.perform(delete("/api/corpora/" + id + "/sources/missing.txt"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
+
+        assertThat(graphStorePort.textUnits(id)).hasSize(2);
+        assertThat(graphStorePort.entities(id)).hasSize(4);
     }
 
     private static LlmPort stubLlmPort() {
