@@ -84,6 +84,7 @@
   var entityDetailDescription = document.getElementById('entity-detail-description');
   var entityDetailSourcesSection = document.getElementById('entity-detail-sources-section');
   var entityDetailSources = document.getElementById('entity-detail-sources');
+  var entityDetailSourceActions = document.getElementById('entity-detail-source-actions');
   var entityDetailRelationshipsHeading = document.getElementById('entity-detail-relationships-heading');
   var entityDetailTagsSection = document.getElementById('entity-detail-tags-section');
   var entityDetailRelationshipsSection = document.getElementById('entity-detail-relationships-section');
@@ -1806,6 +1807,9 @@
     var details = activeEntityDetails[identity] || {};
     var sources = details.sources || [];
     entityDetailSources.textContent = '';
+    if (entityDetailSourceActions) {
+      entityDetailSourceActions.textContent = '';
+    }
     entityDetailSourcesSection.hidden = sources.length === 0 || !identity;
     if (entityDetailSourcesSection.hidden) {
       return;
@@ -1839,6 +1843,52 @@
       item.appendChild(passage);
       entityDetailSources.appendChild(item);
     });
+
+    // One remove action per distinct document, outside the passage list.
+    if (entityDetailSourceActions && !activeCorpusOffline) {
+      var seen = {};
+      sources.forEach(function (source) {
+        var documentName = source.documentName;
+        if (!documentName || seen[documentName]) {
+          return;
+        }
+        seen[documentName] = true;
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'node-detail-source-remove';
+        remove.textContent = 'Remove ' + documentName;
+        remove.setAttribute('aria-label', 'Remove ' + documentName + ' from the corpus');
+        remove.addEventListener('click', function () {
+          removeSourceDocument(corpusId, documentName);
+        });
+        entityDetailSourceActions.appendChild(remove);
+      });
+    }
+  }
+
+  // Removes one source document from the active corpus (after a confirmation),
+  // then reloads the graph view through activateCorpus so the removed
+  // entities, relationships and re-detected communities show.
+  function removeSourceDocument(corpusId, documentName) {
+    if (!window.confirm('Remove "' + documentName + '" from this Corpus? Its passages and the entities and '
+        + 'relationships only it supports are deleted, and communities are recomputed.')) {
+      return;
+    }
+    var chipLabel = corpusChip ? corpusChip.querySelector('span:last-child') : null;
+    var corpusName = chipLabel ? chipLabel.textContent : corpusId;
+    fetch('/api/corpora/' + encodeURIComponent(corpusId) + '/sources/' + encodeURIComponent(documentName),
+        { method: 'DELETE' })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Remove failed');
+        }
+        if (corpusId === activeCorpusId) {
+          activateCorpus({ id: corpusId, name: corpusName, status: 'READY' });
+        }
+      })
+      .catch(function () {
+        showErrorBanner('The document could not be removed. Please try again.');
+      });
   }
 
   // Writes a passage's full text into `element` (textContent only), from the

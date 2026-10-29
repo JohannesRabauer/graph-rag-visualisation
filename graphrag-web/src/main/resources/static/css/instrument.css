@@ -4116,3 +4116,14 @@ body {
     transition: none !important;
   }
 }
+
+.node-detail-source-remove {
+  margin: 0.4rem 0.4rem 0 0;
+  font: inherit;
+  font-size: 0.75rem;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 0.4rem;
+  cursor: pointer;
+}
