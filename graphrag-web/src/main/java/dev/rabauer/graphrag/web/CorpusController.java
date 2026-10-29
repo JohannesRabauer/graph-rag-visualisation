@@ -35,6 +35,9 @@ import dev.rabauer.graphrag.core.usecase.CompareAllModes;
 import dev.rabauer.graphrag.core.usecase.CompareAnswers;
 import dev.rabauer.graphrag.core.usecase.ConstructVectorIndex;
 import dev.rabauer.graphrag.core.usecase.DetectCommunities;
+import dev.rabauer.graphrag.core.usecase.SourceRemoval;
+import dev.rabauer.graphrag.core.usecase.UpdateSources;
+import dev.rabauer.graphrag.core.domain.Sources;
 import dev.rabauer.graphrag.core.usecase.EmbedGraphElements;
 import dev.rabauer.graphrag.core.usecase.VectorBaselineAnswer;
 import dev.rabauer.graphrag.core.usecase.DriftSearchAnswer;
@@ -50,6 +53,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -204,6 +208,36 @@ public class CorpusController {
     }
 
     /**
+     * Deletes a corpus: its graph (Text Units, Entities, Relationships,
+     * Communities), its vectors (chunks, projection model) and its registry
+     * entry, in that order, so a failure midway leaves the registry entry
+     * (and the corpus in the history list) to retry the delete.
+     *
+     * <p>The server keeps no "active corpus" -- activation is only the most
+     * recent {@code lastActivatedAt}. Deleting the active corpus therefore
+     * just removes it; the next most recently activated corpus becomes the
+     * first list entry, and the web UI switches to it (or to the idle state
+     * when none is left). A corpus that is still {@code BUILDING} cannot be
+     * deleted (409), since the ingestion would keep writing to it.</p>
+     *
+     * <p>404 for an unknown id (via the {@code IllegalArgumentException}
+     * handler), 204 on success.</p>
+     */
+    @DeleteMapping("/api/corpora/{corpusId}")
+    public ResponseEntity<Map<String, String>> delete(@PathVariable("corpusId") String corpusId) {
+        corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        if (corpusStore.status(corpusId) == Neo4jCorpusRegistry.CorpusWorkflowStatus.BUILDING) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error",
+                    "This corpus is still building. Wait until it is ready or failed, then delete it."));
+        }
+        graphStorePort.deleteCorpus(corpusId);
+        vectorStorePort.deleteCorpus(corpusId);
+        corpusStore.delete(corpusId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * Story 12.7: a bulk read of a corpus's entire graph, shaped exactly
      * like the {@code entity-extracted}/{@code relationship-extracted}/
      * {@code community-detected} SSE payloads already emitted during live
@@ -258,6 +292,50 @@ public class CorpusController {
                 "entities", entityPayload,
                 "relationships", relationshipPayload,
                 "communities", communityPayload));
+    }
+
+    /**
+     * Removes one source document from a corpus: its text units, the entities
+     * and relationships only it supported and its vector chunks
+     * ({@link UpdateSources#removeBySource}), then re-runs community detection
+     * (and, with a semantic embedder, the graph embeddings). 404 for an unknown
+     * corpus or document; 409 while the graph is still building.
+     */
+    @DeleteMapping("/api/corpora/{corpusId}/sources/{documentName}")
+    public ResponseEntity<Map<String, Object>> removeSource(@PathVariable("corpusId") String corpusId,
+                                                            @PathVariable("documentName") String documentName) {
+        Corpus corpus = corpusStore.get(corpusId)
+                .orElseThrow(() -> new IllegalArgumentException("No corpus was found for id " + corpusId));
+        if (corpusStore.status(corpus.id()) == Neo4jCorpusRegistry.CorpusWorkflowStatus.BUILDING) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", GRAPH_BUILDING_MESSAGE));
+        }
+        java.util.Set<String> sourceIds = graphStorePort.textUnits(corpusId).stream()
+                .filter(unit -> documentName.equals(unit.documentName()))
+                .map(Sources::of)
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+        if (sourceIds.isEmpty()) {
+            throw new IllegalArgumentException("No document named " + documentName + " was found in corpus " + corpusId);
+        }
+        UpdateSources updateSources = new UpdateSources(graphStorePort, vectorStorePort, llmPort, embeddingPort);
+        int removedTextUnits = 0;
+        int removedEntities = 0;
+        int removedRelationships = 0;
+        for (String sourceId : sourceIds) {
+            SourceRemoval removal = updateSources.removeBySource(corpusId, sourceId);
+            removedTextUnits += removal.removedTextUnits();
+            removedEntities += removal.removedEntities().size() + removal.orphanedEntities().size();
+            removedRelationships += removal.removedRelationships();
+        }
+        updateSources.recomputeCommunities(corpusId);
+        if (embeddingPort != null && EmbedGraphElements.isSemantic(embeddingPort)) {
+            new EmbedGraphElements(graphStorePort, embeddingPort).run(corpusId);
+        }
+        return ResponseEntity.ok(Map.of(
+                "corpusId", corpusId,
+                "documentName", documentName,
+                "removedTextUnits", removedTextUnits,
+                "removedEntities", removedEntities,
+                "removedRelationships", removedRelationships));
     }
 
     @GetMapping("/api/corpora/{corpusId}/text-units/{textUnitId}")

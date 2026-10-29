@@ -84,6 +84,7 @@
   var entityDetailDescription = document.getElementById('entity-detail-description');
   var entityDetailSourcesSection = document.getElementById('entity-detail-sources-section');
   var entityDetailSources = document.getElementById('entity-detail-sources');
+  var entityDetailSourceActions = document.getElementById('entity-detail-source-actions');
   var entityDetailRelationshipsHeading = document.getElementById('entity-detail-relationships-heading');
   var entityDetailTagsSection = document.getElementById('entity-detail-tags-section');
   var entityDetailRelationshipsSection = document.getElementById('entity-detail-relationships-section');
@@ -1806,6 +1807,9 @@
     var details = activeEntityDetails[identity] || {};
     var sources = details.sources || [];
     entityDetailSources.textContent = '';
+    if (entityDetailSourceActions) {
+      entityDetailSourceActions.textContent = '';
+    }
     entityDetailSourcesSection.hidden = sources.length === 0 || !identity;
     if (entityDetailSourcesSection.hidden) {
       return;
@@ -1839,6 +1843,52 @@
       item.appendChild(passage);
       entityDetailSources.appendChild(item);
     });
+
+    // One remove action per distinct document, outside the passage list.
+    if (entityDetailSourceActions && !activeCorpusOffline) {
+      var seen = {};
+      sources.forEach(function (source) {
+        var documentName = source.documentName;
+        if (!documentName || seen[documentName]) {
+          return;
+        }
+        seen[documentName] = true;
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'node-detail-source-remove';
+        remove.textContent = 'Remove ' + documentName;
+        remove.setAttribute('aria-label', 'Remove ' + documentName + ' from the corpus');
+        remove.addEventListener('click', function () {
+          removeSourceDocument(corpusId, documentName);
+        });
+        entityDetailSourceActions.appendChild(remove);
+      });
+    }
+  }
+
+  // Removes one source document from the active corpus (after a confirmation),
+  // then reloads the graph view through activateCorpus so the removed
+  // entities, relationships and re-detected communities show.
+  function removeSourceDocument(corpusId, documentName) {
+    if (!window.confirm('Remove "' + documentName + '" from this Corpus? Its passages and the entities and '
+        + 'relationships only it supports are deleted, and communities are recomputed.')) {
+      return;
+    }
+    var chipLabel = corpusChip ? corpusChip.querySelector('span:last-child') : null;
+    var corpusName = chipLabel ? chipLabel.textContent : corpusId;
+    fetch('/api/corpora/' + encodeURIComponent(corpusId) + '/sources/' + encodeURIComponent(documentName),
+        { method: 'DELETE' })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Remove failed');
+        }
+        if (corpusId === activeCorpusId) {
+          activateCorpus({ id: corpusId, name: corpusName, status: 'READY' });
+        }
+      })
+      .catch(function () {
+        showErrorBanner('The document could not be removed. Please try again.');
+      });
   }
 
   // Writes a passage's full text into `element` (textContent only), from the
@@ -3522,9 +3572,66 @@
         });
       });
 
+      var deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'corpus-history-row-delete';
+      deleteButton.textContent = 'Delete';
+      deleteButton.setAttribute('aria-label', 'Delete corpus ' + (corpusMeta.name || corpusMeta.id));
+      deleteButton.addEventListener('click', function (event) {
+        event.stopPropagation();
+        deleteCorpus(corpusMeta);
+      });
+
+      row.className = 'corpus-history-item';
       row.appendChild(button);
+      row.appendChild(deleteButton);
       corpusHistoryList.appendChild(row);
     });
+  }
+
+  // Deletes a corpus (graph, vectors and registry entry) after a
+  // confirmation. The server has no notion of an active corpus, so when the
+  // active one is deleted this switches to the most recently activated of
+  // the rest, or back to the idle state when none is left.
+  function deleteCorpus(corpusMeta) {
+    var label = corpusMeta.name || corpusMeta.id;
+    if (!window.confirm('Delete the corpus "' + label + '" with its graph and vectors? This cannot be undone.')) {
+      return;
+    }
+    var wasActive = corpusMeta.id === activeCorpusId;
+    fetch('/api/corpora/' + encodeURIComponent(corpusMeta.id), { method: 'DELETE' })
+      .then(function (response) {
+        if (response.ok || response.status === 404) {
+          return null;
+        }
+        return response.json().catch(function () { return {}; }).then(function (body) {
+          throw new Error((body && body.error) || 'The corpus could not be deleted. Please try again.');
+        });
+      })
+      .then(function () {
+        return fetch('/api/corpora').then(function (response) { return response.json(); });
+      })
+      .then(function (body) {
+        var corpora = (body && body.corpora) || [];
+        if (corpora.length === 0 && corpusHistoryToggle) {
+          corpusHistoryToggle.hidden = true;
+          closeCorpusHistoryPopover();
+        }
+        renderCorpusHistoryRows(corpora);
+        if (wasActive) {
+          if (corpora.length === 0) {
+            resetToIdleState();
+          } else {
+            activateCorpus(corpora[0]);
+            fetch('/api/corpora/' + corpora[0].id + '/activate', { method: 'POST' }).catch(function (error) {
+              console.warn('Failed to record corpus activation', error);
+            });
+          }
+        }
+      })
+      .catch(function (error) {
+        showErrorBanner(error && error.message ? error.message : 'The corpus could not be deleted. Please try again.');
+      });
   }
 
   function openCorpusHistoryPopover() {

@@ -17,6 +17,11 @@ class InMemoryAdaptersContractTest {
             return new InMemoryGraphStoreAdapter();
         }
 
+        @Override
+        protected boolean supportsDeletion() {
+            return true;
+        }
+
         /** The in-memory adapter keeps no embeddings and always answers similarity lookups empty. */
         @Override
         protected boolean supportsSimilarity() {
@@ -29,6 +34,17 @@ class InMemoryAdaptersContractTest {
         @Override
         protected VectorStorePort newStore() {
             return new InMemoryVectorStoreAdapter();
+        }
+
+        /** Implemented: deletion of chunks by document and the projection model. */
+        @Override
+        protected boolean supportsDeletion() {
+            return true;
+        }
+
+        @Override
+        protected boolean supportsProjectionModel() {
+            return true;
         }
     }
 

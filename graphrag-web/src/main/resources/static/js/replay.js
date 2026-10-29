@@ -185,6 +185,7 @@
           window.TracePane.open(steps, {
             mode: traceMode,
             corpusId: traceCorpusId,
+            trace: result.body,
             surface: isVectorTrace ? 'compare' : 'knowledge-graph'
           });
         }

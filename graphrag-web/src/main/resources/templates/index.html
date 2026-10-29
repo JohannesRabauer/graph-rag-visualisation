@@ -237,6 +237,7 @@
           <div id="entity-detail-sources-section" class="node-detail-section" hidden>
             <p class="node-detail-heading">Source passages</p>
             <ul id="entity-detail-sources" class="node-detail-sources"></ul>
+            <div id="entity-detail-source-actions" class="node-detail-source-actions"></div>
           </div>
           <div id="entity-detail-relationships-section" class="node-detail-section">
             <p id="entity-detail-relationships-heading" class="node-detail-heading">Relationships</p>
@@ -257,6 +258,8 @@
           <p class="trace-pane-title">Retrieval Trace</p>
           <span id="trace-pane-mode" class="trace-pane-mode"></span>
           <button type="button" class="help-btn" data-help="trace-replay" aria-label="Help: trace replay">?</button>
+          <button type="button" id="trace-pane-download" class="trace-pane-download" hidden
+                  title="Save this Retrieval Trace as a JSON file">Download JSON</button>
           <button type="button" id="trace-pane-close" class="trace-pane-close" aria-label="Hide the Retrieval Trace pane">&times;</button>
         </div>
         <p id="trace-pane-intro" class="trace-pane-intro"></p>

@@ -12,6 +12,8 @@ public class OpenAiEmbeddingPort implements EmbeddingPort {
 
     private static final String DEFAULT_MODEL = "text-embedding-3-small";
 
+    private static final String BLANK_PLACEHOLDER = "(empty)";
+
     private final EmbeddingModel model;
 
     public OpenAiEmbeddingPort(String apiKey) {
@@ -30,9 +32,26 @@ public class OpenAiEmbeddingPort implements EmbeddingPort {
                 .build();
     }
 
+    private OpenAiEmbeddingPort(EmbeddingModel model, boolean ignored) {
+        this.model = model;
+    }
+
+    /** For tests: wraps any LangChain4j model, so no network or API key is needed. */
+    static OpenAiEmbeddingPort withModel(EmbeddingModel model) {
+        return new OpenAiEmbeddingPort(model, true);
+    }
+
+    /**
+     * LangChain4j (and the OpenAI API) reject null or blank input, but the port contract wants a
+     * vector for any text; blank text is embedded as a fixed placeholder.
+     */
+    private static String inputFor(String text) {
+        return text == null || text.isBlank() ? BLANK_PLACEHOLDER : text;
+    }
+
     @Override
     public float[] embed(String text) {
-        return model.embed(text == null ? "" : text).content().vector();
+        return model.embed(inputFor(text)).content().vector();
     }
 
     /** One request for all {@code texts} (OpenAI takes a list of inputs). */
@@ -41,7 +60,7 @@ public class OpenAiEmbeddingPort implements EmbeddingPort {
         if (texts.isEmpty()) {
             return List.of();
         }
-        List<TextSegment> segments = texts.stream().map(text -> TextSegment.from(text == null ? "" : text)).toList();
+        List<TextSegment> segments = texts.stream().map(text -> TextSegment.from(inputFor(text))).toList();
         return model.embedAll(segments).content().stream().map(Embedding::vector).toList();
     }
 }

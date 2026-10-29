@@ -247,6 +247,27 @@ public class Neo4jCorpusRegistry {
     }
 
     /**
+     * Removes the registry entry of {@code corpusId} (and its offline flag).
+     * Only the {@code CorpusMeta} node: the corpus's graph and vectors are
+     * removed through the store ports by the caller.
+     *
+     * @return {@code true} if an entry existed and was removed, {@code false}
+     *     for an unknown or blank id
+     */
+    public boolean delete(String corpusId) {
+        if (corpusId == null || corpusId.isBlank()) {
+            return false;
+        }
+        offlineCorpusIds.remove(corpusId);
+        try (Session session = driver.session()) {
+            return session.executeWrite(tx -> tx.run(
+                            "MATCH (c:CorpusMeta {corpusId: $corpusId}) DELETE c",
+                            Map.of("corpusId", corpusId))
+                    .consume().counters().nodesDeleted() > 0);
+        }
+    }
+
+    /**
      * Story 12.5: a startup sweep, not a per-corpus operation. Transitions
      * every {@code CorpusMeta} node still {@code BUILDING} (left behind by a
      * crash mid-ingestion) to {@code FAILED}, via one bulk conditional Cypher

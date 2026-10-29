@@ -541,7 +541,7 @@ Neo4j's data and logs are bind-mounted to `./neo4j-data/` next to `docker-compos
 
 Caveat: `NEO4J_AUTH`/the Neo4j password is only applied when Neo4j's data directory is first created. If you change it after the first run, stop the stack and delete `./neo4j-data/` first. Otherwise the running database keeps its original credentials and silently diverges from `docker-compose.yml`.
 
-Caveat: restarting the `app` container clears every captured Retrieval Trace. Traces live only in the `app` process's memory (`RetrievalTraceStore`), never on disk, matching this project's single-user/local-only scope. Corpora are unaffected: they are persisted in Neo4j (`Neo4jCorpusRegistry`) and survive an `app` restart. After a restart, re-run a query to capture a fresh trace.
+Caveat: restarting the `app` container clears every captured Retrieval Trace. Traces live only in the `app` process's memory (`RetrievalTraceStore`), never on disk, matching this project's single-user/local-only scope. The store is bounded: it keeps the most recent `graphrag.traces.max` traces (default 500, set in `application.yml` or via `GRAPHRAG_TRACES_MAX`) and evicts the least recently used one first; an evicted trace answers 404 from `GET /api/traces/{traceId}`, like an unknown id. Corpora are unaffected: they are persisted in Neo4j (`Neo4jCorpusRegistry`) and survive an `app` restart. After a restart, re-run a query to capture a fresh trace.
 
 ---
 
