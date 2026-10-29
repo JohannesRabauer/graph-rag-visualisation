@@ -1,12 +1,12 @@
 package dev.rabauer.graphrag.adapter.parsing;
 
+import dev.rabauer.graphrag.core.domain.UnreadableDocumentException;
 import dev.rabauer.graphrag.core.port.DocumentParserPort;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 
 /**
  * Handles PDF uploads by extracting text from the PDF payload before it is kept
@@ -33,7 +33,8 @@ public class PdfDocumentParserAdapter implements DocumentParserPort {
             PDFTextStripper stripper = new PDFTextStripper();
             return stripper.getText(document);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to extract text from PDF: " + filename, e);
+            throw new UnreadableDocumentException(filename,
+                    "That file could not be read as a PDF - is it corrupt or not really a PDF?");
         }
     }
 }
