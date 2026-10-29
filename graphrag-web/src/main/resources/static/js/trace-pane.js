@@ -22,6 +22,7 @@
   var listEl = document.getElementById('trace-step-list');
   var closeButton = document.getElementById('trace-pane-close');
   var toggleButton = document.getElementById('replay-trace-toggle');
+  var downloadButton = document.getElementById('trace-pane-download');
 
   if (!pane || !listEl) {
     return;
@@ -41,6 +42,9 @@
   var surface = 'knowledge-graph';
   var currentTab = 'knowledge-graph';
   var currentIndex = 0;
+  // The trace JSON exactly as GET /api/traces/{id} returned it; the download
+  // saves this object, so the file matches the documented trace schema.
+  var traceBody = null;
 
   var MODE_LABELS = {
     LOCAL: 'Local Search',
@@ -81,6 +85,10 @@
     });
   }
 
+  if (downloadButton) {
+    downloadButton.addEventListener('click', downloadTrace);
+  }
+
   if (toggleButton) {
     toggleButton.addEventListener('click', function () {
       dismissed = !dismissed;
@@ -107,6 +115,7 @@
     var ctx = context || {};
     steps = Array.isArray(stepList) ? stepList : [];
     corpusId = ctx.corpusId || null;
+    traceBody = ctx.trace && !ctx.loadError ? ctx.trace : null;
     surface = ctx.surface === 'compare' ? 'compare' : 'knowledge-graph';
     analysis = analyze(steps, ctx.mode);
     isOpen = true;
@@ -144,6 +153,7 @@
     steps = [];
     analysis = null;
     corpusId = null;
+    traceBody = null;
     listEl.textContent = '';
     applyVisibility();
   }
@@ -176,7 +186,30 @@
     }
   }
 
+  function downloadTrace() {
+    if (!traceBody) {
+      return;
+    }
+    var mode = String((analysis && analysis.mode) || 'trace').toLowerCase();
+    var id = String(traceBody.traceId || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 8);
+    var name = 'graphrag-trace-' + mode + (id ? '-' + id : '') + '.json';
+    var blob = new Blob([JSON.stringify(traceBody, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 0);
+  }
+
   function render(loadError) {
+    if (downloadButton) {
+      downloadButton.hidden = !traceBody;
+    }
     if (modeEl) {
       modeEl.textContent = analysis.modeLabel;
       modeEl.dataset.mode = analysis.mode;

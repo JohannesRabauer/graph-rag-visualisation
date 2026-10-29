@@ -87,6 +87,37 @@ class TracePaneUiTest extends UiTestSupport {
     }
 
     @Test
+    void theTracePaneDownloadsTheTraceAsJson() throws Exception {
+        loadDemoDatasetAndWaitReady();
+
+        page.locator("#chat-input").fill("Tell me about Irene Adler.");
+        page.locator("#chat-form .send-button").click();
+
+        Locator replayCta = page.locator(".replay-cta").last();
+        assertThat(replayCta).isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        replayCta.click();
+
+        Locator download = page.locator("#trace-pane-download");
+        assertThat(download).isVisible();
+
+        com.microsoft.playwright.Download saved = page.waitForDownload(download::click);
+        org.assertj.core.api.Assertions.assertThat(saved.suggestedFilename())
+                .matches("graphrag-trace-local-[A-Za-z0-9]{8}[.]json");
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode file = mapper.readTree(saved.path().toFile());
+        String traceId = (String) page.locator(".replay-cta").last().getAttribute("data-trace-id");
+        org.assertj.core.api.Assertions.assertThat(file.get("traceId").asText()).isEqualTo(traceId);
+        List<Map<String, Object>> traceSteps = fetchTraceSteps();
+        org.assertj.core.api.Assertions.assertThat(file.get("steps").size()).isEqualTo(traceSteps.size());
+        org.assertj.core.api.Assertions.assertThat(file.get("steps").get(0).get("label").asText())
+                .isEqualTo((String) traceSteps.get(0).get("label"));
+
+        page.locator("#replay-close").click();
+        assertThat(download).isHidden();
+    }
+
+    @Test
     void aLongStepLabelIsClippedInTheBarAndShownInFullInThePane() {
         loadDemoDatasetAndWaitReady();
 

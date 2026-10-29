@@ -955,6 +955,27 @@ body {
   display: none;
 }
 
+.trace-pane-download {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-600);
+  font-family: var(--font-tag);
+  font-size: var(--font-tag-size);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.trace-pane-download[hidden] {
+  display: none;
+}
+
+.trace-pane-download:hover {
+  color: var(--ink-900);
+  background: var(--chrome);
+}
+
 .trace-pane-close {
   width: 28px;
   height: 28px;
