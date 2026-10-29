@@ -61,6 +61,17 @@ class Neo4jAdaptersContractTest {
         protected GraphStorePort newStore() {
             return graphStore();
         }
+
+        /** Implemented: deletion by source and by entity, similarity lookups (vector index). */
+        @Override
+        protected boolean supportsDeletion() {
+            return true;
+        }
+
+        @Override
+        protected boolean supportsSimilarity() {
+            return true;
+        }
     }
 
     @Nested
@@ -68,6 +79,17 @@ class Neo4jAdaptersContractTest {
         @Override
         protected VectorStorePort newStore() {
             return new Neo4jVectorStoreAdapter(driver);
+        }
+
+        /** Implemented: deletion of chunks by document and the projection model. */
+        @Override
+        protected boolean supportsDeletion() {
+            return true;
+        }
+
+        @Override
+        protected boolean supportsProjectionModel() {
+            return true;
         }
     }
 
@@ -92,6 +114,17 @@ class Neo4jAdaptersContractTest {
         @Override
         protected GraphStorePort newStore() {
             return prefixedGraphStore();
+        }
+
+        /** Implemented: deletion by source and by entity, similarity lookups (vector index). */
+        @Override
+        protected boolean supportsDeletion() {
+            return true;
+        }
+
+        @Override
+        protected boolean supportsSimilarity() {
+            return true;
         }
     }
 
