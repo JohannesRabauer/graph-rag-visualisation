@@ -10,7 +10,7 @@ GraphRAG Lens is a teaching and demo tool that shows **how GraphRAG works** rath
 
 [![GraphRAG Lens video](https://img.youtube.com/vi/fWOptSc7wpk/maxresdefault.jpg)](https://youtube.com/live/fWOptSc7wpk)
 
-You upload a corpus (plain text or PDF), watch it turn into a knowledge graph passage by passage, see communities form, and ask questions in three GraphRAG modes: **Local**, **Global** and **DRIFT**. Each answer is LLM-written and cites the exact source passages it used. A step-by-step **Retrieval Trace Replay** shows on the graph which entities, relationships, communities and passages each answer touched. A **Compare** view sets every GraphRAG answer against a plain vector-RAG baseline and explains where each approach does better, and why. A **four-way comparison** runs Local, Global, DRIFT and Vector Search on the same question and lines up their answers, traversal steps, latency (retrieval, embedding and LLM time) and evidence, so a wrong answer can be traced to retrieval, ranking or generation.
+You upload a corpus (plain text, Markdown or PDF), watch it turn into a knowledge graph passage by passage, see communities form, and ask questions in three GraphRAG modes: **Local**, **Global** and **DRIFT**. Each answer is LLM-written and cites the exact source passages it used. A step-by-step **Retrieval Trace Replay** shows on the graph which entities, relationships, communities and passages each answer touched. A **Compare** view sets every GraphRAG answer against a plain vector-RAG baseline and explains where each approach does better, and why. A **four-way comparison** runs Local, Global, DRIFT and Vector Search on the same question and lines up their answers, traversal steps, latency (retrieval, embedding and LLM time) and evidence, so a wrong answer can be traced to retrieval, ranking or generation.
 
 The heart of the project is [`graphrag-core`](graphrag-core/README.md), a framework-free GraphRAG library behind a hexagonal (ports and adapters) boundary. The web app and the adapters are one way of plugging it in.
 
@@ -43,7 +43,7 @@ The heart of the project is [`graphrag-core`](graphrag-core/README.md), a framew
 OPENAI_API_KEY=sk-... docker compose up
 ```
 
-Open <http://localhost:8080>. You can upload a `.txt` or `.pdf` corpus, load the built-in demo dataset, or use the **Offline Demo**, which makes no API calls. Without an `OPENAI_API_KEY`, the app runs fully offline with deterministic stand-ins for the LLM and the embeddings (see [Live vs offline behaviour](#live-vs-offline-behaviour)).
+Open <http://localhost:8080>. You can upload a `.txt`, `.md` or `.pdf` corpus, load the built-in demo dataset, or use the **Offline Demo**, which makes no API calls. Without an `OPENAI_API_KEY`, the app runs fully offline with deterministic stand-ins for the LLM and the embeddings (see [Live vs offline behaviour](#live-vs-offline-behaviour)).
 
 ---
 
@@ -122,7 +122,7 @@ flowchart BT
 | [`graphrag-core-testkit`](graphrag-core/README.md#testkit-proving-an-adapter-correct) | JUnit 5 contract tests a third-party adapter extends (`GraphReadPortContract`, `GraphStorePortContract`, `VectorStorePortContract`, `EmbeddingPortContract`, `CodeGraphRetrievalContract`), a 50-class code-graph fixture and a reference in-memory store. Framework-free like the core, and released with it on Maven Central (`dev.rabauer.graphrag:graphrag-core-testkit`). |
 | `graphrag-adapter-neo4j` | `GraphStorePort` and `VectorStorePort` on Neo4j through the plain Java driver. It provides corpus-scoped writes, GDS Leiden or the core's community detection, vector indexes for semantic matching, label/type prefixes to share a database, and the durable corpus registry. It also has in-memory variants for tests. |
 | `graphrag-adapter-langchain4j` | `LlmPort` and `EmbeddingPort` on OpenAI through LangChain4j. `OpenAiLlmPort` is a `PromptedLlmPort`: the prompts are the core's, and the adapter only sends them in JSON mode, without retries. It also contains the deterministic offline stand-ins `LangChain4jLlmPort` and `LangChain4jEmbeddingPort`. |
-| `graphrag-adapter-parsing` | `DocumentParserPort` for plain text and PDF (PDFBox). |
+| `graphrag-adapter-parsing` | `DocumentParserPort` for plain text, Markdown (commonmark-java) and PDF (PDFBox). |
 | `graphrag-web` | The Spring Boot app: REST and SSE endpoints, wiring, and the plain-JS frontend (Thymeleaf template, Cytoscape from a CDN, no Node/npm tooling). |
 
 ---
@@ -178,7 +178,7 @@ flowchart TB
 
     subgraph Adapters["Adapters"]
         direction LR
-        PRS["graphrag-adapter-parsing<br/>Text · PDFBox"]
+        PRS["graphrag-adapter-parsing<br/>Text · Markdown · PDFBox"]
         L4J["graphrag-adapter-langchain4j<br/>OpenAI · offline stubs"]
         N4J["graphrag-adapter-neo4j<br/>Neo4j · GDS · in-memory"]
     end

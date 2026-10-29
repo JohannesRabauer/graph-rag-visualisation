@@ -70,7 +70,7 @@ class MainControllerTest {
                 .getContentAsString();
 
         assertThat(body).contains("type=\"file\"");
-        assertThat(body).contains("accept=\".txt,.pdf\"");
+        assertThat(body).contains("accept=\".txt,.md,.markdown,.pdf\"");
         assertThat(body).contains("multiple");
         assertThat(body).contains("id=\"corpus-chip\"");
         assertThat(body).contains("id=\"error-banner\"");

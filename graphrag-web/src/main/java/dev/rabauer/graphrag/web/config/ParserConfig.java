@@ -7,6 +7,7 @@ import dev.rabauer.graphrag.adapter.langchain4j.OpenAiLlmPort;
 import dev.rabauer.graphrag.adapter.neo4j.Neo4jCorpusRegistry;
 import dev.rabauer.graphrag.adapter.neo4j.Neo4jGraphStoreAdapter;
 import dev.rabauer.graphrag.adapter.neo4j.Neo4jVectorStoreAdapter;
+import dev.rabauer.graphrag.adapter.parsing.MarkdownDocumentParserAdapter;
 import dev.rabauer.graphrag.adapter.parsing.PdfDocumentParserAdapter;
 import dev.rabauer.graphrag.adapter.parsing.PlainTextDocumentParserAdapter;
 import dev.rabauer.graphrag.core.llm.PromptedLlmPort;
@@ -45,6 +46,11 @@ public class ParserConfig {
     @Bean
     public DocumentParserPort pdfDocumentParserAdapter() {
         return new PdfDocumentParserAdapter();
+    }
+
+    @Bean
+    public DocumentParserPort markdownDocumentParserAdapter() {
+        return new MarkdownDocumentParserAdapter();
     }
 
     /**
