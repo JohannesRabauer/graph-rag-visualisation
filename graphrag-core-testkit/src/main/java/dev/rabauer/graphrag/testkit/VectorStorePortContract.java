@@ -104,6 +104,28 @@ public abstract class VectorStorePortContract {
                 store.chunks(corpusId).stream().map(chunk -> chunk.chunk().id()).toList());
     }
 
+    @Test
+    void deletingACorpusRemovesItsChunksAndProjectionModelAndKeepsTheOthers() {
+        if (!supportsDeletion()) {
+            return;
+        }
+        ProjectionModel model = new ProjectionModel(new double[] {0.1, 0.2}, new double[] {1, 0}, new double[] {0, 1});
+        store.persistChunks(corpusId, List.of(chunk(corpusId, 0, "alpha", 1f, 0f)));
+        store.persistChunks(otherCorpusId, List.of(chunk(otherCorpusId, 0, "beta", 0f, 1f)));
+        store.persistProjectionModel(corpusId, model);
+
+        store.deleteCorpus(corpusId);
+
+        assertTrue(store.chunks(corpusId).isEmpty());
+        assertTrue(store.projectionModel(corpusId).isEmpty());
+        assertEquals(1, store.chunks(otherCorpusId).size());
+
+        // deleting an unknown or an already deleted corpus is a no-op
+        store.deleteCorpus(corpusId);
+        store.deleteCorpus("unknown-corpus");
+        assertEquals(1, store.chunks(otherCorpusId).size());
+    }
+
     /** Whether the store deletes chunks by document; the default is {@code true}. */
     protected boolean supportsDeletion() {
         return true;

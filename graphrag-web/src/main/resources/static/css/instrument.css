@@ -281,6 +281,38 @@ body {
   overflow-y: auto;
 }
 
+.corpus-history-item {
+  display: flex;
+  align-items: stretch;
+}
+
+.corpus-history-item .corpus-history-row {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.corpus-history-row-delete {
+  flex-shrink: 0;
+  padding: 0 var(--space-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--ink-400);
+}
+
+.corpus-history-row-delete:hover {
+  color: var(--active);
+  background: var(--accent-soft);
+}
+
+.corpus-history-row-delete:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .corpus-history-row {
   display: flex;
   align-items: center;

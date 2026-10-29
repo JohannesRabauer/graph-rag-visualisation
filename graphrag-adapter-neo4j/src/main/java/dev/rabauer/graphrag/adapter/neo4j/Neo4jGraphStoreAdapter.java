@@ -639,6 +639,21 @@ public class Neo4jGraphStoreAdapter implements GraphStorePort {
         write("MATCH (c:" + communityLabel + " {corpusId: $corpusId}) DETACH DELETE c", Map.of("corpusId", corpusId));
     }
 
+    /** Deletes every Text Unit, Entity and Community of the corpus with all their relationships and embeddings. */
+    @Override
+    public void deleteCorpus(String corpusId) {
+        requireCorpusId(corpusId);
+        try (Session session = sessions.get()) {
+            session.executeWrite(tx -> {
+                for (String label : List.of(communityLabel, entityLabel, textUnitLabel)) {
+                    tx.run("MATCH (n:" + label + " {corpusId: $corpusId}) DETACH DELETE n",
+                            Map.of("corpusId", corpusId)).consume();
+                }
+                return null;
+            });
+        }
+    }
+
     private void write(String cypher, Map<String, Object> parameters) {
         try (Session session = sessions.get()) {
             session.executeWrite(tx -> tx.run(cypher, parameters).consume());

@@ -178,6 +178,11 @@ public class InMemoryGraphStore implements GraphStorePort {
     }
 
     @Override
+    public synchronized void deleteCorpus(String corpusId) {
+        corpora.remove(corpusId);
+    }
+
+    @Override
     public synchronized List<List<String>> detectCommunities(String corpusId) {
         return GraphCommunities.detect(communityDetector, entities(corpusId), relationships(corpusId));
     }

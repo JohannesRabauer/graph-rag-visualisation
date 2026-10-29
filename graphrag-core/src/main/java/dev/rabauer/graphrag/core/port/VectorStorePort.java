@@ -49,4 +49,14 @@ public interface VectorStorePort {
     default void deleteChunksOf(String corpusId, String documentName) {
         throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete chunks");
     }
+
+    /**
+     * Deletes every chunk of {@code corpusId} and its projection model. Other
+     * corpora are untouched; an unknown corpus is a no-op.
+     *
+     * @throws UnsupportedOperationException by default
+     */
+    default void deleteCorpus(String corpusId) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " cannot delete a corpus");
+    }
 }

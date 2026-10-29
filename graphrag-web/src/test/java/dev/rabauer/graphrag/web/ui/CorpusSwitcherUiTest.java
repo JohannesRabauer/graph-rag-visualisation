@@ -130,4 +130,49 @@ class CorpusSwitcherUiTest extends UiTestSupport {
         // Auto-restore-on-load fired POST .../activate too.
         org.assertj.core.api.Assertions.assertThat(activateRequests).isNotEmpty();
     }
+
+    @Test
+    void deleteActionAsksForConfirmationAndRemovesTheCorpusFromTheSwitcher() {
+        loadDemoDatasetAndWaitReady();
+        uploadTextCorpusAndWaitReady("delete-me.txt",
+                "A short corpus about lighthouses that is about to be deleted again.");
+
+        assertThat(historyToggle())
+                .isVisible(new LocatorAssertions.IsVisibleOptions().setTimeout(20000));
+        historyToggle().click();
+        assertThat(historyRows().nth(0).locator(".corpus-history-row-name"))
+                .containsText("delete-me.txt", new LocatorAssertions.ContainsTextOptions().setTimeout(10000));
+
+        List<String> deleteRequests = new CopyOnWriteArrayList<>();
+        page.onRequest(request -> {
+            if ("DELETE".equals(request.method())) {
+                deleteRequests.add(request.url());
+            }
+        });
+
+        // Dismissing the confirmation deletes nothing and sends no DELETE.
+        List<String> dialogs = new CopyOnWriteArrayList<>();
+        page.onceDialog(dialog -> {
+            dialogs.add(dialog.message());
+            dialog.dismiss();
+        });
+        page.locator(".corpus-history-row-delete").nth(0).click();
+        org.assertj.core.api.Assertions.assertThat(dialogs).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(dialogs.get(0)).contains("delete-me.txt");
+        org.assertj.core.api.Assertions.assertThat(deleteRequests).isEmpty();
+        assertThat(page.locator("#corpus-chip")).containsText("delete-me.txt");
+
+        // Accepting deletes the active corpus; the UI falls back to the next
+        // most recently activated one (the demo dataset).
+        page.onceDialog(dialog -> dialog.accept());
+        page.locator(".corpus-history-row-delete").nth(0).click();
+
+        assertThat(page.locator("#corpus-chip")).containsText("Sherlock Holmes",
+                new LocatorAssertions.ContainsTextOptions().setTimeout(20000));
+        assertThat(page.locator("#workflow-status-text"))
+                .containsText("Ready", new LocatorAssertions.ContainsTextOptions().setTimeout(20000));
+        org.assertj.core.api.Assertions.assertThat(deleteRequests).hasSize(1);
+        assertThat(historyRows().locator(".corpus-history-row-name")
+                .filter(new Locator.FilterOptions().setHasText("delete-me.txt"))).hasCount(0);
+    }
 }

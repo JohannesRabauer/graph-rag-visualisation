@@ -41,6 +41,7 @@ import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -1662,6 +1663,61 @@ class CorpusControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value(
                         "No corpus was found for id nonexistent-corpus"));
+    }
+
+    @Test
+    void deletingACorpusRemovesItsGraphVectorsAndRegistryEntryButNotOtherCorpora() throws Exception {
+        String bodyA = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusIdA = JsonPath.read(bodyA, "$.corpusId");
+        String bodyB = mockMvc.perform(post("/api/corpora/demo-offline"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String corpusIdB = JsonPath.read(bodyB, "$.corpusId");
+        waitForProgressEvent(corpusIdA, "ingestion-complete");
+        waitForProgressEvent(corpusIdB, "ingestion-complete");
+        assertThat(graphStorePort.entities(corpusIdA)).isNotEmpty();
+        assertThat(vectorStorePort.chunks(corpusIdA)).isNotEmpty();
+
+        mockMvc.perform(delete("/api/corpora/{corpusId}", corpusIdA))
+                .andExpect(status().isNoContent());
+
+        assertThat(corpusRegistry.get(corpusIdA)).isEmpty();
+        assertThat(corpusRegistry.isOffline(corpusIdA)).isFalse();
+        assertThat(graphStorePort.entities(corpusIdA)).isEmpty();
+        assertThat(graphStorePort.textUnits(corpusIdA)).isEmpty();
+        assertThat(graphStorePort.communities(corpusIdA)).isEmpty();
+        assertThat(vectorStorePort.chunks(corpusIdA)).isEmpty();
+        assertThat(corpusRegistry.get(corpusIdB)).isPresent();
+        assertThat(graphStorePort.entities(corpusIdB)).isNotEmpty();
+
+        // gone for good: a second delete and an activate are 404
+        mockMvc.perform(delete("/api/corpora/{corpusId}", corpusIdA))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/corpora/{corpusId}/activate", corpusIdA))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deletingAnUnknownCorpusReturns404WithAPlainLanguageError() throws Exception {
+        mockMvc.perform(delete("/api/corpora/{corpusId}", "nonexistent-corpus"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("No corpus was found for id nonexistent-corpus"));
+    }
+
+    @Test
+    void deletingACorpusThatIsStillBuildingReturns409AndChangesNothing() throws Exception {
+        Corpus building = new Corpus("building-" + System.nanoTime(),
+                List.of(new UploadedDocument("a.txt", "content")));
+        corpusRegistry.put(building);
+
+        mockMvc.perform(delete("/api/corpora/{corpusId}", building.id()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").exists());
+
+        assertThat(corpusRegistry.get(building.id())).isPresent();
+        corpusRegistry.delete(building.id());
     }
 
     @Test

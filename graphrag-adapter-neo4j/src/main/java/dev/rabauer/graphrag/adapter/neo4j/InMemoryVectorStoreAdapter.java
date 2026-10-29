@@ -58,6 +58,15 @@ public class InMemoryVectorStoreAdapter implements VectorStorePort {
     }
 
     @Override
+    public void deleteCorpus(String corpusId) {
+        if (corpusId == null) {
+            return;
+        }
+        chunksByCorpusId.remove(corpusId);
+        projectionModelByCorpusId.remove(corpusId);
+    }
+
+    @Override
     public Optional<ProjectionModel> projectionModel(String corpusId) {
         return Optional.ofNullable(projectionModelByCorpusId.get(corpusId));
     }
